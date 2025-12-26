@@ -12,6 +12,10 @@ const ProductionList = React.lazy(() => import('../pages/production/ProductionLi
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
 const ReportDetails = React.lazy(() => import('../pages/production/ReportDetails'));
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
+const UserList = React.lazy(() => import('../pages/users/UserList'));
+const UserForm = React.lazy(() => import('../pages/users/UserForm'));
+const ProductList = React.lazy(() => import('../pages/inventory/ProductList'));
+const ProductForm = React.lazy(() => import('../pages/inventory/ProductForm'));
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useAuth();
@@ -149,6 +153,15 @@ export const AppRouter = () => {
                                         />
                                     }
                                 />
+                                {/* User Management */}
+                                <Route path="users" element={<UserList />} />
+                                <Route path="users/new" element={<UserForm />} />
+                                <Route path="users/:id/edit" element={<UserForm />} />
+
+                                {/* Inventory - Products */}
+                                <Route path="inventory/products" element={<ProductList />} />
+                                <Route path="inventory/products/new" element={<ProductForm />} />
+                                <Route path="inventory/products/:id/edit" element={<ProductForm />} />
                             </Route>
                         </Route>
 

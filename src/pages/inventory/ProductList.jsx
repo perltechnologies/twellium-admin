@@ -1,0 +1,29 @@
+import React from 'react';
+import GenericCrudPage from '../production/GenericCrudPage';
+import { inventoryApi } from '../../api/inventory';
+import { useNavigate } from 'react-router-dom';
+
+const ProductList = () => {
+    const navigate = useNavigate();
+
+    return (
+        <GenericCrudPage
+            title="Products"
+            api={{
+                list: inventoryApi.getProducts,
+                delete: inventoryApi.deleteProduct,
+            }}
+            columns={[
+                { header: 'ID', accessor: 'id' },
+                { header: 'SKU Code', accessor: 'sku_code' },
+                { header: 'Name', accessor: 'name' },
+                { header: 'Size', accessor: 'size' },
+                { header: 'Target Speed (BPH)', accessor: 'target_speed_bph', render: row => row.target_speed_bph?.toLocaleString() },
+            ]}
+            onAdd={() => navigate('/dashboard/inventory/products/new')}
+            onEdit={(row) => navigate(`/dashboard/inventory/products/${row.id}/edit`)}
+        />
+    );
+};
+
+export default ProductList;

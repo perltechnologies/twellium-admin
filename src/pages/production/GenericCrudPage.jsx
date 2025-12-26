@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, X, Save } from 'lucide-react';
-import { DataTable, Button, Input, Card } from '../../components/ui';
+import { DataTable, Button, Input, Card, ConfirmationModal } from '../../components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const GenericCrudPage = ({
@@ -8,7 +8,9 @@ const GenericCrudPage = ({
     columns,
     api,
     formFields,
-    transformPayload
+    transformPayload,
+    onAdd,
+    onEdit
 }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -17,10 +19,16 @@ const GenericCrudPage = ({
     const [formData, setFormData] = useState({});
     const [submitting, setSubmitting] = useState(false);
 
+    // Delete Modal State
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState(null);
+    const [deleting, setDeleting] = useState(false);
+
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize] = useState(15);
     const [totalCount, setTotalCount] = useState(0);
+    const [paginationLinks, setPaginationLinks] = useState({ next: null, previous: null });
 
     const fetchData = async () => {
         setLoading(true);
@@ -34,6 +42,8 @@ const GenericCrudPage = ({
             const responseData = res.data;
             let listData = [];
             let count = 0;
+            let next = null;
+            let previous = null;
 
             if (Array.isArray(responseData)) {
                 listData = responseData;
@@ -41,16 +51,23 @@ const GenericCrudPage = ({
             } else if (responseData.results && Array.isArray(responseData.results)) {
                 listData = responseData.results;
                 count = responseData.count || responseData.results.length;
+                next = responseData.next;
+                previous = responseData.previous;
             } else if (responseData.data && Array.isArray(responseData.data)) {
                 listData = responseData.data;
-                count = responseData.total || responseData.data.length;
+                count = responseData.count || responseData.total || responseData.data.length;
+                next = responseData.next;
+                previous = responseData.previous;
             } else if (responseData.data?.results && Array.isArray(responseData.data.results)) {
                 listData = responseData.data.results;
                 count = responseData.data.count || responseData.data.results.length;
+                next = responseData.data.next;
+                previous = responseData.data.previous;
             }
 
             setData(listData);
             setTotalCount(count);
+            setPaginationLinks({ next, previous });
         } catch (err) {
             console.error("Failed to fetch data", err);
             // Optional: toast error
@@ -76,24 +93,42 @@ const GenericCrudPage = ({
     };
 
     const handleCreate = () => {
+        if (onAdd) {
+            onAdd();
+            return;
+        }
         setCurrentItem(null);
         setFormData({});
         setIsModalOpen(true);
     };
 
-    const handleEdit = (item) => {
+    const handleEditInternal = (item) => {
+        if (onEdit) {
+            onEdit(item);
+            return;
+        }
         setCurrentItem(item);
         setFormData(item);
         setIsModalOpen(true);
     };
 
-    const handleDelete = async (item) => {
-        if (!window.confirm("Are you sure you want to delete this item?")) return;
+    const handleDelete = (item) => {
+        setItemToDelete(item);
+        setDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!itemToDelete) return;
+        setDeleting(true);
         try {
-            await api.delete(item.id);
+            await api.delete(itemToDelete.id);
+            setDeleteModalOpen(false);
+            setItemToDelete(null);
             fetchData();
         } catch (err) {
             console.error("Failed to delete", err);
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -136,20 +171,30 @@ const GenericCrudPage = ({
                 data={data}
                 isLoading={loading}
                 searchPlaceholder={`Search ${title}...`}
-                onEdit={handleEdit}
+                onEdit={handleEditInternal}
                 onDelete={handleDelete}
                 pagination={{
                     currentPage,
                     pageSize,
                     totalCount,
-                    // Derive next/prev existence
-                    hasNext: (currentPage * pageSize) < totalCount,
-                    hasPrev: currentPage > 1,
+                    // Derive next/prev existence from API links
+                    hasNext: !!paginationLinks.next,
+                    hasPrev: !!paginationLinks.previous,
                     // Pass next/prev page numbers for the simple DataTable handler we have
                     next: currentPage + 1,
                     prev: currentPage - 1
                 }}
                 onPageChange={handlePageChange}
+            />
+
+            <ConfirmationModal
+                isOpen={deleteModalOpen}
+                onClose={() => setDeleteModalOpen(false)}
+                onConfirm={confirmDelete}
+                title="Confirm Deletion"
+                message="Are you sure you want to delete this item? This action cannot be undone."
+                confirmText="Delete"
+                isLoading={deleting}
             />
 
             <AnimatePresence>

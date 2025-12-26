@@ -49,8 +49,16 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
             ]
         },
         { name: 'Quality Control', icon: ClipboardCheck, path: '/dashboard/quality' },
-        { name: 'Inventory', icon: Package, path: '/dashboard/inventory' },
+        {
+            name: 'Inventory',
+            icon: Package,
+            key: 'inventory',
+            submenu: [
+                { name: 'Products', path: '/dashboard/inventory/products' }
+            ]
+        },
         { name: 'Logistics', icon: Truck, path: '/dashboard/logistics' },
+        { name: 'Users', icon: User, path: '/dashboard/users' },
         { name: 'Settings', icon: Settings, path: '/dashboard/settings' },
     ];
 

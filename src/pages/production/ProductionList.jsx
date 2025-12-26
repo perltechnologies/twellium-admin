@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Plus, FileText, Activity } from 'lucide-react';
-import { DataTable, Button, Card, Input } from '../../components/ui';
+import { DataTable, Button, Card, Input, ConfirmationModal } from '../../components/ui';
 import { productionApi } from '../../api/production';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,9 +13,17 @@ const ProductionList = () => {
     const [filters, setFilters] = useState({
         production_date: '',
         status: '',
-        search: ''
+        search: '',
+        page: 1,
+        page_size: 15
     });
     const [totalCount, setTotalCount] = useState(0);
+    const [paginationLinks, setPaginationLinks] = useState({ next: null, previous: null });
+
+    // Delete State
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [reportToDelete, setReportToDelete] = useState(null);
+    const [deleting, setDeleting] = useState(false);
 
     const fetchReports = async () => {
         setLoading(true);
@@ -35,6 +43,8 @@ const ProductionList = () => {
             const responseData = res.data;
             let listData = [];
             let count = 0;
+            let next = null;
+            let previous = null;
 
             if (Array.isArray(responseData)) {
                 listData = responseData;
@@ -42,16 +52,24 @@ const ProductionList = () => {
             } else if (responseData.results && Array.isArray(responseData.results)) {
                 listData = responseData.results;
                 count = responseData.count || responseData.results.length;
+                next = responseData.next;
+                previous = responseData.previous;
             } else if (responseData.data && Array.isArray(responseData.data)) {
                 listData = responseData.data;
-                count = responseData.total || responseData.data.length;
+                // Fix: Check for count/total explicitly
+                count = responseData.count || responseData.total || responseData.data.length;
+                next = responseData.next || (responseData.data.next); // Fallback if data is wrapped
+                previous = responseData.previous || (responseData.data.previous);
             } else if (responseData.data?.results && Array.isArray(responseData.data.results)) {
                 listData = responseData.data.results;
                 count = responseData.data.count || responseData.data.results.length;
+                next = responseData.data.next;
+                previous = responseData.data.previous;
             }
 
             setReports(listData);
             setTotalCount(count);
+            setPaginationLinks({ next, previous });
         } catch (error) {
             console.error("Failed to fetch reports", error);
         } finally {
@@ -71,14 +89,23 @@ const ProductionList = () => {
         setFilters(prev => ({ ...prev, page: newPage }));
     };
 
-    const handleDelete = async (item) => {
-        if (!window.confirm("Are you sure you want to delete this report?")) return;
+    const handleDelete = (item) => {
+        setReportToDelete(item);
+        setDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!reportToDelete) return;
+        setDeleting(true);
         try {
-            await productionApi.deleteReport(item.id);
-            // Refresh the list
+            await productionApi.deleteReport(reportToDelete.id);
+            setDeleteModalOpen(false);
+            setReportToDelete(null);
             fetchReports();
         } catch (error) {
             console.error("Failed to delete report:", error);
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -124,7 +151,7 @@ const ProductionList = () => {
         {
             header: 'Line',
             accessor: 'line',
-            render: (row) => `Line ${row.line}`
+            render: (row) => `Line ${row.line} `
         },
         {
             header: 'Shift',
@@ -164,7 +191,7 @@ const ProductionList = () => {
                         value={status}
                         onClick={(e) => e.stopPropagation()} // Prevent row click
                         onChange={(e) => handleStatusChange(row, e.target.value)}
-                        className={`px-2 py-1 rounded text-xs font-medium border bg-transparent cursor-pointer focus:outline-none ${styles[status] || 'text-slate-400'}`}
+                        className={`px - 2 py - 1 rounded text - xs font - medium border bg - transparent cursor - pointer focus: outline - none ${styles[status] || 'text-slate-400'} `}
                     >
                         {['STARTED', 'COMPLETED', 'APPROVED', 'DECLINED', 'INCOMPLETE', 'IDLE'].map(s => (
                             <option key={s} value={s} className="bg-slate-900 text-slate-200">{s}</option>
@@ -220,8 +247,8 @@ const ProductionList = () => {
                     currentPage: filters.page,
                     pageSize: filters.page_size,
                     totalCount: totalCount,
-                    hasNext: (filters.page * filters.page_size) < totalCount,
-                    hasPrev: filters.page > 1,
+                    hasNext: !!paginationLinks.next,
+                    hasPrev: !!paginationLinks.previous,
                     next: filters.page + 1,
                     prev: filters.page - 1
                 }}
@@ -231,7 +258,17 @@ const ProductionList = () => {
                 onEdit={(row) => navigate(`/dashboard/production/${row.id}/edit`)}
                 onView={(row) => navigate(`/dashboard/production/${row.id}`)}
             />
-        </div>
+
+            <ConfirmationModal
+                isOpen={deleteModalOpen}
+                onClose={() => setDeleteModalOpen(false)}
+                onConfirm={confirmDelete}
+                title="Delete Report"
+                message="Are you sure you want to delete this report? This action cannot be undone."
+                confirmText="Delete Report"
+                isLoading={deleting}
+            />
+        </div >
     );
 };
 

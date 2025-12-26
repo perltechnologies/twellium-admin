@@ -1,9 +1,10 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { DataTable } from './DataTable';
+export * from './DataTable';
+export * from './ConfirmationModal';
 
-export { DataTable };
+
 export function cn(...inputs) {
     return twMerge(clsx(inputs));
 }
