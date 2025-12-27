@@ -32,7 +32,7 @@ const ProductionList = () => {
             const params = {
                 production_date: filters.production_date,
                 status: filters.status,
-                report_code: filters.search,
+                search: filters.search,
                 page: filters.page,
                 page_size: filters.page_size
             };
@@ -149,9 +149,9 @@ const ProductionList = () => {
             render: (row) => format(new Date(row.production_date), 'MMM dd, yyyy')
         },
         {
-            header: 'Line',
-            accessor: 'line',
-            render: (row) => `Line ${row.line} `
+            header: 'PET',
+            accessor: 'pet_name',
+            render: (row) => row.pet_name || '-'
         },
         {
             header: 'Shift',

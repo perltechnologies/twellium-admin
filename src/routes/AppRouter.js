@@ -11,6 +11,9 @@ const DashboardOverview = React.lazy(() => import('../pages/dashboard/Overview')
 const ProductionList = React.lazy(() => import('../pages/production/ProductionList'));
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
 const ReportDetails = React.lazy(() => import('../pages/production/ReportDetails'));
+const StoppageLogList = React.lazy(() => import('../pages/production/stoppages/StoppageLogList'));
+const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/StoppageLogForm'));
+const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppages/StoppageLogDetails'));
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
 const UserForm = React.lazy(() => import('../pages/users/UserForm'));
@@ -22,7 +25,7 @@ const ProtectedRoute = ({ children }) => {
     if (!user) {
         return <Navigate to="/login" replace />;
     }
-    return <Outlet />;
+    return children ? children : <Outlet />;
 };
 
 export const AppRouter = () => {
@@ -33,18 +36,29 @@ export const AppRouter = () => {
                     <Routes>
                         <Route path="/login" element={<Login />} />
 
-                        <Route element={<ProtectedRoute />}>
-                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                            <Route path="/dashboard" element={<DashboardLayout />}>
-                                <Route index element={<DashboardOverview />} />
-                                <Route path="production" element={<ProductionList />} />
-                                <Route path="production/new" element={<ReportForm />} />
-                                <Route path="production/:id" element={<ReportDetails />} />
-                                <Route path="production/:id/edit" element={<ReportForm />} />
+                        <Route path="/dashboard" element={
+                            <ProtectedRoute>
+                                <DashboardLayout />
+                            </ProtectedRoute>
+                        }>
+                            <Route index element={<DashboardOverview />} />
+
+                            {/* Production Routes */}
+                            <Route path="production">
+                                <Route index element={<ProductionList />} />
+                                <Route path="new" element={<ReportForm />} />
+                                <Route path=":id" element={<ReportDetails />} />
+                                <Route path=":id/edit" element={<ReportForm />} />
+
+                                {/* Stoppage Logs */}
+                                <Route path="stoppages" element={<StoppageLogList />} />
+                                <Route path="stoppages/new" element={<StoppageLogForm />} />
+                                <Route path="stoppages/:id" element={<StoppageLogDetails />} />
+                                <Route path="stoppages/:id/edit" element={<StoppageLogForm />} />
 
                                 {/* Production Sub-modules */}
                                 <Route
-                                    path="production/materials"
+                                    path="materials"
                                     element={
                                         <GenericCrudPage
                                             title="Materials Management"
@@ -66,7 +80,7 @@ export const AppRouter = () => {
                                     }
                                 />
                                 <Route
-                                    path="production/meters"
+                                    path="meters"
                                     element={
                                         <GenericCrudPage
                                             title="Meter Readings"
@@ -87,7 +101,7 @@ export const AppRouter = () => {
                                     }
                                 />
                                 <Route
-                                    path="production/pets"
+                                    path="pets"
                                     element={
                                         <GenericCrudPage
                                             title="Pets / Lines"
@@ -108,7 +122,7 @@ export const AppRouter = () => {
                                     }
                                 />
                                 <Route
-                                    path="production/shifts"
+                                    path="shifts"
                                     element={
                                         <GenericCrudPage
                                             title="Shift Management"
@@ -133,7 +147,7 @@ export const AppRouter = () => {
                                     }
                                 />
                                 <Route
-                                    path="production/batches"
+                                    path="batches"
                                     element={
                                         <GenericCrudPage
                                             title="Batches"
@@ -153,16 +167,17 @@ export const AppRouter = () => {
                                         />
                                     }
                                 />
-                                {/* User Management */}
-                                <Route path="users" element={<UserList />} />
-                                <Route path="users/new" element={<UserForm />} />
-                                <Route path="users/:id/edit" element={<UserForm />} />
-
-                                {/* Inventory - Products */}
-                                <Route path="inventory/products" element={<ProductList />} />
-                                <Route path="inventory/products/new" element={<ProductForm />} />
-                                <Route path="inventory/products/:id/edit" element={<ProductForm />} />
                             </Route>
+
+                            {/* User Management */}
+                            <Route path="users" element={<UserList />} />
+                            <Route path="users/new" element={<UserForm />} />
+                            <Route path="users/:id/edit" element={<UserForm />} />
+
+                            {/* Inventory - Products */}
+                            <Route path="inventory/products" element={<ProductList />} />
+                            <Route path="inventory/products/new" element={<ProductForm />} />
+                            <Route path="inventory/products/:id/edit" element={<ProductForm />} />
                         </Route>
 
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />

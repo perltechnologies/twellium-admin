@@ -23,9 +23,13 @@ export const productionApi = {
     startRun: (data) => api.post('/production/runs/', data),
     stopRun: (id) => api.post(`/production/runs/${id}/stop/`),
 
+
     // Stoppages
     getStoppages: (params) => api.get('/production/stoppages/', { params }),
+    getStoppage: (id) => api.get(`/production/stoppages/${id}/`),
     createStoppage: (data) => api.post('/production/stoppages/', data),
+    updateStoppage: (id, data) => api.patch(`/production/stoppages/${id}/`, data),
+    deleteStoppage: (id) => api.delete(`/production/stoppages/${id}/`),
     addIncident: (id, data) => api.post(`/production/stoppages/${id}/add_incident/`, data),
 
     // Materials

@@ -10,7 +10,10 @@ const GenericCrudPage = ({
     formFields,
     transformPayload,
     onAdd,
-    onEdit
+    onEdit,
+    onView,
+    filters = [], // Array of { name, label, type: 'select'|'date'|'text', options: [] }
+    searchPlaceholder
 }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -18,6 +21,12 @@ const GenericCrudPage = ({
     const [currentItem, setCurrentItem] = useState(null);
     const [formData, setFormData] = useState({});
     const [submitting, setSubmitting] = useState(false);
+
+    // Search and Filter State
+    const [params, setParams] = useState({
+        search: '',
+        ...filters.reduce((acc, f) => ({ ...acc, [f.name]: '' }), {})
+    });
 
     // Delete Modal State
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -33,8 +42,12 @@ const GenericCrudPage = ({
     const fetchData = async () => {
         setLoading(true);
         try {
-            const params = { page: currentPage, page_size: pageSize };
-            const res = await api.list(params);
+            const apiParams = {
+                page: currentPage,
+                page_size: pageSize,
+                ...params // Include search and filters
+            };
+            const res = await api.list(apiParams);
 
             // Handle different possible response structures
             // 1. DRF Standard: { count: 100, results: [...] }
@@ -79,17 +92,28 @@ const GenericCrudPage = ({
     // Reset pagination when switching modules (title changes)
     useEffect(() => {
         setCurrentPage(1);
+        setParams(prev => ({ ...prev, search: '' })); // Reset search too
     }, [title]);
 
     useEffect(() => {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentPage, title]); // Re-fetch when page or title (module) changes
+    }, [currentPage, title, params]); // Re-fetch when params change
 
     const handlePageChange = (newPage) => {
         if (newPage > 0) {
             setCurrentPage(newPage);
         }
+    };
+
+    const handleSearch = (term) => {
+        setCurrentPage(1); // Reset to first page on new search
+        setParams(prev => ({ ...prev, search: term }));
+    };
+
+    const handleFilterChange = (name, value) => {
+        setCurrentPage(1);
+        setParams(prev => ({ ...prev, [name]: value }));
     };
 
     const handleCreate = () => {
@@ -170,9 +194,14 @@ const GenericCrudPage = ({
                 columns={columns}
                 data={data}
                 isLoading={loading}
-                searchPlaceholder={`Search ${title}...`}
+                searchPlaceholder={searchPlaceholder || `Search ${title}...`}
                 onEdit={handleEditInternal}
                 onDelete={handleDelete}
+                onView={onView}
+                onSearch={handleSearch}
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                activeFilters={params}
                 pagination={{
                     currentPage,
                     pageSize,

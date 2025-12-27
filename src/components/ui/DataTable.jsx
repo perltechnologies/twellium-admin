@@ -9,11 +9,11 @@ import {
     MoreVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn, Button, Input, Card } from './index'; // Importing from index.js where we perform exports
+import { cn, Button, Input, Card } from './base';
 
 export const DataTable = ({
-    columns,
-    data,
+    columns = [],
+    data = [],
     isLoading,
     pagination,
     onPageChange,
@@ -21,20 +21,35 @@ export const DataTable = ({
     onEdit,
     onDelete,
     onView,
-    searchPlaceholder = "Search..."
+    searchPlaceholder = "Search...",
+    filters = [],
+    onFilterChange,
+    activeFilters = {}
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
+    // Debounce search internally or pass up immediately if debounced parent-side? 
+    // GenericCrudPage does not appear to debounce, so let's debounce here or assume parent handles raw input if we want instant feedback.
+    // However, GenericCrudPage sets params on change, which triggers fetch. We should probably debounce in DataTable or GenericCrudPage.
+    // Given the current setup, we'll let parent handle it but maybe add a small delay here if needed.
+    // For now, let's keep it simple: pass changes up. 
+
+    // Better: Debounce here to avoid rapid re-fetches
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            if (onSearch) onSearch(searchTerm);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     const handleSearch = (e) => {
-        const value = e.target.value;
-        setSearchTerm(value);
-        if (onSearch) onSearch(value);
+        setSearchTerm(e.target.value);
     };
 
     return (
         <div className="space-y-4">
             {/* Table Actions */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center gap-4">
                 <div className="relative w-72">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                     <Input
@@ -44,6 +59,39 @@ export const DataTable = ({
                         className="pl-10"
                     />
                 </div>
+
+                {/* Render Filters */}
+                {filters.map(filter => (
+                    <div key={filter.name} className="w-48">
+                        {filter.type === 'select' ? (
+                            <select
+                                value={activeFilters[filter.name] || ''}
+                                onChange={(e) => onFilterChange(filter.name, e.target.value)}
+                                className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-200"
+                            >
+                                <option value="">All {filter.label}</option>
+                                {filter.options.map(opt => (
+                                    <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : filter.type === 'date' ? (
+                            <Input
+                                type="date"
+                                value={activeFilters[filter.name] || ''}
+                                onChange={(e) => onFilterChange(filter.name, e.target.value)}
+                                placeholder={filter.label}
+                            />
+                        ) : (
+                            <Input
+                                value={activeFilters[filter.name] || ''}
+                                onChange={(e) => onFilterChange(filter.name, e.target.value)}
+                                placeholder={filter.label}
+                            />
+                        )}
+                    </div>
+                ))}
             </div>
 
             {/* Table Container */}

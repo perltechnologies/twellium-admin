@@ -41,6 +41,7 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
             key: 'production',
             submenu: [
                 { name: 'Reports', path: '/dashboard/production' },
+                { name: 'Stoppage Logs', path: '/dashboard/production/stoppages' },
                 { name: 'Materials', path: '/dashboard/production/materials' },
                 { name: 'Meter Readings', path: '/dashboard/production/meters' },
                 { name: 'Pets', path: '/dashboard/production/pets' },
