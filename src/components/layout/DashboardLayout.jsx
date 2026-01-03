@@ -17,7 +17,8 @@ import {
     ChevronDown,
     ClipboardCheck,
     Package,
-    User
+    User,
+    Database // Added Database icon
 } from 'lucide-react';
 import { cn, Button } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,7 +27,9 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
     const location = useLocation();
     const { logout } = useAuth();
     const [openSubmenus, setOpenSubmenus] = useState({
-        production: true
+        production: true,
+        definitions: false, // Initial state for new submenu
+        inventory: false
     });
 
     const toggleSubmenu = (key) => {
@@ -42,11 +45,31 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
             submenu: [
                 { name: 'Reports', path: '/dashboard/production' },
                 { name: 'Stoppage Logs', path: '/dashboard/production/stoppages' },
-                { name: 'Materials', path: '/dashboard/production/materials' },
+                // { name: 'Materials', path: '/dashboard/production/materials' }, // Removed or kept? Keeping generic one might be confusing if we have lookups. I'll keep it for now as it was there.
+                { name: 'Materials Usage', path: '/dashboard/production/materials' }, // Renaming for clarity if possible, but path is same
                 { name: 'Meter Readings', path: '/dashboard/production/meters' },
                 { name: 'Pets', path: '/dashboard/production/pets' },
                 { name: 'Batches', path: '/dashboard/production/batches' },
                 { name: 'Shifts', path: '/dashboard/production/shifts' },
+            ]
+        },
+        {
+            name: 'Material Lookups',
+            icon: Database,
+            key: 'definitions',
+            submenu: [
+                { name: 'Suppliers', path: '/dashboard/definitions/suppliers' },
+                { name: 'Preform Colors', path: '/dashboard/definitions/preform-colors' },
+                { name: 'Cap Types', path: '/dashboard/definitions/cap-types' },
+                { name: 'Cap Colors', path: '/dashboard/definitions/cap-colors' },
+                { name: 'Label Sizes', path: '/dashboard/definitions/label-product-sizes' },
+                { name: 'Label Names', path: '/dashboard/definitions/label-names' },
+                { name: 'Shrink Sizes', path: '/dashboard/definitions/shrink-product-sizes' },
+                { name: 'Pack Sizes', path: '/dashboard/definitions/pack-sizes' },
+                { name: 'Shrink Names', path: '/dashboard/definitions/shrink-names' },
+                { name: 'Preform Sizes (g)', path: '/dashboard/definitions/preform-sizes' },
+                { name: 'Cage Quantities', path: '/dashboard/definitions/cage-quantities' },
+                { name: 'Cap Box Qtys', path: '/dashboard/definitions/cap-box-quantities' },
             ]
         },
         { name: 'Quality Control', icon: ClipboardCheck, path: '/dashboard/quality' },

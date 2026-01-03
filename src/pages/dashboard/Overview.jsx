@@ -57,19 +57,17 @@ const Overview = () => {
             const today = new Date().toISOString().split('T')[0];
 
             // 1. Fetch Today's Reports (for Output and Active PETs)
+            // 1. Fetch Today's Reports (for Output and Active PETs)
             const reportsRes = await productionApi.getReports({ production_date: today, page_size: 100 });
-            const reports = reportsRes.data.results || reportsRes.data || [];
+            const reports = reportsRes.data.data || reportsRes.data.results || [];
 
-            // 2. Fetch Recent Reports (for Table) -> Re-using reports if < 10, else fetch separately or slice
-            // Actually, let's just slice the reports we have if sorted by date, but API sort order might default. 
-            // Let's ensure we get the latest 10 specifically for the table if we want general recent.
-            // But the user asked for "first 10 production reports below". Assuming "recent".
+            // 2. Fetch Recent Reports (for Table)
             const recentReportsRes = await productionApi.getReports({ page_size: 10 });
-            const recent = recentReportsRes.data.results || recentReportsRes.data || [];
+            const recent = recentReportsRes.data.data || recentReportsRes.data.results || [];
 
             // 3. Fetch Today's Stoppages (for Downtime)
             const stoppagesRes = await productionApi.getStoppages({ log_date: today, page_size: 100 });
-            const stoppages = stoppagesRes.data.results || stoppagesRes.data || [];
+            const stoppages = stoppagesRes.data.data || stoppagesRes.data.results || [];
 
             // --- Calculations ---
 
@@ -141,8 +139,8 @@ const Overview = () => {
             accessor: 'status',
             render: (r) => (
                 <span className={`text-xs px-2 py-1 rounded border ${r.status === 'STARTED' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                        r.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                            'bg-slate-800 text-slate-400 border-slate-700'
+                    r.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                        'bg-slate-800 text-slate-400 border-slate-700'
                     }`}>
                     {r.status}
                 </span>

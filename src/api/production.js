@@ -60,4 +60,69 @@ export const productionApi = {
     createBatch: (data) => api.post('/production/batches/', data),
     updateBatch: (id, data) => api.patch(`/production/batches/${id}/`, data),
     deleteBatch: (id) => api.delete(`/production/batches/${id}/`),
+
+    // --- Material Lookups ---
+
+    // Generic Name-Based Lookups
+    getSuppliers: (params) => api.get('/production/suppliers/', { params }),
+    createSupplier: (data) => api.post('/production/suppliers/', data),
+    updateSupplier: (id, data) => api.patch(`/production/suppliers/${id}/`, data),
+    deleteSupplier: (id) => api.delete(`/production/suppliers/${id}/`),
+
+    getPreformColors: (params) => api.get('/production/preform-colors/', { params }),
+    createPreformColor: (data) => api.post('/production/preform-colors/', data),
+    updatePreformColor: (id, data) => api.patch(`/production/preform-colors/${id}/`, data),
+    deletePreformColor: (id) => api.delete(`/production/preform-colors/${id}/`),
+
+    getCapTypes: (params) => api.get('/production/cap-types/', { params }),
+    createCapType: (data) => api.post('/production/cap-types/', data),
+    updateCapType: (id, data) => api.patch(`/production/cap-types/${id}/`, data),
+    deleteCapType: (id) => api.delete(`/production/cap-types/${id}/`),
+
+    getCapColors: (params) => api.get('/production/cap-colors/', { params }),
+    createCapColor: (data) => api.post('/production/cap-colors/', data),
+    updateCapColor: (id, data) => api.patch(`/production/cap-colors/${id}/`, data),
+    deleteCapColor: (id) => api.delete(`/production/cap-colors/${id}/`),
+
+    getLabelProductSizes: (params) => api.get('/production/label-product-sizes/', { params }),
+    createLabelProductSize: (data) => api.post('/production/label-product-sizes/', data),
+    updateLabelProductSize: (id, data) => api.patch(`/production/label-product-sizes/${id}/`, data),
+    deleteLabelProductSize: (id) => api.delete(`/production/label-product-sizes/${id}/`),
+
+    getLabelNames: (params) => api.get('/production/label-names/', { params }),
+    createLabelName: (data) => api.post('/production/label-names/', data),
+    updateLabelName: (id, data) => api.patch(`/production/label-names/${id}/`, data),
+    deleteLabelName: (id) => api.delete(`/production/label-names/${id}/`),
+
+    getShrinkProductSizes: (params) => api.get('/production/shrink-product-sizes/', { params }),
+    createShrinkProductSize: (data) => api.post('/production/shrink-product-sizes/', data),
+    updateShrinkProductSize: (id, data) => api.patch(`/production/shrink-product-sizes/${id}/`, data),
+    deleteShrinkProductSize: (id) => api.delete(`/production/shrink-product-sizes/${id}/`),
+
+    getPackSizes: (params) => api.get('/production/pack-sizes/', { params }),
+    createPackSize: (data) => api.post('/production/pack-sizes/', data),
+    updatePackSize: (id, data) => api.patch(`/production/pack-sizes/${id}/`, data),
+    deletePackSize: (id) => api.delete(`/production/pack-sizes/${id}/`),
+
+    getShrinkNames: (params) => api.get('/production/shrink-names/', { params }),
+    createShrinkName: (data) => api.post('/production/shrink-names/', data),
+    updateShrinkName: (id, data) => api.patch(`/production/shrink-names/${id}/`, data),
+    deleteShrinkName: (id) => api.delete(`/production/shrink-names/${id}/`),
+
+    // Preform Size Lookup (Grams) - uses value_gr
+    getPreformSizes: (params) => api.get('/production/preform-sizes/', { params }),
+    createPreformSize: (data) => api.post('/production/preform-sizes/', data),
+    updatePreformSize: (id, data) => api.patch(`/production/preform-sizes/${id}/`, data),
+    deletePreformSize: (id) => api.delete(`/production/preform-sizes/${id}/`),
+
+    // Quantity Lookups (Pieces) - uses value_pcs
+    getCageQuantities: (params) => api.get('/production/cage-quantities/', { params }),
+    createCageQuantity: (data) => api.post('/production/cage-quantities/', data),
+    updateCageQuantity: (id, data) => api.patch(`/production/cage-quantities/${id}/`, data),
+    deleteCageQuantity: (id) => api.delete(`/production/cage-quantities/${id}/`),
+
+    getCapBoxQuantities: (params) => api.get('/production/cap-box-quantities/', { params }),
+    createCapBoxQuantity: (data) => api.post('/production/cap-box-quantities/', data),
+    updateCapBoxQuantity: (id, data) => api.patch(`/production/cap-box-quantities/${id}/`, data),
+    deleteCapBoxQuantity: (id) => api.delete(`/production/cap-box-quantities/${id}/`),
 };

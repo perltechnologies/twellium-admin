@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://100.31.218.191:8000/api';
+const BASE_URL = 'https://api.twellium-api.com/api';
 
 const api = axios.create({
     baseURL: BASE_URL,

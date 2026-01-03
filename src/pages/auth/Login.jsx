@@ -54,7 +54,7 @@ const Login = () => {
                         <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-200">
                             Twellium
                         </h1>
-                        <p className="text-slate-400 mt-2 text-sm tracking-wider uppercase">Industrial Admin Portal</p>
+                        <p className="text-slate-400 mt-2 text-sm tracking-wider uppercase">Admin Portal</p>
                     </motion.div>
                 </div>
 
@@ -127,7 +127,7 @@ const Login = () => {
                 </Card>
 
                 <div className="text-center mt-8 text-slate-600 text-xs">
-                    &copy; {new Date().getFullYear()} Twellium Industrial Company. All rights reserved.
+                    &copy; {new Date().getFullYear()} Twellium Company. All rights reserved.
                 </div>
             </motion.div>
         </div>

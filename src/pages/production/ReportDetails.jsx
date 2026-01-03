@@ -31,6 +31,237 @@ const SectionHeader = ({ title, icon: Icon }) => (
     </div>
 );
 
+const MaterialsView = ({ materials }) => {
+    if (!materials || materials.length === 0) return <div className="text-slate-500 text-center py-8">No materials recorded</div>;
+
+    return (
+        <div className="space-y-8">
+            {materials.map((group, groupIdx) => (
+                <div key={groupIdx} className="space-y-4">
+                    <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                        {group.material_type === 'Petline' ? (
+                            <Layers className="h-5 w-5 text-blue-400" />
+                        ) : (
+                            <Box className="h-5 w-5 text-amber-400" />
+                        )}
+                        <h3 className="text-lg font-semibold text-slate-100">
+                            {group.material_type} Materials
+                        </h3>
+                    </div>
+
+                    {group.material_type === 'Petline' && (
+                        <PetlineMaterialsGroup items={group.data} />
+                    )}
+
+                    {group.material_type === 'Canline' && (
+                        <CanlineMaterialsGroup items={group.data} />
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const PetlineMaterialsGroup = ({ items }) => {
+    // Group items by their specific petline_type
+    const groups = {
+        preform: items.filter(i => i.petline_type === 'preform').map(i => i.data),
+        caps: items.filter(i => i.petline_type === 'caps').map(i => i.data),
+        labels: items.filter(i => i.petline_type === 'labels').map(i => i.data),
+        shrink: items.filter(i => i.petline_type === 'shrink').map(i => i.data),
+    };
+
+    return (
+        <div className="grid grid-cols-1 gap-6">
+            {/* Preforms Section */}
+            {groups.preform.length > 0 && (
+                <div className="bg-slate-950/30 rounded-lg p-4 border border-slate-800/50">
+                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Preforms</h4>
+                    <DataTable
+                        columns={[
+                            { header: 'Batch', accessor: 'batch_number' },
+                            { header: 'Cage #', accessor: 'cage_number' },
+                            { header: 'Size (g)', accessor: 'preform_size_value' },
+                            { header: 'Color', accessor: 'preform_color_name' },
+                            { header: 'Supplier', accessor: 'supplier_name' },
+                            { header: 'Qty/Cage', accessor: 'quantity_per_cage_value' },
+                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
+                        ]}
+                        data={groups.preform}
+                        isLoading={false}
+                        pagination={null}
+                    />
+                </div>
+            )}
+
+            {/* Caps Section */}
+            {groups.caps.length > 0 && (
+                <div className="bg-slate-950/30 rounded-lg p-4 border border-slate-800/50">
+                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Caps</h4>
+                    <DataTable
+                        columns={[
+                            { header: 'Batch', accessor: 'batch_number' },
+                            { header: 'Box #', accessor: 'box_number' },
+                            { header: 'Type', accessor: 'cap_type_name' },
+                            { header: 'Color', accessor: 'cap_color_name' },
+                            { header: 'Supplier', accessor: 'supplier_name' },
+                            { header: 'Qty/Box', accessor: 'quantity_per_box_value' },
+                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
+                        ]}
+                        data={groups.caps}
+                        isLoading={false}
+                        pagination={null}
+                    />
+                </div>
+            )}
+
+            {/* Labels Section */}
+            {groups.labels.length > 0 && (
+                <div className="bg-slate-950/30 rounded-lg p-4 border border-slate-800/50">
+                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Labels / Sleeves</h4>
+                    <DataTable
+                        columns={[
+                            { header: 'Batch', accessor: 'batch_number' },
+                            { header: 'Roll #', accessor: 'roll_number' },
+                            { header: 'Name', accessor: 'label_sleeve_name_value' },
+                            { header: 'Size', accessor: 'product_size_name' },
+                            { header: 'Net Wt', accessor: 'roll_net_weight' },
+                            { header: 'Supplier', accessor: 'supplier_name' },
+                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
+                        ]}
+                        data={groups.labels}
+                        isLoading={false}
+                        pagination={null}
+                    />
+                </div>
+            )}
+
+            {/* Shrink Section */}
+            {groups.shrink.length > 0 && (
+                <div className="bg-slate-950/30 rounded-lg p-4 border border-slate-800/50">
+                    <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Shrink Wrap</h4>
+                    <DataTable
+                        columns={[
+                            { header: 'Batch', accessor: 'batch_number' },
+                            { header: 'Roll #', accessor: 'roll_number' },
+                            { header: 'Name', accessor: 'shrink_name_value' },
+                            { header: 'Pack Size', accessor: 'pack_size_name' },
+                            { header: 'Net Wt', accessor: 'roll_net_weight' },
+                            { header: 'Supplier', accessor: 'supplier_name' },
+                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
+                        ]}
+                        data={groups.shrink}
+                        isLoading={false}
+                        pagination={null}
+                    />
+                </div>
+            )}
+        </div>
+    );
+};
+
+const CanlineMaterialsGroup = ({ items }) => {
+    return (
+        <div className="bg-slate-950/30 rounded-lg p-4 border border-slate-800/50">
+            <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Usage Records</h4>
+            <DataTable
+                columns={[
+                    { header: 'Date', accessor: 'date_created', render: r => new Date(r.date_created).toLocaleString() },
+                    { header: 'Empty Cans', accessor: 'empty_quantity' },
+                    { header: 'Lids', accessor: 'lid_quantity' },
+                    { header: 'Cartons', accessor: 'carton_quantity' },
+                ]}
+                data={items}
+                isLoading={false}
+                pagination={null}
+            />
+        </div>
+    );
+};
+
+const StoppageLogsView = ({ logs }) => {
+    if (!logs || logs.length === 0) return <div className="text-slate-500 text-center py-8">No stoppage logs recorded</div>;
+
+    return (
+        <div className="space-y-4">
+            {logs.map((log) => (
+                <div key={log.id} className="bg-slate-950/30 rounded-lg border border-slate-800/50 overflow-hidden">
+                    {/* Header Summary */}
+                    <div className="p-4 grid grid-cols-2 md:grid-cols-5 gap-4 items-center bg-slate-900/50 border-b border-slate-800/50">
+                        <div>
+                            <span className="text-slate-500 text-xs uppercase block mb-1">Hour</span>
+                            <div className="flex items-center gap-2">
+                                <Clock className="h-3 w-3 text-slate-400" />
+                                <span className="text-slate-200 font-medium">Hour {log.hour_index}</span>
+                            </div>
+                            <span className="text-xs text-slate-500 ml-5">{log.log_time}</span>
+                        </div>
+                        <div>
+                            <span className="text-slate-500 text-xs uppercase block mb-1">Efficiency</span>
+                            <div className="flex items-center gap-2">
+                                <Activity className="h-3 w-3 text-emerald-400" />
+                                <span className="text-emerald-400 font-medium">{log.efficiency}%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <span className="text-slate-500 text-xs uppercase block mb-1">Downtime</span>
+                            <div className="flex items-center gap-2">
+                                <AlertTriangle className="h-3 w-3 text-amber-400" />
+                                <span className="text-amber-400 font-medium">{log.downtime_minutes} min</span>
+                            </div>
+                        </div>
+                        <div>
+                            <span className="text-slate-500 text-xs uppercase block mb-1">Output</span>
+                            <div className="flex items-center gap-2">
+                                <Layers className="h-3 w-3 text-blue-400" />
+                                <span className="text-blue-400 font-medium">{log.bottles_produced?.toLocaleString()}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <span className="text-slate-500 text-xs uppercase block mb-1">Logged By</span>
+                            <div className="flex items-center gap-2">
+                                <User className="h-3 w-3 text-slate-400" />
+                                <span className="text-slate-300 text-sm truncate max-w-[100px]" title={log.created_by?.full_name}>
+                                    {log.created_by?.full_name || log.created_by?.username}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Details & Incidents */}
+                    <div className="p-4 space-y-4">
+                        {log.comments && (
+                            <div className="text-sm text-slate-400 bg-slate-900/20 p-3 rounded border border-slate-800/30">
+                                <span className="font-semibold text-slate-500 mr-2 uppercase text-xs">Comments:</span>
+                                {log.comments}
+                            </div>
+                        )}
+
+                        {log.incidents && log.incidents.length > 0 ? (
+                            <div className="mt-2">
+                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Incidents
+                                </h5>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {log.incidents.map((inc, i) => (
+                                        <div key={i} className="text-sm text-slate-300 bg-slate-900/50 p-2 rounded border border-slate-800/50 flex items-start gap-2">
+                                            <span className="text-slate-600 mt-0.5">•</span>
+                                            {inc.incident_description}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-slate-600 italic">No incidents recorded for this period.</p>
+                        )}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
 const ReportDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -58,7 +289,7 @@ const ReportDetails = () => {
     const tabs = [
         { id: 'runs', label: 'Production Runs', count: report.runs?.length || 0 },
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
-        { id: 'materials', label: 'Materials', count: report.materials?.length || 0 },
+        { id: 'materials', label: 'Materials', count: report.materials?.length || 0 }, // Materials is an array of groups, count might be misleading if just groups, but OK for now.
         { id: 'stoppages', label: 'Stoppages', count: report.stoppage_logs?.length || 0 },
         { id: 'meters', label: 'Meter Readings', count: report.meter_readings?.length || 0 },
         { id: 'workers', label: 'Workers', count: report.workers?.length || 0 },
@@ -254,30 +485,11 @@ const ReportDetails = () => {
                     )}
 
                     {activeTab === 'materials' && (
-                        <DataTable
-                            columns={[
-                                { header: 'Type', accessor: 'material_type' },
-                                { header: 'Used Qty', accessor: 'used_quantity', render: row => `${row.used_quantity} ${row.unit || ''}` },
-                                { header: 'Loss Qty', accessor: 'loss_quantity' },
-                                { header: 'Loss %', accessor: 'loss_percentage', render: row => `${row.loss_percentage}%` },
-                            ]}
-                            data={report.materials}
-                            isLoading={false}
-                        />
+                        <MaterialsView materials={report.materials} />
                     )}
 
                     {activeTab === 'stoppages' && (
-                        <DataTable
-                            columns={[
-                                { header: 'Reason', accessor: 'reason' },
-                                { header: 'Start', accessor: 'start_time' },
-                                { header: 'End', accessor: 'end_time' },
-                                { header: 'Duration', accessor: 'duration_minutes', render: row => `${row.duration_minutes} min` },
-                                { header: 'Comments', accessor: 'comments' },
-                            ]}
-                            data={report.stoppage_logs}
-                            isLoading={false}
-                        />
+                        <StoppageLogsView logs={report.stoppage_logs} />
                     )}
 
                     {activeTab === 'meters' && (

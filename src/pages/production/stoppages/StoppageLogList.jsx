@@ -14,7 +14,7 @@ const StoppageLogList = () => {
         const loadPets = async () => {
             try {
                 const res = await productionApi.getPets({ page_size: 100 });
-                const results = res.data.results || res.data || [];
+                const results = res.data.data || res.data.results || [];
                 setPets(results.map(p => ({ label: p.pet_name || p.name, value: p.id })));
             } catch (err) {
                 console.error("Failed to load filter options", err);
