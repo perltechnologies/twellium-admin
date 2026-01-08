@@ -92,16 +92,16 @@ const ReportForm = () => {
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                 </Button>
-                <h1 className="text-2xl font-bold text-slate-100">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {isEditMode ? 'Edit Production Report' : 'Create New Report'}
                 </h1>
             </div>
 
-            <Card className="p-6 border-slate-800 bg-slate-900/50">
+            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Production Date</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Production Date</label>
                             <Input
                                 type="date"
                                 name="production_date"
@@ -112,7 +112,7 @@ const ReportForm = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Report Code</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Report Code</label>
                             <Input
                                 name="report_code"
                                 value={formData.report_code}
@@ -123,12 +123,12 @@ const ReportForm = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Line</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Line</label>
                             <select
                                 name="line"
                                 value={formData.line}
                                 onChange={handleChange}
-                                className="w-full px-3 py-2 bg-slate-950/50 border border-slate-700/50 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 placeholder:text-slate-600 transition-all"
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all"
                                 required
                             >
                                 <option value="">Select Line</option>
@@ -141,12 +141,12 @@ const ReportForm = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Shift</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Shift</label>
                             <select
                                 name="shift"
                                 value={formData.shift}
                                 onChange={handleChange}
-                                className="w-full px-3 py-2 bg-slate-950/50 border border-slate-700/50 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 placeholder:text-slate-600 transition-all"
+                                className="w-full px-3 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all"
                                 required
                             >
                                 <option value="">Select Shift</option>
@@ -159,7 +159,7 @@ const ReportForm = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-300">Supervisor ID</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Supervisor ID</label>
                             <Input
                                 type="number"
                                 name="supervisor"
@@ -171,7 +171,7 @@ const ReportForm = () => {
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-800">
+                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
                         <Button
                             type="button"
                             variant="ghost"

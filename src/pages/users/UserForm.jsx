@@ -130,12 +130,12 @@ const UserForm = () => {
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                 </Button>
-                <h1 className="text-2xl font-bold text-slate-100">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {isEditMode ? 'Edit User' : 'Create New User'}
                 </h1>
             </div>
 
-            <Card className="p-6 border-slate-800 bg-slate-900/50">
+            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 gap-6">
 
@@ -167,12 +167,12 @@ const UserForm = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-400">Role</label>
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Role</label>
                                 <select
                                     name="role"
                                     value={formData.role}
                                     onChange={handleChange}
-                                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-200"
+                                    className="w-full px-4 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-900 dark:text-slate-200"
                                 >
                                     <option value="OPERATOR">OPERATOR</option>
                                     <option value="SUPERVISOR">SUPERVISOR</option>
@@ -183,13 +183,13 @@ const UserForm = () => {
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-400">Company</label>
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Company</label>
                                 <select
                                     name="company"
                                     value={formData.company}
                                     onChange={handleChange}
                                     required
-                                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-200"
+                                    className="w-full px-4 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-900 dark:text-slate-200"
                                 >
                                     <option value="">Select Company</option>
                                     {companies.map(c => (
@@ -203,12 +203,12 @@ const UserForm = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-400">Pet (Optional)</label>
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Pet (Optional)</label>
                                 <select
                                     name="pet"
                                     value={formData.pet}
                                     onChange={handleChange}
-                                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-200"
+                                    className="w-full px-4 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-900 dark:text-slate-200"
                                 >
                                     <option value="">None</option>
                                     {pets.map(p => (
@@ -231,7 +231,7 @@ const UserForm = () => {
 
                     </div>
 
-                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-800">
+                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
                         <Button
                             type="button"
                             variant="ghost"

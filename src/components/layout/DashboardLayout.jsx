@@ -5,7 +5,7 @@ import {
     LayoutDashboard,
     Box,
     Factory,
-    Truck,
+
     ShieldCheck,
     Smartphone,
     Settings,
@@ -15,11 +15,14 @@ import {
     Search,
     Bell,
     ChevronDown,
-    ClipboardCheck,
+
     Package,
     User,
-    Database // Added Database icon
+    Database, // Added Database icon
+    Sun,
+    Moon
 } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 import { cn, Button } from '../ui';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -46,10 +49,10 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 { name: 'Reports', path: '/dashboard/production' },
                 { name: 'Stoppage Logs', path: '/dashboard/production/stoppages' },
                 // { name: 'Materials', path: '/dashboard/production/materials' }, // Removed or kept? Keeping generic one might be confusing if we have lookups. I'll keep it for now as it was there.
-                { name: 'Materials Usage', path: '/dashboard/production/materials' }, // Renaming for clarity if possible, but path is same
+
                 { name: 'Meter Readings', path: '/dashboard/production/meters' },
                 { name: 'Pets', path: '/dashboard/production/pets' },
-                { name: 'Batches', path: '/dashboard/production/batches' },
+
                 { name: 'Shifts', path: '/dashboard/production/shifts' },
             ]
         },
@@ -72,7 +75,7 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 { name: 'Cap Box Qtys', path: '/dashboard/definitions/cap-box-quantities' },
             ]
         },
-        { name: 'Quality Control', icon: ClipboardCheck, path: '/dashboard/quality' },
+
         {
             name: 'Inventory',
             icon: Package,
@@ -81,7 +84,7 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 { name: 'Products', path: '/dashboard/inventory/products' }
             ]
         },
-        { name: 'Logistics', icon: Truck, path: '/dashboard/logistics' },
+
         { name: 'Users', icon: User, path: '/dashboard/users' },
         { name: 'Settings', icon: Settings, path: '/dashboard/settings' },
     ];
@@ -96,18 +99,18 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 <button
                     onClick={() => hasSubmenu ? toggleSubmenu(item.key) : null}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors group ${isActive && !hasSubmenu
-                        ? 'bg-blue-600/10 text-blue-400'
-                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
+                        ? 'bg-blue-50 text-blue-600 dark:bg-blue-600/10 dark:text-blue-400'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/50'
                         }`}
                 >
                     {hasSubmenu ? (
                         <div className="flex items-center gap-3">
-                            <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-400' : 'group-hover:text-slate-100'}`} />
+                            <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'group-hover:text-slate-900 dark:group-hover:text-slate-100'}`} />
                             <span className="font-medium text-sm">{item.name}</span>
                         </div>
                     ) : (
                         <Link to={item.path} className="flex items-center gap-3 w-full">
-                            <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-400' : 'group-hover:text-slate-100'}`} />
+                            <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'group-hover:text-slate-900 dark:group-hover:text-slate-100'}`} />
                             <span className="font-medium text-sm">{item.name}</span>
                         </Link>
                     )}
@@ -118,14 +121,14 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 </button>
 
                 {hasSubmenu && isOpen && (
-                    <div className="ml-9 mt-1 space-y-1 border-l border-slate-800 pl-2">
+                    <div className="ml-9 mt-1 space-y-1 border-l border-slate-200 dark:border-slate-800 pl-2">
                         {item.submenu.map((subItem) => (
                             <Link
                                 key={subItem.path}
                                 to={subItem.path}
                                 className={`block px-3 py-2 rounded-lg text-sm transition-colors ${location.pathname === subItem.path
-                                    ? 'text-blue-400 font-medium bg-blue-600/5'
-                                    : 'text-slate-500 hover:text-slate-300'
+                                    ? 'text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-600/5'
+                                    : 'text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                                     }`}
                             >
                                 {subItem.name}
@@ -139,17 +142,17 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
 
     return (
         <aside className={`
-            fixed top-0 left-0 z-40 h-screen bg-slate-950 border-r border-slate-800 transition-transform duration-300 ease-in-out w-64
+            fixed top-0 left-0 z-40 h-screen bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-in-out w-64
             ${isMobile && !isOpen ? '-translate-x-full' : 'translate-x-0'}
             ${!isMobile ? 'translate-x-0' : ''}
         `}>
-            <div className="h-16 flex items-center px-6 border-b border-slate-800">
+            <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-800">
                 <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center mr-3 font-bold text-white">T</div>
                 <span className="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
                     Twellium
                 </span>
                 {isMobile && (
-                    <button onClick={onClose} className="ml-auto text-slate-400">
+                    <button onClick={onClose} className="ml-auto text-slate-500 dark:text-slate-400">
                         <X className="h-5 w-5" />
                     </button>
                 )}
@@ -161,13 +164,14 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 ))}
             </div>
 
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800 bg-slate-950">
+
+            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
                 <div className="flex items-center gap-3 mb-4 px-2">
                     <div className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center">
                         <User className="h-4 w-4 text-slate-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-200 truncate">Admin User</p>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-200 truncate">Admin User</p>
                         <p className="text-xs text-slate-500 truncate">admin@twellium.com</p>
                     </div>
                 </div>
@@ -180,16 +184,17 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                     Logout
                 </Button>
             </div>
-        </aside>
+        </aside >
     );
 };
 
 const DashboardLayout = () => {
     const { user } = useAuth();
+    const { theme, toggleTheme } = useTheme();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-200 flex">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 flex">
             {/* Sidebar */}
             <Sidebar
                 isOpen={mobileMenuOpen}
@@ -200,10 +205,10 @@ const DashboardLayout = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0 md:pl-64 transition-all duration-300">
                 {/* Header */}
-                <header className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-6 z-10 sticky top-0">
+                <header className="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md flex items-center justify-between px-6 z-10 sticky top-0">
                     <div className="flex items-center gap-4">
                         <button
-                            className="md:hidden p-2 text-slate-400"
+                            className="md:hidden p-2 text-slate-500 dark:text-slate-400"
                             onClick={() => setMobileMenuOpen(true)}
                         >
                             <Menu className="h-6 w-6" />
@@ -211,7 +216,13 @@ const DashboardLayout = () => {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button className="relative p-2 text-slate-400 hover:text-emerald-400 transition-colors">
+                        <button
+                            onClick={toggleTheme}
+                            className="p-2 text-slate-500 dark:text-slate-400 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors"
+                        >
+                            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                        </button>
+                        <button className="relative p-2 text-slate-500 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors">
                             <Bell className="h-5 w-5" />
                         </button>
                     </div>

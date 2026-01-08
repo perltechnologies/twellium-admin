@@ -152,7 +152,7 @@ const StoppageLogForm = () => {
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                 </Button>
-                <h1 className="text-2xl font-bold text-slate-100">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {isEditMode ? 'Edit Stoppage Log' : 'New Stoppage Log'}
                 </h1>
             </div>
@@ -165,44 +165,46 @@ const StoppageLogForm = () => {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                <Card className="p-6 border-slate-800 bg-slate-900/50 space-y-4">
-                    <h3 className="text-lg font-medium text-slate-200 border-b border-slate-800 pb-2">Log Details</h3>
+                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 space-y-4">
+                    <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800 pb-2">Log Details</h3>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-400">Report</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Report</label>
                             <select
                                 name="report"
                                 value={formData.report}
                                 onChange={handleChange}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                                 required
                             >
                                 <option value="">Select Report</option>
                                 {reports.map(r => (
-                                    <option key={r.id} value={r.id}>{r.report_code} - {r.shift_name}</option>
+                                    <option key={r.id} value={r.id} className="dark:bg-slate-900">{r.report_code} - {r.shift_name}</option>
                                 ))}
                             </select>
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-400">PET</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">PET</label>
                             <select
                                 name="pet"
                                 value={formData.pet}
                                 onChange={handleChange}
-                                className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                                 required
                             >
                                 <option value="">Select PET</option>
                                 {pets.map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                    <option key={p.id} value={p.id} className="dark:bg-slate-900">
+                                        {p.name || p.pet_name}
+                                    </option>
                                 ))}
                             </select>
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-400">Hour Index</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Hour Index</label>
                             <Input
                                 type="number"
                                 name="hour_index"
@@ -214,7 +216,7 @@ const StoppageLogForm = () => {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-400">Efficiency (%)</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Efficiency (%)</label>
                             <Input
                                 type="number"
                                 step="0.01"
@@ -227,7 +229,7 @@ const StoppageLogForm = () => {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-400">Downtime (Minutes)</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Downtime (Minutes)</label>
                             <Input
                                 type="number"
                                 name="downtime_minutes"
@@ -239,7 +241,7 @@ const StoppageLogForm = () => {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-400">Bottles Produced</label>
+                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Bottles Produced</label>
                             <Input
                                 type="number"
                                 name="bottles_produced"
@@ -251,21 +253,21 @@ const StoppageLogForm = () => {
                         </div>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-sm font-medium text-slate-400">Comments</label>
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Comments</label>
                         <textarea
                             name="comments"
                             value={formData.comments}
                             onChange={handleChange}
                             rows="3"
-                            className="w-full bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
+                            className="w-full bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
                             placeholder="Optional comments..."
                         />
                     </div>
                 </Card>
 
-                <Card className="p-6 border-slate-800 bg-slate-900/50 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <h3 className="text-lg font-medium text-slate-200">Incidents</h3>
+                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                        <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200">Incidents</h3>
                         <Button type="button" variant="ghost" onClick={addIncident} className="text-blue-400 hover:text-blue-300">
                             <Plus className="h-4 w-4 mr-1" /> Add Incident
                         </Button>

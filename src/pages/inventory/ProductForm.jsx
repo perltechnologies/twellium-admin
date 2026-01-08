@@ -87,12 +87,12 @@ const ProductForm = () => {
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                 </Button>
-                <h1 className="text-2xl font-bold text-slate-100">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
                     {isEditMode ? 'Edit Product' : 'Create New Product'}
                 </h1>
             </div>
 
-            <Card className="p-6 border-slate-800 bg-slate-900/50">
+            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 gap-6">
 
@@ -136,7 +136,7 @@ const ProductForm = () => {
 
                     </div>
 
-                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-800">
+                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
                         <Button
                             type="button"
                             variant="ghost"

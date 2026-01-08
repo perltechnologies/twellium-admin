@@ -31,11 +31,11 @@ const Login = () => {
     };
 
     return (
-        <div className="min-h-screen w-full bg-slate-950 relative overflow-hidden flex items-center justify-center p-4">
+        <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 relative overflow-hidden flex items-center justify-center p-4">
             {/* Abstract Background */}
             <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-900/20 via-slate-950 to-slate-950 animate-pulse" />
-                <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-emerald-900/10 to-transparent" />
+                <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-100/40 dark:from-emerald-900/20 via-slate-50 dark:via-slate-950 to-slate-50 dark:to-slate-950 animate-pulse" />
+                <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-emerald-100/20 dark:from-emerald-900/10 to-transparent" />
             </div>
 
             <motion.div
@@ -51,22 +51,22 @@ const Login = () => {
                         transition={{ delay: 0.2 }}
                         className="inline-block"
                     >
-                        <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-200">
+                        <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-500 dark:from-emerald-400 dark:to-teal-200">
                             Twellium
                         </h1>
-                        <p className="text-slate-400 mt-2 text-sm tracking-wider uppercase">Admin Portal</p>
+                        <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm tracking-wider uppercase">Admin Portal</p>
                     </motion.div>
                 </div>
 
-                <Card className="p-8 backdrop-blur-2xl bg-slate-900/60 border-slate-800 shadow-2xl shadow-emerald-900/10">
+                <Card className="p-8 backdrop-blur-2xl bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-2xl shadow-emerald-900/10">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-4">
                             <div className="relative group">
-                                <User className="absolute left-3 top-9 h-5 w-5 text-slate-500 group-focus-within:text-emerald-400 transition-colors" />
+                                <User className="absolute left-3 top-9 h-5 w-5 text-slate-400 dark:text-slate-500 group-focus-within:text-emerald-500 dark:group-focus-within:text-emerald-400 transition-colors" />
                                 <Input
                                     label="Username"
                                     placeholder="Enter your username"
-                                    className="pl-10 bg-slate-950/50"
+                                    className="pl-10 bg-white dark:bg-slate-950/50"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
                                     required
@@ -74,12 +74,12 @@ const Login = () => {
                             </div>
 
                             <div className="relative group">
-                                <Lock className="absolute left-3 top-9 h-5 w-5 text-slate-500 group-focus-within:text-emerald-400 transition-colors" />
+                                <Lock className="absolute left-3 top-9 h-5 w-5 text-slate-400 dark:text-slate-500 group-focus-within:text-emerald-500 dark:group-focus-within:text-emerald-400 transition-colors" />
                                 <Input
                                     label="Password"
                                     type={showPassword ? "text" : "password"}
                                     placeholder="••••••••"
-                                    className="pl-10 pr-10 bg-slate-950/50"
+                                    className="pl-10 pr-10 bg-white dark:bg-slate-950/50"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
@@ -87,7 +87,7 @@ const Login = () => {
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-9 text-slate-500 hover:text-slate-300 focus:outline-none"
+                                    className="absolute right-3 top-9 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none"
                                 >
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
@@ -126,7 +126,7 @@ const Login = () => {
                     </form>
                 </Card>
 
-                <div className="text-center mt-8 text-slate-600 text-xs">
+                <div className="text-center mt-8 text-slate-500 dark:text-slate-600 text-xs">
                     &copy; {new Date().getFullYear()} Twellium Company. All rights reserved.
                 </div>
             </motion.div>

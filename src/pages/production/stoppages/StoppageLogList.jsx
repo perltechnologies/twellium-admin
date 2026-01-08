@@ -29,7 +29,7 @@ const StoppageLogList = () => {
             accessor: 'log_date',
             render: (row) => (
                 <div className="flex flex-col">
-                    <span className="font-medium text-slate-200">{format(new Date(row.log_date), 'MMM dd, yyyy')}</span>
+                    <span className="font-medium text-slate-900 dark:text-slate-200">{format(new Date(row.log_date), 'MMM dd, yyyy')}</span>
                     <span className="text-xs text-slate-500">{format(new Date(`2000-01-01T${row.log_time}`), 'hh:mm a')}</span>
                 </div>
             )
@@ -37,7 +37,7 @@ const StoppageLogList = () => {
         {
             header: 'Report',
             accessor: 'report_code',
-            render: (row) => <span className="font-mono text-blue-400">{row.report_code}</span>
+            render: (row) => <span className="font-mono text-blue-600 dark:text-blue-400">{row.report_code}</span>
         },
         {
             header: 'PET',
@@ -53,7 +53,7 @@ const StoppageLogList = () => {
             accessor: 'efficiency',
             render: (row) => (
                 <div className="flex items-center gap-1.5">
-                    <Activity className="h-3 w-3 text-indigo-400" />
+                    <Activity className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
                     <span>{row.efficiency}%</span>
                 </div>
             )
@@ -62,7 +62,7 @@ const StoppageLogList = () => {
             header: 'Downtime',
             accessor: 'downtime_minutes',
             render: (row) => (
-                <div className="flex items-center gap-1.5 text-amber-400">
+                <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                     <Clock className="h-3 w-3" />
                     <span>{row.downtime_minutes} min</span>
                 </div>

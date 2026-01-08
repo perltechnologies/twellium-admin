@@ -67,7 +67,7 @@ export const DataTable = ({
                             <select
                                 value={activeFilters[filter.name] || ''}
                                 onChange={(e) => onFilterChange(filter.name, e.target.value)}
-                                className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-200"
+                                className="w-full px-4 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-900 dark:text-slate-200"
                             >
                                 <option value="">All {filter.label}</option>
                                 {filter.options.map(opt => (
@@ -95,10 +95,10 @@ export const DataTable = ({
             </div>
 
             {/* Table Container */}
-            <Card className="overflow-hidden border border-slate-800 bg-slate-900/50">
+            <Card className="overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-slate-400 uppercase bg-slate-900/80 border-b border-slate-800">
+                        <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800">
                             <tr>
                                 {columns.map((col, idx) => (
                                     <th key={idx} className="px-6 py-4 font-medium tracking-wider">
@@ -110,18 +110,18 @@ export const DataTable = ({
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-800">
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                             {isLoading ? (
                                 // Loading Skeletons
                                 [...Array(5)].map((_, i) => (
                                     <tr key={i} className="animate-pulse">
                                         {columns.map((_, j) => (
                                             <td key={j} className="px-6 py-4">
-                                                <div className="h-4 bg-slate-800 rounded w-24"></div>
+                                                <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-24"></div>
                                             </td>
                                         ))}
                                         <td className="px-6 py-4 text-right">
-                                            <div className="h-4 bg-slate-800 rounded w-8 ml-auto"></div>
+                                            <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded w-8 ml-auto"></div>
                                         </td>
                                     </tr>
                                 ))
@@ -140,10 +140,10 @@ export const DataTable = ({
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ delay: rowIndex * 0.05 }}
-                                        className="hover:bg-slate-800/30 transition-colors group"
+                                        className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group"
                                     >
                                         {columns.map((col, colIndex) => (
-                                            <td key={colIndex} className="px-6 py-4 whitespace-nowrap text-slate-300">
+                                            <td key={colIndex} className="px-6 py-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
                                                 {col.render ? col.render(row) : row[col.accessor]}
                                             </td>
                                         ))}
@@ -189,13 +189,13 @@ export const DataTable = ({
 
                 {/* Pagination */}
                 {pagination && (
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800">
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 dark:border-slate-800">
                         <div className="text-sm text-slate-500">
-                            Showing <span className="font-medium text-slate-300">
+                            Showing <span className="font-medium text-slate-700 dark:text-slate-300">
                                 {Math.min((pagination.currentPage - 1) * pagination.pageSize + 1, pagination.totalCount)}
-                            </span> to <span className="font-medium text-slate-300">
+                            </span> to <span className="font-medium text-slate-700 dark:text-slate-300">
                                 {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)}
-                            </span> of <span className="font-medium text-slate-300">{pagination.totalCount}</span> results
+                            </span> of <span className="font-medium text-slate-700 dark:text-slate-300">{pagination.totalCount}</span> results
                         </div>
                         <div className="flex gap-2">
                             <Button

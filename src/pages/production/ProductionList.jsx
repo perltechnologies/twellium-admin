@@ -136,10 +136,10 @@ const ProductionList = () => {
             accessor: 'report_code',
             render: (row) => (
                 <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+                    <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400">
                         <FileText className="h-4 w-4" />
                     </div>
-                    <span className="font-medium">{row.report_code}</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">{row.report_code}</span>
                 </div>
             )
         },
@@ -157,7 +157,7 @@ const ProductionList = () => {
             header: 'Shift',
             accessor: 'shift_name',
             render: (row) => (
-                <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                     {row.shift_name}
                 </span>
             )
@@ -166,7 +166,7 @@ const ProductionList = () => {
             header: 'Output',
             accessor: 'total_bottles_produced',
             render: (row) => (
-                <div className="flex items-center gap-1.5 text-emerald-400">
+                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                     <Activity className="h-3 w-3" />
                     <span className="font-medium">{row.total_bottles_produced?.toLocaleString() || 0}</span>
                 </div>
@@ -178,12 +178,12 @@ const ProductionList = () => {
             render: (row) => {
                 const status = row.status || 'STARTED';
                 const styles = {
-                    STARTED: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-                    COMPLETED: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-                    APPROVED: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
-                    DECLINED: 'bg-red-500/10 text-red-400 border-red-500/20',
-                    INCOMPLETE: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-                    IDLE: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+                    STARTED: 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
+                    COMPLETED: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
+                    APPROVED: 'bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
+                    DECLINED: 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
+                    INCOMPLETE: 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20',
+                    IDLE: 'bg-gray-100 dark:bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-500/20',
                 };
                 // Simple dropdown for status change could be implemented here or a separate action
                 return (
@@ -191,10 +191,10 @@ const ProductionList = () => {
                         value={status}
                         onClick={(e) => e.stopPropagation()} // Prevent row click
                         onChange={(e) => handleStatusChange(row, e.target.value)}
-                        className={`px - 2 py - 1 rounded text - xs font - medium border bg - transparent cursor - pointer focus: outline - none ${styles[status] || 'text-slate-400'} `}
+                        className={`px-2 py-1 rounded text-xs font-medium border bg-transparent cursor-pointer focus:outline-none ${styles[status] || 'text-slate-500 dark:text-slate-400'} `}
                     >
                         {['STARTED', 'COMPLETED', 'APPROVED', 'DECLINED', 'INCOMPLETE', 'IDLE'].map(s => (
-                            <option key={s} value={s} className="bg-slate-900 text-slate-200">{s}</option>
+                            <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200">{s}</option>
                         ))}
                     </select>
                 );
@@ -219,7 +219,7 @@ const ProductionList = () => {
                 </Button>
             </div>
 
-            <div className="flex gap-4 items-center bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+            <div className="flex gap-4 items-center bg-white dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                 <Input
                     type="date"
                     value={filters.production_date}
@@ -229,7 +229,7 @@ const ProductionList = () => {
                 <select
                     value={filters.status}
                     onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-                    className="px-3 py-2 bg-slate-950/50 border border-slate-700/50 rounded-lg text-slate-200 focus:outline-none"
+                    className="px-3 py-2 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-700/50 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none"
                 >
                     <option value="">All Statuses</option>
                     {['STARTED', 'COMPLETED', 'APPROVED', 'DECLINED', 'INCOMPLETE', 'IDLE'].map(s => (

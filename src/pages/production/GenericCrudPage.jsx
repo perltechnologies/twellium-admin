@@ -183,7 +183,7 @@ const GenericCrudPage = ({
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-100">{title}</h1>
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{title}</h1>
                 <Button onClick={handleCreate} className="bg-blue-600 hover:bg-blue-500">
                     <Plus className="h-4 w-4 mr-2" />
                     Add New
@@ -233,13 +233,13 @@ const GenericCrudPage = ({
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
-                            className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
                         >
-                            <div className="flex justify-between items-center p-4 border-b border-slate-800">
-                                <h2 className="text-lg font-semibold text-slate-100">
+                            <div className="flex justify-between items-center p-4 border-b border-slate-200 dark:border-slate-800">
+                                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                                     {currentItem ? 'Edit Item' : 'Create New Item'}
                                 </h2>
-                                <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
+                                <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white">
                                     <X className="h-5 w-5" />
                                 </button>
                             </div>
@@ -247,7 +247,7 @@ const GenericCrudPage = ({
                             <form onSubmit={handleSubmit} className="p-4 space-y-4">
                                 {formFields.map((field) => (
                                     <div key={field.name} className="space-y-1">
-                                        <label className="text-sm font-medium text-slate-400">
+                                        <label className="text-sm font-medium text-slate-700 dark:text-slate-400">
                                             {field.label}
                                         </label>
                                         <Input
