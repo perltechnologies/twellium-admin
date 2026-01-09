@@ -32,7 +32,8 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
     const [openSubmenus, setOpenSubmenus] = useState({
         production: true,
         definitions: false, // Initial state for new submenu
-        inventory: false
+        inventory: false,
+        configs: false,
     });
 
     const toggleSubmenu = (key) => {
@@ -54,6 +55,20 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 { name: 'Pets', path: '/dashboard/production/pets' },
 
                 { name: 'Shifts', path: '/dashboard/production/shifts' },
+            ]
+        },
+        {
+            name: 'Production Configs',
+            icon: Settings,
+            key: 'configs',
+            submenu: [
+                { name: 'Production Ranges', path: '/dashboard/production/configs/ranges' },
+                { name: 'Measuring Units', path: '/dashboard/production/configs/units' },
+                { name: 'Standard CO2', path: '/dashboard/production/configs/co2' },
+                { name: 'Syrup Densities', path: '/dashboard/production/configs/densities' },
+                { name: 'Dilution Ratios', path: '/dashboard/production/configs/ratios' },
+                { name: 'Syrup Concentrations', path: '/dashboard/production/configs/concentrations' },
+                { name: 'Bottles Per Pack', path: '/dashboard/production/configs/bottles-per-pack' },
             ]
         },
         {

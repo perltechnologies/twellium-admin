@@ -93,9 +93,11 @@ export const AppRouter = () => {
                                             columns={[
                                                 { header: 'ID', accessor: 'id' },
                                                 { header: 'Name', accessor: 'name' },
+                                                { header: 'Remarks', accessor: 'remarks' },
                                             ]}
                                             formFields={[
-                                                { name: 'name', label: 'Meter Name', required: true }
+                                                { name: 'name', label: 'Meter Name', required: true },
+                                                { name: 'remarks', label: 'Remarks', required: false }
                                             ]}
                                         />
                                     }
@@ -167,6 +169,181 @@ export const AppRouter = () => {
                                         />
                                     }
                                 />
+
+                                {/* Configurations */}
+                                <Route path="configs">
+                                    <Route
+                                        path="ranges"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Production Ranges"
+                                                api={{
+                                                    list: productionApi.getProductionRanges,
+                                                    create: productionApi.createProductionRange,
+                                                    update: productionApi.updateProductionRange,
+                                                    delete: productionApi.deleteProductionRange
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Start', accessor: 'start_value' },
+                                                    { header: 'End', accessor: 'end_value' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Range Name', required: true },
+                                                    { name: 'start_value', label: 'Start Value', type: 'number', step: '0.01', required: true },
+                                                    { name: 'end_value', label: 'End Value', type: 'number', step: '0.01', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                    <Route
+                                        path="units"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Measuring Units"
+                                                api={{
+                                                    list: productionApi.getMeasuringUnits,
+                                                    create: productionApi.createMeasuringUnit,
+                                                    update: productionApi.updateMeasuringUnit,
+                                                    delete: productionApi.deleteMeasuringUnit
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Short Name', accessor: 'short_name' },
+                                                    { header: 'Value', accessor: 'value' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Unit Name', required: true },
+                                                    { name: 'short_name', label: 'Short Name', required: true },
+                                                    { name: 'value', label: 'Value', type: 'number', step: '0.001', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                    <Route
+                                        path="co2"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Standard CO2 Levels"
+                                                api={{
+                                                    list: productionApi.getStandardCO2s,
+                                                    create: productionApi.createStandardCO2,
+                                                    update: productionApi.updateStandardCO2,
+                                                    delete: productionApi.deleteStandardCO2
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Value', accessor: 'value' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Name', required: true },
+                                                    { name: 'value', label: 'Value', type: 'number', step: '0.01', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                    <Route
+                                        path="densities"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Syrup Densities"
+                                                api={{
+                                                    list: productionApi.getSyrupDensities,
+                                                    create: productionApi.createSyrupDensity,
+                                                    update: productionApi.updateSyrupDensity,
+                                                    delete: productionApi.deleteSyrupDensity
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Value', accessor: 'value' },
+                                                    { header: 'Unit', accessor: 'unit' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Name', required: true },
+                                                    { name: 'value', label: 'Density Value', type: 'number', step: '0.001', required: true },
+                                                    { name: 'unit', label: 'Unit', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                    <Route
+                                        path="ratios"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Syrup Dilution Ratios"
+                                                api={{
+                                                    list: productionApi.getSyrupDilutionRatios,
+                                                    create: productionApi.createSyrupDilutionRatio,
+                                                    update: productionApi.updateSyrupDilutionRatio,
+                                                    delete: productionApi.deleteSyrupDilutionRatio
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Value', accessor: 'value' },
+                                                    { header: 'Unit', accessor: 'unit' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Name', required: true },
+                                                    { name: 'value', label: 'Ratio Value', type: 'number', step: '0.01', required: true },
+                                                    { name: 'unit', label: 'Unit', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                    <Route
+                                        path="concentrations"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Syrup Concentrations"
+                                                api={{
+                                                    list: productionApi.getSyrupConcentrations,
+                                                    create: productionApi.createSyrupConcentration,
+                                                    update: productionApi.updateSyrupConcentration,
+                                                    delete: productionApi.deleteSyrupConcentration
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Value', accessor: 'value' },
+                                                    { header: 'Unit', accessor: 'unit' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Name', required: true },
+                                                    { name: 'value', label: 'Concentration Value', type: 'number', step: '0.01', required: true },
+                                                    { name: 'unit', label: 'Unit', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                    <Route
+                                        path="bottles-per-pack"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Bottles Per Pack"
+                                                api={{
+                                                    list: productionApi.getBottlesPerPack,
+                                                    create: productionApi.createBottlesPerPack,
+                                                    update: productionApi.updateBottlesPerPack,
+                                                    delete: productionApi.deleteBottlesPerPack
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Value', accessor: 'value' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Config Name', required: true },
+                                                    { name: 'value', label: 'Number of Bottles', type: 'number', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                </Route>
                             </Route>
 
                             {/* User Management */}
