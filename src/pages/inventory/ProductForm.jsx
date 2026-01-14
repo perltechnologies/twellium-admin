@@ -38,7 +38,10 @@ const ProductForm = () => {
                             sku_code: item.sku_code,
                             name: item.name,
                             size: item.size,
-                            target_speed_bph: item.target_speed_bph
+                            name: item.name,
+                            size: item.size,
+                            target_speed_bph: item.target_speed_bph,
+                            standard_density: item.standard_density
                         });
                     }
                 } catch (err) {
@@ -131,6 +134,18 @@ const ProductForm = () => {
                                 value={formData.target_speed_bph}
                                 onChange={handleChange}
                                 required
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <Input
+                                label="Standard Density"
+                                type="number"
+                                step="0.01"
+                                name="standard_density"
+                                value={formData.standard_density || ''}
+                                onChange={handleChange}
+                                placeholder="10.0"
                             />
                         </div>
 

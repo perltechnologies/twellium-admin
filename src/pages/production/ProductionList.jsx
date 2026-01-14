@@ -173,6 +173,11 @@ const ProductionList = () => {
             )
         },
         {
+            header: 'Packs/Pallet',
+            accessor: 'packs_per_pallet',
+            render: (row) => row.packs_per_pallet || '-'
+        },
+        {
             header: 'Status',
             accessor: 'status',
             render: (row) => {

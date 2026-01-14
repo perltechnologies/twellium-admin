@@ -18,6 +18,7 @@ const ProductList = () => {
                 { header: 'SKU Code', accessor: 'sku_code' },
                 { header: 'Name', accessor: 'name' },
                 { header: 'Size', accessor: 'size' },
+                { header: 'Density', accessor: 'standard_density' },
                 { header: 'Target Speed (BPH)', accessor: 'target_speed_bph', render: row => row.target_speed_bph?.toLocaleString() },
             ]}
             onAdd={() => navigate('/dashboard/inventory/products/new')}

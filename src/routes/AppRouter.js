@@ -56,6 +56,28 @@ export const AppRouter = () => {
                                 <Route path="stoppages/:id" element={<StoppageLogDetails />} />
                                 <Route path="stoppages/:id/edit" element={<StoppageLogForm />} />
 
+                                <Route
+                                    path="incident-categories"
+                                    element={
+                                        <GenericCrudPage
+                                            title="Incident Categories"
+                                            api={{
+                                                list: productionApi.getIncidentCategories,
+                                                create: productionApi.createIncidentCategory,
+                                                update: productionApi.updateIncidentCategory,
+                                                delete: productionApi.deleteIncidentCategory
+                                            }}
+                                            columns={[
+                                                { header: 'ID', accessor: 'id' },
+                                                { header: 'Category Name', accessor: 'category_name' },
+                                            ]}
+                                            formFields={[
+                                                { name: 'category_name', label: 'Category Name', required: true }
+                                            ]}
+                                        />
+                                    }
+                                />
+
                                 {/* Production Sub-modules */}
                                 <Route
                                     path="materials"
@@ -114,9 +136,11 @@ export const AppRouter = () => {
                                             columns={[
                                                 { header: 'ID', accessor: 'id' },
                                                 { header: 'Pet Name', accessor: 'pet_name' },
+                                                { header: 'Speedline', accessor: 'speedline' },
                                             ]}
                                             formFields={[
-                                                { name: 'pet_name', label: 'Pet Name', required: true }
+                                                { name: 'pet_name', label: 'Pet Name', required: true },
+                                                { name: 'speedline', label: 'Speedline', type: 'number', step: '0.01', required: true }
                                             ]}
                                         />
                                     }

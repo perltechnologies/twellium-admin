@@ -346,6 +346,7 @@ const ReportDetails = () => {
                         <DetailRow label="Bottles / Pack" value={report.bottles_per_pack} />
                         <DetailRow label="Line" value={`Line ${report.line}`} />
                         <DetailRow label="Shift" value={report.shift_name} />
+                        <DetailRow label="Packs Per Pallet" value={report.packs_per_pallet} />
                     </div>
                 </Card>
 

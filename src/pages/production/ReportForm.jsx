@@ -48,7 +48,9 @@ const ReportForm = () => {
                         line: data.line,
                         shift: data.shift,
                         supervisor: data.supervisor,
-                        report_code: data.report_code
+                        supervisor: data.supervisor,
+                        report_code: data.report_code,
+                        packs_per_pallet: data.packs_per_pallet
                     });
                 } catch (err) {
                     console.error("Failed to fetch report", err);
@@ -171,30 +173,42 @@ const ReportForm = () => {
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => navigate('/dashboard/production')}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
-                            disabled={submitting}
-                        >
-                            {submitting ? (
-                                <span className="animate-spin mr-2">⟳</span>
-                            ) : (
-                                <Save className="h-4 w-4 mr-2" />
-                            )}
-                            {isEditMode ? 'Update' : 'Create'}
-                        </Button>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Packs Per Pallet</label>
+                        <Input
+                            type="number"
+                            name="packs_per_pallet"
+                            value={formData.packs_per_pallet || ''}
+                            onChange={handleChange}
+                            placeholder="Enter Packs Per Pallet"
+                        />
                     </div>
-                </form>
-            </Card>
-        </div>
+                </div>
+
+                <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => navigate('/dashboard/production')}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        type="submit"
+                        className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
+                        disabled={submitting}
+                    >
+                        {submitting ? (
+                            <span className="animate-spin mr-2">⟳</span>
+                        ) : (
+                            <Save className="h-4 w-4 mr-2" />
+                        )}
+                        {isEditMode ? 'Update' : 'Create'}
+                    </Button>
+                </div>
+            </form>
+        </Card>
+        </div >
     );
 };
 

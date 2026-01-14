@@ -32,6 +32,12 @@ export const productionApi = {
     deleteStoppage: (id) => api.delete(`/production/stoppages/${id}/`),
     addIncident: (id, data) => api.post(`/production/stoppages/${id}/add_incident/`, data),
 
+    // Incident Categories
+    getIncidentCategories: (params) => api.get('/production/incident-categories/', { params }),
+    createIncidentCategory: (data) => api.post('/production/incident-categories/', data),
+    updateIncidentCategory: (id, data) => api.patch(`/production/incident-categories/${id}/`, data),
+    deleteIncidentCategory: (id) => api.delete(`/production/incident-categories/${id}/`),
+
     // Materials
     getMaterials: (params) => api.get('/production/materials/', { params }),
     createMaterial: (data) => api.post('/production/materials/', data),

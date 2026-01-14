@@ -48,6 +48,7 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
             submenu: [
                 { name: 'Reports', path: '/dashboard/production' },
                 { name: 'Stoppage Logs', path: '/dashboard/production/stoppages' },
+                { name: 'Incident Categories', path: '/dashboard/production/incident-categories' },
                 // { name: 'Materials', path: '/dashboard/production/materials' }, // Removed or kept? Keeping generic one might be confusing if we have lookups. I'll keep it for now as it was there.
 
                 { name: 'Meter Readings', path: '/dashboard/production/meters' },
