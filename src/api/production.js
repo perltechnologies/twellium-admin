@@ -131,4 +131,51 @@ export const productionApi = {
     createCapBoxQuantity: (data) => api.post('/production/cap-box-quantities/', data),
     updateCapBoxQuantity: (id, data) => api.patch(`/production/cap-box-quantities/${id}/`, data),
     deleteCapBoxQuantity: (id) => api.delete(`/production/cap-box-quantities/${id}/`),
+
+    // --- New Configurations ---
+    // 1.1 Can Lines
+    getCanLines: (params) => api.get('/production/can-lines/', { params }),
+    createCanLine: (data) => api.post('/production/can-lines/', data),
+
+    // 1.2 Production Ranges
+    getProductionRanges: (params) => api.get('/production/production-ranges/', { params }),
+    createProductionRange: (data) => api.post('/production/production-ranges/', data),
+    updateProductionRange: (id, data) => api.patch(`/production/production-ranges/${id}/`, data),
+    deleteProductionRange: (id) => api.delete(`/production/production-ranges/${id}/`),
+
+    // 1.3 Measuring Units
+    getMeasuringUnits: (params) => api.get('/production/measuring-units/', { params }),
+    createMeasuringUnit: (data) => api.post('/production/measuring-units/', data),
+    updateMeasuringUnit: (id, data) => api.patch(`/production/measuring-units/${id}/`, data),
+    deleteMeasuringUnit: (id) => api.delete(`/production/measuring-units/${id}/`),
+
+    // 1.4 Standard CO2
+    getStandardCO2s: (params) => api.get('/production/standard-co2s/', { params }),
+    createStandardCO2: (data) => api.post('/production/standard-co2s/', data),
+    updateStandardCO2: (id, data) => api.patch(`/production/standard-co2s/${id}/`, data),
+    deleteStandardCO2: (id) => api.delete(`/production/standard-co2s/${id}/`),
+
+    // 1.5 Syrup Densities
+    getSyrupDensities: (params) => api.get('/production/syrup-densities/', { params }),
+    createSyrupDensity: (data) => api.post('/production/syrup-densities/', data),
+    updateSyrupDensity: (id, data) => api.patch(`/production/syrup-densities/${id}/`, data),
+    deleteSyrupDensity: (id) => api.delete(`/production/syrup-densities/${id}/`),
+
+    // 1.6 Syrup Dilution Ratios
+    getSyrupDilutionRatios: (params) => api.get('/production/syrup-dilution-ratios/', { params }),
+    createSyrupDilutionRatio: (data) => api.post('/production/syrup-dilution-ratios/', data),
+    updateSyrupDilutionRatio: (id, data) => api.patch(`/production/syrup-dilution-ratios/${id}/`, data),
+    deleteSyrupDilutionRatio: (id) => api.delete(`/production/syrup-dilution-ratios/${id}/`),
+
+    // 1.7 Syrup Concentrations (NEW)
+    getSyrupConcentrations: (params) => api.get('/production/syrup-concentrations/', { params }),
+    createSyrupConcentration: (data) => api.post('/production/syrup-concentrations/', data),
+    updateSyrupConcentration: (id, data) => api.patch(`/production/syrup-concentrations/${id}/`, data),
+    deleteSyrupConcentration: (id) => api.delete(`/production/syrup-concentrations/${id}/`),
+
+    // 1.8 Bottles Per Pack (NEW)
+    getBottlesPerPack: (params) => api.get('/production/bottles-per-pack/', { params }),
+    createBottlesPerPack: (data) => api.post('/production/bottles-per-pack/', data),
+    updateBottlesPerPack: (id, data) => api.patch(`/production/bottles-per-pack/${id}/`, data),
+    deleteBottlesPerPack: (id) => api.delete(`/production/bottles-per-pack/${id}/`),
 };

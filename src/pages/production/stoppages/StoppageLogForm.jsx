@@ -20,11 +20,12 @@ const StoppageLogForm = () => {
         report: '',
         pet: '',
         hour_index: '',
+        minute_index: '', // NEW FIELD
         efficiency: '',
         downtime_minutes: '',
         bottles_produced: '',
         comments: '',
-        incidents: [] // Array of { incident_description: '' }
+        incidents: [] // Array of { incident_description: '', incident_time: '' }
     });
 
     const [error, setError] = useState('');
@@ -59,6 +60,7 @@ const StoppageLogForm = () => {
                         report: log.report,
                         pet: log.pet,
                         hour_index: log.hour_index,
+                        minute_index: log.minute_index || '', // NEW FIELD
                         efficiency: log.efficiency,
                         downtime_minutes: log.downtime_minutes,
                         bottles_produced: log.bottles_produced,
@@ -85,7 +87,7 @@ const StoppageLogForm = () => {
     const addIncident = () => {
         setFormData(prev => ({
             ...prev,
-            incidents: [...prev.incidents, { incident_description: '' }]
+            incidents: [...prev.incidents, { incident_description: '', incident_time: '' }]
         }));
     };
 
@@ -96,9 +98,9 @@ const StoppageLogForm = () => {
         }));
     };
 
-    const handleIncidentChange = (index, value) => {
+    const handleIncidentChange = (index, field, value) => {
         const newIncidents = [...formData.incidents];
-        newIncidents[index] = { ...newIncidents[index], incident_description: value };
+        newIncidents[index] = { ...newIncidents[index], [field]: value };
         setFormData(prev => ({ ...prev, incidents: newIncidents }));
     };
 
@@ -111,18 +113,14 @@ const StoppageLogForm = () => {
             const payload = {
                 ...formData,
                 hour_index: parseInt(formData.hour_index),
+                minute_index: formData.minute_index ? parseInt(formData.minute_index) : null,
                 downtime_minutes: parseInt(formData.downtime_minutes),
                 bottles_produced: parseInt(formData.bottles_produced),
                 efficiency: formData.efficiency.toString(), // API expects string usually for decimal
                 // Ensure incidents structure matches API expectation
                 incidents: formData.incidents.map(inc => ({
                     incident_description: inc.incident_description,
-                    // If editing, preserve ID if it exists? 
-                    // The API requirement shows new incidents being added. 
-                    // For PUT/PATCH, we might need to be careful. 
-                    // Assuming API handles replacement or we send complete list.
-                    // Based on "Add stoppage log" payload, sturcture is { incident_description, stoppage_log }
-                    // We just send description here, backend likely handles association
+                    incident_time: inc.incident_time || null
                 }))
             };
 
@@ -203,16 +201,28 @@ const StoppageLogForm = () => {
                             </select>
                         </div>
 
-                        <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Hour Index</label>
-                            <Input
-                                type="number"
-                                name="hour_index"
-                                value={formData.hour_index}
-                                onChange={handleChange}
-                                placeholder="e.g. 1"
-                                required
-                            />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Hour Index</label>
+                                <Input
+                                    type="number"
+                                    name="hour_index"
+                                    value={formData.hour_index}
+                                    onChange={handleChange}
+                                    placeholder="e.g. 1"
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Minute Index</label>
+                                <Input
+                                    type="number"
+                                    name="minute_index"
+                                    value={formData.minute_index}
+                                    onChange={handleChange}
+                                    placeholder="e.g. 30"
+                                />
+                            </div>
                         </div>
 
                         <div className="space-y-1">
@@ -285,10 +295,16 @@ const StoppageLogForm = () => {
                                 >
                                     <Input
                                         value={incident.incident_description}
-                                        onChange={(e) => handleIncidentChange(index, e.target.value)}
+                                        onChange={(e) => handleIncidentChange(index, 'incident_description', e.target.value)}
                                         placeholder="Describe the incident..."
                                         className="flex-1"
                                         required
+                                    />
+                                    <Input
+                                        type="time"
+                                        value={incident.incident_time}
+                                        onChange={(e) => handleIncidentChange(index, 'incident_time', e.target.value)}
+                                        className="w-32"
                                     />
                                     <Button
                                         type="button"
