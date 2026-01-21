@@ -4,6 +4,9 @@ import { ArrowLeft, Clock, Activity, AlertTriangle, Layers, User, Calendar, Box,
 import { Button, Card, DataTable } from '../../components/ui';
 import { productionApi } from '../../api/production';
 import { motion } from 'framer-motion';
+import {
+    PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Label, Legend
+} from 'recharts';
 
 const StatCard = ({ title, value, icon: Icon, color }) => (
     <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex items-center justify-between">
@@ -247,6 +250,9 @@ const StoppageLogsView = ({ logs }) => {
                                     {log.incidents.map((inc, i) => (
                                         <div key={i} className="text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-200 dark:border-slate-800/50 flex items-start gap-2">
                                             <span className="text-slate-400 dark:text-slate-600 mt-0.5">•</span>
+                                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                                {inc.incident_category_name || 'Uncategorized'}:
+                                            </span>
                                             {inc.incident_description}
                                         </div>
                                     ))}
@@ -282,6 +288,40 @@ const ReportDetails = () => {
         };
         fetchReport();
     }, [id]);
+
+    // Calculate Chart Data
+    const calculateCharts = () => {
+        if (!report || !report.stoppage_logs) return { efficiencyData: [], downtimeData: [], totalDowntime: 0 };
+
+        let totalEfficiency = 0;
+        let logCount = 0;
+        let totalDowntime = 0;
+
+        report.stoppage_logs.forEach(log => {
+            // Efficiency
+            const eff = parseFloat(log.efficiency);
+            // Include 0 efficiency
+            if (!isNaN(eff)) {
+                totalEfficiency += eff;
+                logCount++;
+            }
+            const minutes = log.downtime_minutes || 0;
+            if (minutes > 0) totalDowntime += minutes;
+        });
+
+        const avgEff = logCount > 0 ? totalEfficiency / logCount : 0;
+        const effVal = Math.min(Math.max(avgEff, 0), 100);
+        const efficiencyData = [
+            { name: 'Efficiency', value: Number(effVal.toFixed(1)) },
+            { name: 'Downtime', value: Number((100 - effVal).toFixed(1)) }
+        ];
+
+        return { efficiencyData };
+    };
+
+    const { efficiencyData } = report ? calculateCharts() : { efficiencyData: [] };
+    const COLOR_EFFICIENCY = '#10b981'; // emerald-500
+    const COLOR_LOSS = '#ef4444'; // red-500
 
     if (loading) return <div className="p-8 text-center text-slate-500">Loading details...</div>;
     if (!report) return <div className="p-8 text-center text-red-400">Report not found</div>;
@@ -358,8 +398,7 @@ const ReportDetails = () => {
                         <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
                         <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
                         <DetailRow label="Line Speed" value={report.line_speed} />
-                        <DetailRow label="Counter Start" value={report.counter_start?.toLocaleString()} />
-                        <DetailRow label="Counter End" value={report.counter_end?.toLocaleString()} />
+
                     </div>
                 </Card>
 
@@ -376,6 +415,76 @@ const ReportDetails = () => {
                     </div>
                 </Card>
             </div>
+
+            {/* Efficiency Analysis Chart */}
+            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                <SectionHeader title="Efficiency Analysis" icon={Activity} />
+                <div className="flex flex-col md:flex-row items-center gap-8 justify-center">
+                    {/* Chart */}
+                    <div className="relative w-48 h-48 flex-shrink-0">
+                        {efficiencyData.length > 0 ? (
+                            <div className="w-full h-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={efficiencyData}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={60}
+                                            outerRadius={80}
+                                            paddingAngle={5}
+                                            dataKey="value"
+                                            cornerRadius={4}
+                                            stroke="none"
+                                        >
+                                            {efficiencyData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS} />
+                                            ))}
+                                        </Pie>
+                                        <RechartsTooltip
+                                            cursor={false}
+                                            contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                            itemStyle={{ color: '#1e293b', fontWeight: 600 }}
+                                            formatter={(value) => [`${value}%`, '']}
+                                        />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                    <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Score</span>
+                                    <span className={`text-2xl font-bold ${efficiencyData[0]?.value >= 80 ? 'text-emerald-500' : efficiencyData[0]?.value >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                                        {efficiencyData[0]?.value}%
+                                    </span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="w-full h-full rounded-full border-4 border-slate-100 dark:border-slate-800 border-dashed flex items-center justify-center">
+                                <span className="text-slate-400 text-xs">No Data</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Legend */}
+                    <div className="w-full max-w-xs space-y-4">
+                        {efficiencyData.map((item, index) => (
+                            <div key={index} className="flex items-start gap-3 group">
+                                <div
+                                    className="w-1.5 h-10 rounded-full mt-1 flex-shrink-0 transition-all group-hover:scale-110"
+                                    style={{ backgroundColor: item.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS }}
+                                />
+                                <div>
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">{item.name}</p>
+                                    <div className="flex items-baseline gap-2">
+                                        <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100">{item.value}%</h4>
+                                        <span className="text-xs text-slate-500 dark:text-slate-500">
+                                            {item.name === 'Efficiency' ? 'Average Operational Efficiency' : 'Average Lost Time'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </Card>
 
             {/* Remarks Section */}
             {(report.remarks || report.summary_text) && (
@@ -429,6 +538,8 @@ const ReportDetails = () => {
                     color="text-amber-400"
                 />
             </div>
+
+
 
             {/* Tabbed Detailed Content */}
             <Card className="min-h-[400px] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden">

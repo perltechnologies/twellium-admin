@@ -183,31 +183,31 @@ const ReportForm = () => {
                             placeholder="Enter Packs Per Pallet"
                         />
                     </div>
-                </div>
 
-                <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => navigate('/dashboard/production')}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        type="submit"
-                        className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
-                        disabled={submitting}
-                    >
-                        {submitting ? (
-                            <span className="animate-spin mr-2">⟳</span>
-                        ) : (
-                            <Save className="h-4 w-4 mr-2" />
-                        )}
-                        {isEditMode ? 'Update' : 'Create'}
-                    </Button>
-                </div>
-            </form>
-        </Card>
+
+                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => navigate('/dashboard/production')}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
+                            disabled={submitting}
+                        >
+                            {submitting ? (
+                                <span className="animate-spin mr-2">⟳</span>
+                            ) : (
+                                <Save className="h-4 w-4 mr-2" />
+                            )}
+                            {isEditMode ? 'Update' : 'Create'}
+                        </Button>
+                    </div>
+                </form>
+            </Card>
         </div >
     );
 };
