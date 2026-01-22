@@ -5,7 +5,8 @@ import { Button, Card, DataTable } from '../../components/ui';
 import { productionApi } from '../../api/production';
 import { motion } from 'framer-motion';
 import {
-    PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Label, Legend
+    PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Label, Legend,
+    BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
 const StatCard = ({ title, value, icon: Icon, color }) => (
@@ -268,12 +269,65 @@ const StoppageLogsView = ({ logs }) => {
     );
 };
 
+const StoppageTimeline = ({ logs }) => {
+    if (!logs || logs.length === 0) return null;
+
+    return (
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+            <SectionHeader title="Stoppage Event Timeline" icon={Clock} />
+            <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-3 space-y-8 pl-8 py-2">
+                {logs.slice().sort((a, b) => (a.hour_index - b.hour_index)).map((log, idx) => (
+                    <div key={idx} className="relative">
+                        {/* Dot */}
+                        <div className="absolute -left-[41px] top-1 h-5 w-5 rounded-full border-4 border-white dark:border-slate-900 bg-blue-500" />
+
+                        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 border border-slate-200 dark:border-slate-800">
+                            <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                        Hour {log.hour_index}
+                                        {log.minute_index != null && <span className="text-slate-400 font-normal">:{String(log.minute_index).padStart(2, '0')}</span>}
+                                    </h4>
+                                    <span className="text-xs text-slate-500">{log.downtime_minutes} min downtime</span>
+                                </div>
+                                <span className={`px-2 py-1 rounded text-xs font-bold ${parseFloat(log.efficiency) >= 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {log.efficiency}% Eff
+                                </span>
+                            </div>
+
+                            {/* Incidents */}
+                            {log.incidents && log.incidents.length > 0 ? (
+                                <div className="space-y-2 mt-3">
+                                    {log.incidents.map((inc, i) => (
+                                        <div key={i} className="flex gap-3 items-start text-sm p-2 bg-white dark:bg-slate-950/30 rounded border border-slate-100 dark:border-slate-800/50">
+                                            <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                                            <div>
+                                                <p className="font-medium text-slate-800 dark:text-slate-200">
+                                                    {inc.downtime_category_name || 'Uncategorized'}
+                                                    {inc.sub_downtime_category_name && <span className="text-slate-400 font-normal"> / {inc.sub_downtime_category_name}</span>}
+                                                </p>
+                                                <p className="text-slate-600 dark:text-slate-400 text-xs mt-0.5">{inc.incident_description}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                log.downtime_minutes > 0 && <p className="text-xs text-slate-400 italic mt-2">No specific incidents logged. ({log.comments})</p>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </Card>
+    );
+};
+
 const ReportDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('runs');
+    const [activeTab, setActiveTab] = useState('batches');
 
     useEffect(() => {
         const fetchReport = async () => {
@@ -289,37 +343,93 @@ const ReportDetails = () => {
         fetchReport();
     }, [id]);
 
-    // Calculate Chart Data
-    const calculateCharts = () => {
-        if (!report || !report.stoppage_logs) return { efficiencyData: [], downtimeData: [], totalDowntime: 0 };
+    // Calculate Stats & Chart Data
+    const calculateStats = () => {
+        if (!report) return { efficiencyData: [], downtimeData: [], totalDowntime: 0, totalOutput: 0, productionTime: 0, efficiency: 0 };
 
         let totalEfficiency = 0;
         let logCount = 0;
         let totalDowntime = 0;
+        let totalOutput = 0;
+        const categoryMap = {};
 
-        report.stoppage_logs.forEach(log => {
-            // Efficiency
-            const eff = parseFloat(log.efficiency);
-            // Include 0 efficiency
-            if (!isNaN(eff)) {
-                totalEfficiency += eff;
-                logCount++;
-            }
-            const minutes = log.downtime_minutes || 0;
-            if (minutes > 0) totalDowntime += minutes;
-        });
+        // Stoppage Logs Processing
+        if (report.stoppage_logs) {
+            report.stoppage_logs.forEach(log => {
+                // Efficiency
+                const eff = parseFloat(log.efficiency);
+                if (!isNaN(eff)) {
+                    totalEfficiency += eff;
+                    logCount++;
+                }
+                const minutes = log.downtime_minutes || 0;
+                if (minutes > 0) totalDowntime += minutes;
+
+                // Bottles
+                if (log.bottles_produced) {
+                    totalOutput += (parseInt(log.bottles_produced) || 0);
+                }
+
+                // Downtime Breakdown
+                if (log.incidents && log.incidents.length > 0) {
+                    log.incidents.forEach(inc => {
+                        const catName = inc.downtime_category_name || 'Uncategorized';
+                        if (!categoryMap[catName]) categoryMap[catName] = 0;
+                        categoryMap[catName] += minutes;
+                    });
+                } else if (minutes > 0) {
+                    if (!categoryMap['Unspecified']) categoryMap['Unspecified'] = 0;
+                    categoryMap['Unspecified'] += minutes;
+                }
+            });
+        }
+
+        // Also add bottles from runs if available (assuming runs are separate from log output for now, or just fallback)
+        // If stoppage logs have bottles, usually that's the source for hourly logs. 
+        // If "runs" exist (legacy?), might calculate there. 
+        // Let's rely on stoppage_logs for now based on user's recent tasks.
 
         const avgEff = logCount > 0 ? totalEfficiency / logCount : 0;
         const effVal = Math.min(Math.max(avgEff, 0), 100);
+
+        // Calculate Production Time (Hours) from Start/End
+        let productionTime = 0;
+        if (report.start_time && report.end_time) {
+            const start = new Date(`${report.production_date}T${report.start_time}`);
+            const end = new Date(`${report.production_date}T${report.end_time}`);
+            // Handle cross-day shift? Assuming same day or standard date handling if full ISO provided
+            // If time string only:
+            const sTime = new Date(`1970-01-01T${report.start_time}`);
+            const eTime = new Date(`1970-01-01T${report.end_time}`);
+            if (eTime < sTime) eTime.setDate(eTime.getDate() + 1); // Next day
+
+            const diffMs = eTime - sTime;
+            productionTime = (diffMs / (1000 * 60 * 60)).toFixed(1);
+        }
+
         const efficiencyData = [
             { name: 'Efficiency', value: Number(effVal.toFixed(1)) },
             { name: 'Downtime', value: Number((100 - effVal).toFixed(1)) }
         ];
 
-        return { efficiencyData };
+        const downtimeData = Object.keys(categoryMap).map(key => ({
+            name: key,
+            minutes: categoryMap[key]
+        })).sort((a, b) => b.minutes - a.minutes);
+
+        return {
+            efficiencyData,
+            downtimeData,
+            totalOutput: totalOutput || report.total_bottles_produced || 0, // Fallback to report field
+            totalDowntime: totalDowntime || report.total_downtime_minutes || 0,
+            efficiency: Number(effVal.toFixed(1)) || report.efficiency || 0,
+            productionTime: productionTime || report.total_production_time_hours || 0
+        };
     };
 
-    const { efficiencyData } = report ? calculateCharts() : { efficiencyData: [] };
+    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime } = report ? calculateStats() : {
+        efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0
+    };
     const COLOR_EFFICIENCY = '#10b981'; // emerald-500
     const COLOR_LOSS = '#ef4444'; // red-500
 
@@ -327,7 +437,6 @@ const ReportDetails = () => {
     if (!report) return <div className="p-8 text-center text-red-400">Report not found</div>;
 
     const tabs = [
-        { id: 'runs', label: 'Production Runs', count: report.runs?.length || 0 },
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
         { id: 'materials', label: 'Materials', count: report.materials?.length || 0 }, // Materials is an array of groups, count might be misleading if just groups, but OK for now.
         { id: 'stoppages', label: 'Stoppages', count: report.stoppage_logs?.length || 0 },
@@ -416,75 +525,106 @@ const ReportDetails = () => {
                 </Card>
             </div>
 
-            {/* Efficiency Analysis Chart */}
-            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                <SectionHeader title="Efficiency Analysis" icon={Activity} />
-                <div className="flex flex-col md:flex-row items-center gap-8 justify-center">
-                    {/* Chart */}
-                    <div className="relative w-48 h-48 flex-shrink-0">
-                        {efficiencyData.length > 0 ? (
-                            <div className="w-full h-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie
-                                            data={efficiencyData}
-                                            cx="50%"
-                                            cy="50%"
-                                            innerRadius={60}
-                                            outerRadius={80}
-                                            paddingAngle={5}
-                                            dataKey="value"
-                                            cornerRadius={4}
-                                            stroke="none"
-                                        >
-                                            {efficiencyData.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={entry.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS} />
-                                            ))}
-                                        </Pie>
-                                        <RechartsTooltip
-                                            cursor={false}
-                                            contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                            itemStyle={{ color: '#1e293b', fontWeight: 600 }}
-                                            formatter={(value) => [`${value}%`, '']}
-                                        />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                    <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Score</span>
-                                    <span className={`text-2xl font-bold ${efficiencyData[0]?.value >= 80 ? 'text-emerald-500' : efficiencyData[0]?.value >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
-                                        {efficiencyData[0]?.value}%
-                                    </span>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="w-full h-full rounded-full border-4 border-slate-100 dark:border-slate-800 border-dashed flex items-center justify-center">
-                                <span className="text-slate-400 text-xs">No Data</span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Legend */}
-                    <div className="w-full max-w-xs space-y-4">
-                        {efficiencyData.map((item, index) => (
-                            <div key={index} className="flex items-start gap-3 group">
-                                <div
-                                    className="w-1.5 h-10 rounded-full mt-1 flex-shrink-0 transition-all group-hover:scale-110"
-                                    style={{ backgroundColor: item.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS }}
-                                />
-                                <div>
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">{item.name}</p>
-                                    <div className="flex items-baseline gap-2">
-                                        <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100">{item.value}%</h4>
-                                        <span className="text-xs text-slate-500 dark:text-slate-500">
-                                            {item.name === 'Efficiency' ? 'Average Operational Efficiency' : 'Average Lost Time'}
+            {/* Production Performance Analysis */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Efficiency Chart */}
+                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                    <SectionHeader title="Efficiency Analysis" icon={Activity} />
+                    <div className="flex flex-col md:flex-row items-center gap-8 justify-center h-64">
+                        <div className="relative w-48 h-48 flex-shrink-0">
+                            {efficiencyData.length > 0 ? (
+                                <div className="w-full h-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={efficiencyData}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={60}
+                                                outerRadius={80}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                                cornerRadius={4}
+                                                stroke="none"
+                                            >
+                                                {efficiencyData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS} />
+                                                ))}
+                                            </Pie>
+                                            <RechartsTooltip
+                                                cursor={false}
+                                                contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                                itemStyle={{ color: '#1e293b', fontWeight: 600 }}
+                                                formatter={(value) => [`${value}%`, '']}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                        <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Score</span>
+                                        <span className={`text-2xl font-bold ${efficiencyData[0]?.value >= 80 ? 'text-emerald-500' : efficiencyData[0]?.value >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                                            {efficiencyData[0]?.value}%
                                         </span>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ) : (
+                                <div className="w-full h-full rounded-full border-4 border-slate-100 dark:border-slate-800 border-dashed flex items-center justify-center">
+                                    <span className="text-slate-400 text-xs">No Data</span>
+                                </div>
+                            )}
+                        </div>
+                        <div className="w-full max-w-xs space-y-4">
+                            {efficiencyData.map((item, index) => (
+                                <div key={index} className="flex items-start gap-3 group">
+                                    <div
+                                        className="w-1.5 h-10 rounded-full mt-1 flex-shrink-0 transition-all group-hover:scale-110"
+                                        style={{ backgroundColor: item.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS }}
+                                    />
+                                    <div>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">{item.name}</p>
+                                        <div className="flex items-baseline gap-2">
+                                            <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100">{item.value}%</h4>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            </Card>
+                </Card>
+
+                {/* Downtime Analysis Chart */}
+                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                    <SectionHeader title="Downtime Breakdown (Minutes)" icon={AlertTriangle} />
+                    <div className="h-64 w-full">
+                        {downtimeData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={downtimeData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" opacity={0.5} />
+                                    <XAxis type="number" hide />
+                                    <YAxis
+                                        type="category"
+                                        dataKey="name"
+                                        width={100}
+                                        tick={{ fill: '#64748b', fontSize: 11 }}
+                                        tickLine={false}
+                                        axisLine={false}
+                                    />
+                                    <RechartsTooltip
+                                        cursor={{ fill: '#f1f5f9', opacity: 0.5 }}
+                                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        formatter={(value) => [`${value} min`, 'Duration']}
+                                    />
+                                    <Bar dataKey="minutes" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 space-y-2 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl">
+                                <Activity className="h-8 w-8 opacity-20" />
+                                <span className="text-sm">No Downtime Recorded</span>
+                            </div>
+                        )}
+                    </div>
+                </Card>
+            </div>
 
             {/* Remarks Section */}
             {(report.remarks || report.summary_text) && (
@@ -515,31 +655,34 @@ const ReportDetails = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <StatCard
                     title="Total Output"
-                    value={(report.total_bottles_produced || 0).toLocaleString()}
+                    value={totalOutput.toLocaleString()}
                     icon={Layers}
                     color="text-emerald-400"
                 />
                 <StatCard
                     title="Production Time"
-                    value={`${report.total_production_time_hours || 0} hrs`}
+                    value={`${productionTime} hrs`}
                     icon={Clock}
                     color="text-blue-400"
                 />
                 <StatCard
                     title="Efficiency"
-                    value={`${report.efficiency || 0}%`}
+                    value={`${efficiency}%`}
                     icon={Activity}
                     color="text-indigo-400"
                 />
                 <StatCard
                     title="Downtime"
-                    value={`${report.total_downtime_minutes || 0} min`}
+                    value={`${totalDowntime} min`}
                     icon={AlertTriangle}
                     color="text-amber-400"
                 />
             </div>
 
 
+
+            {/* Stoppage Timeline */}
+            <StoppageTimeline logs={report.stoppage_logs} />
 
             {/* Tabbed Detailed Content */}
             <Card className="min-h-[400px] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden">
@@ -571,20 +714,6 @@ const ReportDetails = () => {
                 </div>
 
                 <div className="p-6">
-                    {activeTab === 'runs' && (
-                        <DataTable
-                            columns={[
-                                { header: 'ID', accessor: 'id' },
-                                { header: 'Start Time', accessor: 'start_time' },
-                                { header: 'End Time', accessor: 'end_time' },
-                                { header: 'Duration', accessor: 'duration_minutes', render: row => `${row.duration_minutes || 0} min` },
-                                { header: 'Bottles Produced', accessor: 'bottles_produced', render: row => row.bottles_produced?.toLocaleString() },
-                            ]}
-                            data={report.runs}
-                            isLoading={false}
-                        />
-                    )}
-
                     {activeTab === 'batches' && (
                         <DataTable
                             columns={[

@@ -15,6 +15,8 @@ const StoppageLogForm = () => {
     // Dropdown Data
     const [reports, setReports] = useState([]);
     const [pets, setPets] = useState([]);
+    const [downtimeCategories, setDowntimeCategories] = useState([]);
+    const [downtimeSubCategories, setDowntimeSubCategories] = useState([]);
 
     const [formData, setFormData] = useState({
         report: '',
@@ -25,7 +27,7 @@ const StoppageLogForm = () => {
         downtime_minutes: '',
         bottles_produced: '',
         comments: '',
-        incidents: [] // Array of { incident_description: '', incident_time: '' }
+        incidents: [] // Array of { incident_description: '', incident_time: '', downtime_category: '', sub_downtime_category: '' }
     });
 
     const [error, setError] = useState('');
@@ -34,9 +36,11 @@ const StoppageLogForm = () => {
         const loadData = async () => {
             try {
                 // Fetch Dependencies
-                const [reportsRes, petsRes] = await Promise.all([
+                const [reportsRes, petsRes, dtCatsRes, dtSubCatsRes] = await Promise.all([
                     productionApi.getReports({ page_size: 100 }), // Get recent reports
-                    productionApi.getPets({ page_size: 100 })
+                    productionApi.getPets({ page_size: 100 }),
+                    productionApi.getDowntimeCategories({ page_size: 100 }),
+                    productionApi.getDowntimeSubCategories({ page_size: 1000 })
                 ]);
 
                 // Helper to extract results array from varied API responses
@@ -51,6 +55,8 @@ const StoppageLogForm = () => {
 
                 setReports(getResults(reportsRes));
                 setPets(getResults(petsRes));
+                setDowntimeCategories(getResults(dtCatsRes));
+                setDowntimeSubCategories(getResults(dtSubCatsRes));
 
                 // If Edit Mode, Fetch Existing Log
                 if (isEditMode) {
@@ -87,7 +93,12 @@ const StoppageLogForm = () => {
     const addIncident = () => {
         setFormData(prev => ({
             ...prev,
-            incidents: [...prev.incidents, { incident_description: '', incident_time: '' }]
+            incidents: [...prev.incidents, {
+                incident_description: '',
+                incident_time: '',
+                downtime_category: '', // ID
+                sub_downtime_category: '' // ID
+            }]
         }));
     };
 
@@ -96,6 +107,11 @@ const StoppageLogForm = () => {
             ...prev,
             incidents: prev.incidents.filter((_, i) => i !== index)
         }));
+    };
+
+    const getFilteredSubCategories = (categoryId) => {
+        if (!categoryId) return [];
+        return downtimeSubCategories.filter(sub => String(sub.category) === String(categoryId));
     };
 
     const handleIncidentChange = (index, field, value) => {
@@ -120,7 +136,9 @@ const StoppageLogForm = () => {
                 // Ensure incidents structure matches API expectation
                 incidents: formData.incidents.map(inc => ({
                     incident_description: inc.incident_description,
-                    incident_time: inc.incident_time || null
+                    incident_time: inc.incident_time || null,
+                    downtime_category: inc.downtime_category ? parseInt(inc.downtime_category) : null,
+                    sub_downtime_category: inc.sub_downtime_category ? parseInt(inc.sub_downtime_category) : null,
                 }))
             };
 
@@ -293,27 +311,61 @@ const StoppageLogForm = () => {
                                     exit={{ opacity: 0, height: 0 }}
                                     className="flex gap-2 items-center"
                                 >
-                                    <Input
-                                        value={incident.incident_description}
-                                        onChange={(e) => handleIncidentChange(index, 'incident_description', e.target.value)}
-                                        placeholder="Describe the incident..."
-                                        className="flex-1"
-                                        required
-                                    />
-                                    <Input
-                                        type="time"
-                                        value={incident.incident_time}
-                                        onChange={(e) => handleIncidentChange(index, 'incident_time', e.target.value)}
-                                        className="w-32"
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        onClick={() => removeIncident(index)}
-                                        className="text-red-400 hover:bg-red-500/10 p-2 h-auto"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
+                                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800 space-y-3">
+                                        <div className="flex gap-2">
+                                            <Input
+                                                value={incident.incident_description}
+                                                onChange={(e) => handleIncidentChange(index, 'incident_description', e.target.value)}
+                                                placeholder="Describe the incident..."
+                                                className="flex-1"
+                                                required
+                                            />
+                                            <Input
+                                                type="time"
+                                                value={incident.incident_time}
+                                                onChange={(e) => handleIncidentChange(index, 'incident_time', e.target.value)}
+                                                className="w-32"
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                onClick={() => removeIncident(index)}
+                                                className="text-red-400 hover:bg-red-500/10 p-2 h-auto self-start"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Downtime Category</label>
+                                                <select
+                                                    value={incident.downtime_category}
+                                                    onChange={(e) => handleIncidentChange(index, 'downtime_category', e.target.value)}
+                                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                                >
+                                                    <option value="">Select Category...</option>
+                                                    {downtimeCategories.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sub-Category</label>
+                                                <select
+                                                    value={incident.sub_downtime_category}
+                                                    onChange={(e) => handleIncidentChange(index, 'sub_downtime_category', e.target.value)}
+                                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    disabled={!incident.downtime_category}
+                                                >
+                                                    <option value="">Select Sub-Category...</option>
+                                                    {getFilteredSubCategories(incident.downtime_category).map(sub => (
+                                                        <option key={sub.id} value={sub.id}>{sub.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </motion.div>
                             ))}
                         </AnimatePresence>

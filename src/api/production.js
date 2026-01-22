@@ -32,6 +32,18 @@ export const productionApi = {
     deleteStoppage: (id) => api.delete(`/production/stoppages/${id}/`),
     addIncident: (id, data) => api.post(`/production/stoppages/${id}/add_incident/`, data),
 
+    // Downtime Categories
+    getDowntimeCategories: (params) => api.get('/production/downtime-categories/', { params }),
+    createDowntimeCategory: (data) => api.post('/production/downtime-categories/', data),
+    updateDowntimeCategory: (id, data) => api.patch(`/production/downtime-categories/${id}/`, data),
+    deleteDowntimeCategory: (id) => api.delete(`/production/downtime-categories/${id}/`),
+
+    // Downtime Sub-Categories
+    getDowntimeSubCategories: (params) => api.get('/production/downtime-sub-categories/', { params }),
+    createDowntimeSubCategory: (data) => api.post('/production/downtime-sub-categories/', data),
+    updateDowntimeSubCategory: (id, data) => api.patch(`/production/downtime-sub-categories/${id}/`, data),
+    deleteDowntimeSubCategory: (id) => api.delete(`/production/downtime-sub-categories/${id}/`),
+
     // Incident Categories
     getIncidentCategories: (params) => api.get('/production/incident-categories/', { params }),
     createIncidentCategory: (data) => api.post('/production/incident-categories/', data),

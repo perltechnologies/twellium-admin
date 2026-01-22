@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, X, Save } from 'lucide-react';
-import { DataTable, Button, Input, Card, ConfirmationModal } from '../../components/ui';
+import { DataTable, Button, Input, Select, Card, ConfirmationModal } from '../../components/ui';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const GenericCrudPage = ({
@@ -247,17 +247,30 @@ const GenericCrudPage = ({
                             <form onSubmit={handleSubmit} className="p-4 space-y-4">
                                 {formFields.map((field) => (
                                     <div key={field.name} className="space-y-1">
-                                        <label className="text-sm font-medium text-slate-700 dark:text-slate-400">
-                                            {field.label}
-                                        </label>
-                                        <Input
-                                            name={field.name}
-                                            type={field.type || "text"}
-                                            value={formData[field.name] || ''}
-                                            onChange={handleChange}
-                                            required={field.required}
-                                            placeholder={field.placeholder}
-                                        />
+                                        {field.type === 'select' ? (
+                                            <Select
+                                                label={field.label}
+                                                name={field.name}
+                                                value={formData[field.name] || ''}
+                                                onChange={handleChange}
+                                                required={field.required}
+                                                options={field.options || []}
+                                            />
+                                        ) : (
+                                            <>
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">
+                                                    {field.label}
+                                                </label>
+                                                <Input
+                                                    name={field.name}
+                                                    type={field.type || "text"}
+                                                    value={formData[field.name] || ''}
+                                                    onChange={handleChange}
+                                                    required={field.required}
+                                                    placeholder={field.placeholder}
+                                                />
+                                            </>
+                                        )}
                                     </div>
                                 ))}
 

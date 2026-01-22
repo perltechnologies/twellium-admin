@@ -15,6 +15,7 @@ const StoppageLogList = React.lazy(() => import('../pages/production/stoppages/S
 const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/StoppageLogForm'));
 const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppages/StoppageLogDetails'));
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
+const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
 const UserForm = React.lazy(() => import('../pages/users/UserForm'));
 const ProductList = React.lazy(() => import('../pages/inventory/ProductList'));
@@ -77,6 +78,32 @@ export const AppRouter = () => {
                                         />
                                     }
                                 />
+
+
+                                <Route
+                                    path="downtime-categories"
+                                    element={
+                                        <GenericCrudPage
+                                            title="Downtime Categories"
+                                            api={{
+                                                list: productionApi.getDowntimeCategories,
+                                                create: productionApi.createDowntimeCategory,
+                                                update: productionApi.updateDowntimeCategory,
+                                                delete: productionApi.deleteDowntimeCategory
+                                            }}
+                                            columns={[
+                                                { header: 'ID', accessor: 'id' },
+                                                { header: 'Name', accessor: 'name' },
+                                                { header: 'Description', accessor: 'description' },
+                                            ]}
+                                            formFields={[
+                                                { name: 'name', label: 'Category Name', required: true },
+                                                { name: 'description', label: 'Description', required: false }
+                                            ]}
+                                        />
+                                    }
+                                />
+                                <Route path="downtime-sub-categories" element={<DowntimeSubCategoryList />} />
 
                                 {/* Production Sub-modules */}
                                 <Route

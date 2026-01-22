@@ -15,7 +15,7 @@ import {
     Legend,
     Label
 } from 'recharts';
-import { Factory, AlertTriangle, Activity, Clock, FileText } from 'lucide-react';
+import { Factory, AlertTriangle, Clock, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { productionApi } from '../../api/production';
 import { format } from 'date-fns';
@@ -44,7 +44,6 @@ const StatCard = ({ title, value, subtext, icon: Icon, color, delay }) => {
 
 const Overview = () => {
     const [stats, setStats] = useState({
-        totalOutput: 0,
         activePets: 0,
         totalDowntime: 0,
         runningReports: 0
@@ -124,9 +123,6 @@ const Overview = () => {
 
             // --- Calculations ---
 
-            // Total Output
-            const totalOutput = reports.reduce((sum, r) => sum + (r.total_bottles_produced || 0), 0);
-
             // Active PETs (Unique PETs in today's reports)
             const uniquePets = new Set(reports.map(r => r.pet_name).filter(Boolean));
             const activePetsCount = uniquePets.size;
@@ -143,7 +139,6 @@ const Overview = () => {
             const outputByPetData = Object.entries(outputMap).map(([name, value]) => ({ name, value }));
 
             setStats({
-                totalOutput,
                 activePets: activePetsCount,
                 totalDowntime: totalDowntimeCalc,
                 runningReports: runningCount
@@ -275,22 +270,14 @@ const Overview = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard
-                    title="Total Output (Today)"
-                    value={stats.totalOutput.toLocaleString()}
-                    subtext="Bottles produced today"
-                    icon={Activity}
-                    color="emerald"
-                    delay={1}
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <StatCard
                     title="Active PET Lines"
                     value={stats.activePets}
                     subtext={`${stats.runningReports} shifts currently started`}
                     icon={Factory}
                     color="blue"
-                    delay={2}
+                    delay={1}
                 />
                 <StatCard
                     title="Total Downtime"
@@ -298,7 +285,7 @@ const Overview = () => {
                     subtext="Recorded stoppages today"
                     icon={Clock}
                     color="red"
-                    delay={3}
+                    delay={2}
                 />
                 <StatCard
                     title="Recent Reports"
@@ -306,7 +293,7 @@ const Overview = () => {
                     subtext="Latest submissions"
                     icon={FileText}
                     color="amber"
-                    delay={4}
+                    delay={3}
                 />
             </div>
 
