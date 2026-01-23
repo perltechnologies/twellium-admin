@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const DEBUG = true;
+const DEBUG = false;
 const BASE_URL = DEBUG ? 'http://localhost:8000/api' : 'https://api.twellium-api.com/api';
 
 const api = axios.create({

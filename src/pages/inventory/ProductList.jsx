@@ -19,7 +19,8 @@ const ProductList = () => {
                 { header: 'Name', accessor: 'name' },
                 { header: 'Size', accessor: 'size' },
                 { header: 'Density', accessor: 'standard_density' },
-                { header: 'Target Speed (BPH)', accessor: 'target_speed_bph', render: row => row.target_speed_bph?.toLocaleString() },
+                { header: 'GV', accessor: 'gv' },
+                { header: 'Dilution', accessor: 'dilution_ratio' },
             ]}
             onAdd={() => navigate('/dashboard/inventory/products/new')}
             onEdit={(row) => navigate(`/dashboard/inventory/products/${row.id}/edit`)}

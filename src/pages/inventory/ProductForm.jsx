@@ -13,7 +13,10 @@ const ProductForm = () => {
         sku_code: '',
         name: '',
         size: '',
-        target_speed_bph: ''
+        target_speed_bph: '',
+        standard_density: '',
+        gv: '',
+        dilution_ratio: ''
     });
 
     const [submitting, setSubmitting] = useState(false);
@@ -38,10 +41,10 @@ const ProductForm = () => {
                             sku_code: item.sku_code,
                             name: item.name,
                             size: item.size,
-                            name: item.name,
-                            size: item.size,
                             target_speed_bph: item.target_speed_bph,
-                            standard_density: item.standard_density
+                            standard_density: item.standard_density,
+                            gv: item.gv,
+                            dilution_ratio: item.dilution_ratio
                         });
                     }
                 } catch (err) {
@@ -64,8 +67,11 @@ const ProductForm = () => {
         setSubmitting(true);
         try {
             const payload = { ...formData };
-            // Ensure target speed is integer
+            // Ensure numeric types
             if (payload.target_speed_bph) payload.target_speed_bph = parseInt(payload.target_speed_bph);
+            if (payload.standard_density) payload.standard_density = parseFloat(payload.standard_density);
+            if (payload.gv) payload.gv = parseFloat(payload.gv);
+            if (payload.dilution_ratio) payload.dilution_ratio = parseFloat(payload.dilution_ratio);
 
             if (isEditMode) {
                 await inventoryApi.updateProduct(id, payload);
@@ -137,15 +143,33 @@ const ProductForm = () => {
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <Input
                                 label="Standard Density"
                                 type="number"
-                                step="0.01"
+                                step="0.001"
                                 name="standard_density"
                                 value={formData.standard_density || ''}
                                 onChange={handleChange}
-                                placeholder="10.0"
+                                placeholder="0.4"
+                            />
+                            <Input
+                                label="Gas Volume (GV)"
+                                type="number"
+                                step="0.01"
+                                name="gv"
+                                value={formData.gv || ''}
+                                onChange={handleChange}
+                                placeholder="0.1"
+                            />
+                            <Input
+                                label="Dilution Ratio"
+                                type="number"
+                                step="0.01"
+                                name="dilution_ratio"
+                                value={formData.dilution_ratio || ''}
+                                onChange={handleChange}
+                                placeholder="1.2"
                             />
                         </div>
 
