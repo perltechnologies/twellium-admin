@@ -8,6 +8,7 @@ import { productionApi } from '../api/production';
 const Login = React.lazy(() => import('../pages/auth/Login'));
 const DashboardLayout = React.lazy(() => import('../components/layout/DashboardLayout'));
 const DashboardOverview = React.lazy(() => import('../pages/dashboard/Overview'));
+const Formulas = React.lazy(() => import('../pages/dashboard/Formulas'));
 const ProductionList = React.lazy(() => import('../pages/production/ProductionList'));
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
 const ReportDetails = React.lazy(() => import('../pages/production/ReportDetails'));
@@ -43,6 +44,7 @@ export const AppRouter = () => {
                             </ProtectedRoute>
                         }>
                             <Route index element={<DashboardOverview />} />
+                            <Route path="formulas" element={<Formulas />} />
 
                             {/* Production Routes */}
                             <Route path="production">

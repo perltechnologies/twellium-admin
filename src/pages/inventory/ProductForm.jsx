@@ -28,14 +28,10 @@ const ProductForm = () => {
             const fetchProduct = async () => {
                 try {
                     // Fetch list and find. Assuming standard pagination/wrapping
-                    const res = await inventoryApi.getProducts();
-                    let items = [];
-                    if (res.data.results) items = res.data.results;
-                    else if (res.data.data && res.data.data.results) items = res.data.data.results;
-                    else if (res.data.data) items = res.data.data;
-                    else if (Array.isArray(res.data)) items = res.data;
+                    // Fetch single product directly
+                    const res = await inventoryApi.getProduct(id);
+                    const item = res.data.data || res.data; // Handle potential wrapper
 
-                    const item = items.find(i => i.id === parseInt(id));
                     if (item) {
                         setFormData({
                             sku_code: item.sku_code,
@@ -70,7 +66,22 @@ const ProductForm = () => {
             // Ensure numeric types
             if (payload.target_speed_bph) payload.target_speed_bph = parseInt(payload.target_speed_bph);
             if (payload.standard_density) payload.standard_density = parseFloat(payload.standard_density);
-            if (payload.gv) payload.gv = parseFloat(payload.gv);
+            if (payload.gv) {
+                // Ensure it's in the string format we expect, or just pass it as is?
+                // Backend expects "1+6".
+                // Logic: "when user does not enters anything after the plus sign and submits, automatically assign a 0 after the plus sign"
+                if (typeof payload.gv === 'string' && payload.gv.endsWith('+')) {
+                    payload.gv = payload.gv + '0';
+                }
+            } else {
+                // If empty, backend might complain if required. Sending null or empty string?
+                // existing logic didn't seem to enforce non-empty gv strictly in UI (html `required` wasn't on it in original too).
+                // But let's leave it as is if empty.
+            }
+
+            // payload.gv is already a string, no need to parseFloat.
+            // if (payload.gv) payload.gv = parseFloat(payload.gv); // REMOVED THIS LINE
+
             if (payload.dilution_ratio) payload.dilution_ratio = parseFloat(payload.dilution_ratio);
 
             if (isEditMode) {
@@ -127,10 +138,11 @@ const ProductForm = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <Input
                                 label="Size"
+                                type="number"
                                 name="size"
                                 value={formData.size}
                                 onChange={handleChange}
-                                placeholder="e.g. 500ml"
+                                placeholder="500"
                                 required
                             />
                             <Input
@@ -139,7 +151,6 @@ const ProductForm = () => {
                                 name="target_speed_bph"
                                 value={formData.target_speed_bph}
                                 onChange={handleChange}
-                                required
                             />
                         </div>
 
@@ -155,12 +166,65 @@ const ProductForm = () => {
                             />
                             <Input
                                 label="Gas Volume (GV)"
-                                type="number"
-                                step="0.01"
+                                type="text"
+                                inputMode="numeric"
                                 name="gv"
                                 value={formData.gv || ''}
-                                onChange={handleChange}
-                                placeholder="0.1"
+                                onChange={(e) => {
+                                    let val = e.target.value;
+                                    // Logic:
+                                    // 1. If length is 1 and it's a digit, append '+' -> "N+"
+                                    // 2. If user deleted '+' (e.g. was "1+", becomes "1"), clear the whole thing.
+                                    // 3. If user deleted the number before '+' (e.g., was "1+2", becomes "+2"), this is tricky with standard input.
+                                    //    Better logic based on diff:
+
+                                    // Let's rely on simple state checks and allowed regex.
+                                    // Allowed format during typing: "", "N", "N+", "N+M"
+
+                                    const prevVal = formData.gv || '';
+
+                                    // Case: User is backspacing the '+'
+                                    // Previous was 'N+', new is 'N'. User wants to delete the '+'.
+                                    // Requirement: "delete the number and plus sign not the plus sign only"
+                                    // So if we go from "1+" to "1", we should actually go to "".
+                                    if (prevVal.match(/^\d\+$/) && val.match(/^\d$/)) {
+                                        setFormData(prev => ({ ...prev, gv: '' }));
+                                        return;
+                                    }
+
+                                    // Case: User types the first number
+                                    // Previous was "", new is "N".
+                                    // Requirement: "automatically insert the plus sign (+) after that"
+                                    if (prevVal === "" && val.match(/^\d$/)) {
+                                        setFormData(prev => ({ ...prev, gv: val + '+' }));
+                                        return;
+                                    }
+
+                                    // Case: Standard validation for what can be typed
+                                    // We only allow: empty, single digit, digit+plus, digit+plus+digit(s)
+                                    // Actually the second number can be anything? "user enter the second number". 
+                                    // Assuming second part is number, possibly multi-digit.
+                                    // Regex for valid content: ^$ | ^\d$ | ^\d\+$ | ^\d\+\d*$
+                                    // But wait, if we auto-add +, we never see just "N" except for a split second before update.
+
+                                    // Let's enforce strict "N+M..." format.
+                                    // If user types a digit when empty -> becomes "N+".
+                                    // If user types anything else invalid, ignore.
+
+                                    if (val === '') {
+                                        setFormData(prev => ({ ...prev, gv: '' }));
+                                        return;
+                                    }
+
+                                    // If text structure is valid, update. 
+                                    // Allow strictly: ^d\+$ (digit plus) OR ^\d\+\d+$ (digit plus digits)
+                                    // Actually we need to allow intermediate 'digit' if we didn't catch it above? No, we caught it.
+
+                                    if (/^\d\+\d*$/.test(val)) {
+                                        setFormData(prev => ({ ...prev, gv: val }));
+                                    }
+                                }}
+                                placeholder="1+6"
                             />
                             <Input
                                 label="Dilution Ratio"

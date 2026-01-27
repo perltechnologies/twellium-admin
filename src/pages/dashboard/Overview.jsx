@@ -13,7 +13,8 @@ import {
     Pie,
     Cell,
     Legend,
-    Label
+    Label,
+    LabelList
 } from 'recharts';
 import { Factory, AlertTriangle, Clock, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -42,7 +43,62 @@ const StatCard = ({ title, value, subtext, icon: Icon, color, delay }) => {
     );
 };
 
+// OEE Chart Component
+const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, bgColor, borderColor }) => (
+    <Card className="p-6 flex flex-col min-h-[500px]">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">{title}</h3>
+        <div className="flex-1 w-full min-h-[400px]">
+            {data.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data} margin={{ top: 30, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+                        <XAxis
+                            dataKey="name"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: textColor, fontSize: 12 }}
+                            dy={10}
+                        />
+                        <YAxis
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: textColor, fontSize: 12 }}
+                            domain={[0, 100]}
+                        />
+                        <Tooltip
+                            cursor={{ fill: 'transparent' }}
+                            contentStyle={{ backgroundColor: bgColor, borderColor: borderColor, borderRadius: '8px', color: textColor }}
+                            formatter={(value) => [`${value}%`, tooltipPrefix]}
+                        />
+                        <Bar
+                            dataKey="value"
+                            fill={color}
+                            radius={[4, 4, 0, 0]}
+                            barSize={40}
+                            animationDuration={1500}
+                        >
+                            {data.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={color} />
+                            ))}
+                            <LabelList dataKey="value" position="top" fill={color} formatter={(val) => `${val}%`} fontSize={12} fontWeight="bold" />
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-lg">
+                    Select a PET to view data
+                </div>
+            )}
+        </div>
+    </Card>
+);
+
+
 const Overview = () => {
+    const navigate = useNavigate();
+    const { theme } = useTheme();
+
+    // Stats State
     const [stats, setStats] = useState({
         activePets: 0,
         totalDowntime: 0,
@@ -52,20 +108,24 @@ const Overview = () => {
         outputByPet: [],
         downtimeByPet: []
     });
+
+    // Data State
     const [recentReports, setRecentReports] = useState([]);
+    const [allReports, setAllReports] = useState([]);
     const [loading, setLoading] = useState(true);
-    const { theme } = useTheme();
-    const navigate = useNavigate();
+
+    // Filter/Selection State
+    const [selectedPet, setSelectedPet] = useState('');
+    const [petEfficiencyData, setPetEfficiencyData] = useState([]);
+
+    // OEE State
+    const [selectedOeePets, setSelectedOeePets] = useState([]);
+    const [oeeData, setOeeData] = useState([]);
 
     // Delete Modal State
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
     const [deleting, setDeleting] = useState(false);
-
-    // New State for Charts
-    const [allReports, setAllReports] = useState([]);
-    const [selectedPet, setSelectedPet] = useState('');
-    const [petEfficiencyData, setPetEfficiencyData] = useState([]);
 
     const isDark = theme === 'dark';
     const chartGridColor = isDark ? '#334155' : '#e2e8f0'; // slate-700 : slate-200
@@ -82,7 +142,8 @@ const Overview = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const today = new Date().toISOString().split('T')[0];
+            // Use local date for "Today" instead of UTC
+            const today = format(new Date(), 'yyyy-MM-dd');
 
             // 1. Fetch Today's Reports (for Output and Active PETs)
             // 1. Fetch Today's Reports (for Output and Active PETs)
@@ -201,6 +262,116 @@ const Overview = () => {
             }
         }
     }, [selectedPet, allReports]);
+
+    // OEE Logic Effect
+    useEffect(() => {
+        // Initialize with all available PETs or just the first one? User said "first pet is automatically selected".
+        // So on load, if selectedOeePets is empty and we have reports, select first one.
+        // We do this inside the fetchData or here.
+        if (allReports.length > 0 && selectedOeePets.length === 0) {
+            const available = [...new Set(allReports.map(r => r.pet_name).filter(Boolean))];
+            if (available.length > 0) setSelectedOeePets([available[0]]);
+        }
+    }, [allReports]);
+
+    useEffect(() => {
+        if (selectedOeePets.length > 0 && allReports.length > 0) {
+            const data = selectedOeePets.map(petName => {
+                const petReports = allReports.filter(r => r.pet_name === petName);
+                if (petReports.length === 0) return null;
+
+                // --- AGGREGATION ---
+                let sumPlannedTime = 0; // total_production_time_hours
+                let sumExternalDowntime = 0; // downtime_minutes (converted to hours)
+
+                let sumTotalBottlesProduced = 0; // total_bottles_produced
+                let sumWaste = 0; // filler_rejects
+
+                let sumFillerReading = 0; // filter_reading
+                let sumLineSpeed = 0; // line_speed
+                let weightedProductionHours = 0; // for performance denom: speed * time
+
+                // Helper to safely get number or default 1
+                const safeNum = (val, def = 1) => {
+                    const parsed = parseFloat(val);
+                    return isNaN(parsed) || parsed === 0 ? def : parsed; // User said "null values use default 1". Interpreting 0 as needing default too for denominators? 
+                    // Actually, for raw values like downtime, 0 is valid. 
+                    // But for multiplication/division denominators, we need safety.
+                };
+
+                // Safe Sum Helper (treats null/undefined as 0 for additive)
+                const add = (acc, val) => acc + (parseFloat(val) || 0);
+
+                petReports.forEach(r => {
+                    // Availability
+                    const prodHours = parseFloat(r.total_production_time_hours) || 1; // User: "null values use default 1"
+                    sumPlannedTime += prodHours;
+
+                    // Downtime from stoppage logs or root? 
+                    // Using root `total_downtime_minutes` just in case, or calculating from logs like previous code?
+                    // Previous code calculated `totalDowntimeCalc` from logs. Let's do same for consistency.
+                    let rDowntime = 0;
+                    if (r.stoppage_logs) {
+                        r.stoppage_logs.forEach(l => rDowntime += (parseFloat(l.downtime_minutes) || 0));
+                    }
+                    sumExternalDowntime += rDowntime;
+
+                    // Quality
+                    // Formula: (Total Potential Bottles - WASTE) / Total Potential Bottles * 100
+                    // Potential = total_bottles_produced (if null default 1)
+                    const rBottles = parseFloat(r.total_bottles_produced) || 1;
+                    sumTotalBottlesProduced += rBottles;
+
+                    if (r.meter_readings) {
+                        r.meter_readings.forEach(m => {
+                            sumWaste = add(sumWaste, m.filler_rejects);
+                            sumFillerReading = add(sumFillerReading, m.filter_reading);
+                        });
+                    }
+
+                    // Performance
+                    const rSpeed = parseFloat(r.line_speed) || 1;
+                    // Denom: speed * hours
+                    weightedProductionHours += (rSpeed * prodHours);
+                });
+
+                // --- 1. AVAILABILITY ---
+                // Formula: (PLANNED TIME - EXT DOWNTIME HOURS) / PLANNED TIME * 100
+                const downtimeHours = sumExternalDowntime / 60;
+                let availability = ((sumPlannedTime - downtimeHours) / sumPlannedTime) * 100;
+
+                // --- 2. QUALITY ---
+                // Formula: (Total Potential - WASTE) / Total Potential * 100
+                // Potential = total_bottles_produced
+                const totalPotential = sumTotalBottlesProduced; // already defaulted to 1 if null per item
+                let quality = ((totalPotential - sumWaste) / totalPotential) * 100;
+
+                // --- 3. PERFORMANCE ---
+                // Formula: filler reading / (speed * hours) * 100
+                // We calculated weightedProductionHours = sum(speed * hours) for each report
+                let performance = (sumFillerReading / weightedProductionHours) * 100;
+
+                // Constraints 0-100
+                return {
+                    pet: petName,
+                    availability: Math.min(Math.max(availability || 0, 0), 100).toFixed(1),
+                    quality: Math.min(Math.max(quality || 0, 0), 100).toFixed(1),
+                    performance: Math.min(Math.max(performance || 0, 0), 100).toFixed(1),
+                };
+            }).filter(Boolean);
+
+            setOeeData(data);
+        } else {
+            setOeeData([]);
+        }
+    }, [selectedOeePets, allReports]);
+
+    const handleOeePetToggle = (pet) => {
+        setSelectedOeePets(prev => {
+            if (prev.includes(pet)) return prev.filter(p => p !== pet);
+            return [...prev, pet];
+        });
+    };
 
 
     const reportColumns = [
@@ -493,6 +664,79 @@ const Overview = () => {
                 </motion.div>
             </div>
 
+            {/* ==================== OEE SECTION ==================== */}
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">OEE Metrics</h2>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">Availability, Quality, and Performance Analysis</p>
+                    </div>
+                </div>
+
+                {/* Pet Selector (Horizontal Scroll) */}
+                <div className="w-full overflow-x-auto pb-2 custom-scrollbar">
+                    <div className="flex items-center gap-2">
+                        {petsList.map(pet => {
+                            const isSelected = selectedOeePets.includes(pet);
+                            return (
+                                <button
+                                    key={pet}
+                                    onClick={() => handleOeePetToggle(pet)}
+                                    className={`
+                                        flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all
+                                        ${isSelected
+                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'}
+                                    `}
+                                >
+                                    {pet}
+                                </button>
+                            );
+                        })}
+                        {petsList.length === 0 && <span className="text-sm text-slate-400 italic">No PETs found for today</span>}
+                    </div>
+                </div>
+
+                {/* OEE Charts Grid */}
+                <div className="grid grid-cols-1 gap-8">
+                    {/* Availability Chart */}
+                    <OEEBarChart
+                        title="Availability"
+                        data={oeeData.map(d => ({ name: d.pet, value: d.availability }))}
+                        color="#3b82f6" // blue
+                        tooltipPrefix="Availability"
+                        gridColor={chartGridColor}
+                        textColor={tooltipText}
+                        bgColor={tooltipBg}
+                        borderColor={tooltipBorder}
+                    />
+
+                    {/* Quality Chart */}
+                    <OEEBarChart
+                        title="Quality"
+                        data={oeeData.map(d => ({ name: d.pet, value: d.quality }))}
+                        color="#10b981" // emerald
+                        tooltipPrefix="Quality"
+                        gridColor={chartGridColor}
+                        textColor={tooltipText}
+                        bgColor={tooltipBg}
+                        borderColor={tooltipBorder}
+                    />
+
+                    {/* Performance Chart */}
+                    <OEEBarChart
+                        title="Performance"
+                        data={oeeData.map(d => ({ name: d.pet, value: d.performance }))}
+                        color="#f59e0b" // amber
+                        tooltipPrefix="Performance"
+                        gridColor={chartGridColor}
+                        textColor={tooltipText}
+                        bgColor={tooltipBg}
+                        borderColor={tooltipBorder}
+                    />
+                </div>
+            </div>
+
             {/* Recent Reports Table */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -500,9 +744,7 @@ const Overview = () => {
                 transition={{ delay: 0.7 }}
             >
                 <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Recent Production Reports</h2>
-                    </div>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Recent Production Reports</h2>
                 </div>
                 <DataTable
                     columns={reportColumns}
@@ -524,7 +766,7 @@ const Overview = () => {
                 confirmText="Delete"
                 isLoading={deleting}
             />
-        </div>
+        </div >
     );
 };
 

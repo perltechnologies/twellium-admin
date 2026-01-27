@@ -20,6 +20,7 @@ const ProductList = () => {
                 { header: 'Size', accessor: 'size' },
                 { header: 'Density', accessor: 'standard_density' },
                 { header: 'GV', accessor: 'gv' },
+                { header: 'GV Sum', accessor: 'gv_sum' },
                 { header: 'Dilution', accessor: 'dilution_ratio' },
             ]}
             onAdd={() => navigate('/dashboard/inventory/products/new')}

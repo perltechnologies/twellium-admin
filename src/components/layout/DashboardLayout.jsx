@@ -20,7 +20,8 @@ import {
     User,
     Database, // Added Database icon
     Sun,
-    Moon
+    Moon,
+    Calculator
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { cn, Button } from '../ui';
@@ -104,6 +105,7 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
         },
 
         { name: 'Users', icon: User, path: '/dashboard/users' },
+        { name: 'Formulas', icon: Calculator, path: '/dashboard/formulas' },
         { name: 'Settings', icon: Settings, path: '/dashboard/settings' },
     ];
 
