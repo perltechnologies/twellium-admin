@@ -185,31 +185,12 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
             </div>
 
 
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-                <div className="flex items-center gap-3 mb-4 px-2">
-                    <div className="h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center">
-                        <User className="h-4 w-4 text-slate-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 dark:text-slate-200 truncate">Admin User</p>
-                        <p className="text-xs text-slate-500 truncate">admin@twellium.com</p>
-                    </div>
-                </div>
-                <Button
-                    variant="ghost"
-                    className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                    onClick={logout}
-                >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                </Button>
-            </div>
         </aside >
     );
 };
 
 const DashboardLayout = () => {
-    const { user } = useAuth();
+    const { user, logout } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -236,6 +217,16 @@ const DashboardLayout = () => {
                     </div>
 
                     <div className="flex items-center gap-4">
+                        <div className="hidden md:flex items-center gap-3 mr-2 border-r border-slate-200 dark:border-slate-800 pr-4">
+                            <div className="flex flex-col items-end">
+                                <span className="text-sm font-medium text-slate-900 dark:text-slate-200">Admin User</span>
+                                <span className="text-xs text-slate-500">admin@twellium.com</span>
+                            </div>
+                            <div className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700">
+                                <User className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                            </div>
+                        </div>
+
                         <button
                             onClick={toggleTheme}
                             className="p-2 text-slate-500 dark:text-slate-400 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors"
@@ -244,6 +235,13 @@ const DashboardLayout = () => {
                         </button>
                         <button className="relative p-2 text-slate-500 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors">
                             <Bell className="h-5 w-5" />
+                        </button>
+                        <button
+                            onClick={logout}
+                            className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                            title="Logout"
+                        >
+                            <LogOut className="h-5 w-5" />
                         </button>
                     </div>
                 </header>

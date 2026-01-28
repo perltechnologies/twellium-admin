@@ -66,23 +66,15 @@ const ProductForm = () => {
             // Ensure numeric types
             if (payload.target_speed_bph) payload.target_speed_bph = parseInt(payload.target_speed_bph);
             if (payload.standard_density) payload.standard_density = parseFloat(payload.standard_density);
-            if (payload.gv) {
-                // Ensure it's in the string format we expect, or just pass it as is?
+            if (payload.dilution_ratio) {
                 // Backend expects "1+6".
                 // Logic: "when user does not enters anything after the plus sign and submits, automatically assign a 0 after the plus sign"
-                if (typeof payload.gv === 'string' && payload.gv.endsWith('+')) {
-                    payload.gv = payload.gv + '0';
+                if (typeof payload.dilution_ratio === 'string' && payload.dilution_ratio.endsWith('+')) {
+                    payload.dilution_ratio = payload.dilution_ratio + '0';
                 }
-            } else {
-                // If empty, backend might complain if required. Sending null or empty string?
-                // existing logic didn't seem to enforce non-empty gv strictly in UI (html `required` wasn't on it in original too).
-                // But let's leave it as is if empty.
             }
 
-            // payload.gv is already a string, no need to parseFloat.
-            // if (payload.gv) payload.gv = parseFloat(payload.gv); // REMOVED THIS LINE
-
-            if (payload.dilution_ratio) payload.dilution_ratio = parseFloat(payload.dilution_ratio);
+            if (payload.gv) payload.gv = parseFloat(payload.gv);
 
             if (isEditMode) {
                 await inventoryApi.updateProduct(id, payload);
@@ -165,11 +157,11 @@ const ProductForm = () => {
                                 placeholder="0.4"
                             />
                             <Input
-                                label="Gas Volume (GV)"
+                                label="Dilution Ratio"
                                 type="text"
                                 inputMode="numeric"
-                                name="gv"
-                                value={formData.gv || ''}
+                                name="dilution_ratio" // Changed from gv to dilution_ratio
+                                value={formData.dilution_ratio || ''} // Changed from formData.gv to formData.dilution_ratio
                                 onChange={(e) => {
                                     let val = e.target.value;
                                     // Logic:
@@ -181,14 +173,14 @@ const ProductForm = () => {
                                     // Let's rely on simple state checks and allowed regex.
                                     // Allowed format during typing: "", "N", "N+", "N+M"
 
-                                    const prevVal = formData.gv || '';
+                                    const prevVal = formData.dilution_ratio || ''; // Changed from formData.gv to formData.dilution_ratio
 
                                     // Case: User is backspacing the '+'
                                     // Previous was 'N+', new is 'N'. User wants to delete the '+'.
                                     // Requirement: "delete the number and plus sign not the plus sign only"
                                     // So if we go from "1+" to "1", we should actually go to "".
                                     if (prevVal.match(/^\d\+$/) && val.match(/^\d$/)) {
-                                        setFormData(prev => ({ ...prev, gv: '' }));
+                                        setFormData(prev => ({ ...prev, dilution_ratio: '' })); // Changed from gv to dilution_ratio
                                         return;
                                     }
 
@@ -196,7 +188,7 @@ const ProductForm = () => {
                                     // Previous was "", new is "N".
                                     // Requirement: "automatically insert the plus sign (+) after that"
                                     if (prevVal === "" && val.match(/^\d$/)) {
-                                        setFormData(prev => ({ ...prev, gv: val + '+' }));
+                                        setFormData(prev => ({ ...prev, dilution_ratio: val + '+' })); // Changed from gv to dilution_ratio
                                         return;
                                     }
 
@@ -212,7 +204,7 @@ const ProductForm = () => {
                                     // If user types anything else invalid, ignore.
 
                                     if (val === '') {
-                                        setFormData(prev => ({ ...prev, gv: '' }));
+                                        setFormData(prev => ({ ...prev, dilution_ratio: '' })); // Changed from gv to dilution_ratio
                                         return;
                                     }
 
@@ -221,18 +213,18 @@ const ProductForm = () => {
                                     // Actually we need to allow intermediate 'digit' if we didn't catch it above? No, we caught it.
 
                                     if (/^\d\+\d*$/.test(val)) {
-                                        setFormData(prev => ({ ...prev, gv: val }));
+                                        setFormData(prev => ({ ...prev, dilution_ratio: val })); // Changed from gv to dilution_ratio
                                     }
                                 }}
                                 placeholder="1+6"
                             />
                             <Input
-                                label="Dilution Ratio"
-                                type="number"
+                                label="GV"
+                                type="number" // Changed from text to number
                                 step="0.01"
-                                name="dilution_ratio"
-                                value={formData.dilution_ratio || ''}
-                                onChange={handleChange}
+                                name="gv" // Changed from dilution_ratio to gv
+                                value={formData.gv || ''} // Changed from formData.dilution_ratio to formData.gv
+                                onChange={handleChange} // Changed from custom logic to handleChange
                                 placeholder="1.2"
                             />
                         </div>

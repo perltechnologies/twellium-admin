@@ -6,8 +6,59 @@ import { productionApi } from '../../api/production';
 import { motion } from 'framer-motion';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Label, Legend,
-    BarChart, Bar, XAxis, YAxis, CartesianGrid
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList
 } from 'recharts';
+import { useTheme } from '../../context/ThemeContext';
+
+// OEE Chart Component
+const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, bgColor, borderColor }) => (
+    <Card className="p-6 flex flex-col min-h-[400px]">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">{title}</h3>
+        <div className="flex-1 w-full min-h-[300px]">
+            {data.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data} margin={{ top: 30, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+                        <XAxis
+                            dataKey="name"
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: textColor, fontSize: 12 }}
+                            dy={10}
+                        />
+                        <YAxis
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: textColor, fontSize: 12 }}
+                            domain={[0, 100]}
+                        />
+                        <RechartsTooltip
+                            cursor={{ fill: 'transparent' }}
+                            contentStyle={{ backgroundColor: bgColor, borderColor: borderColor, borderRadius: '8px', color: textColor }}
+                            formatter={(value) => [`${value}%`, tooltipPrefix]}
+                        />
+                        <Bar
+                            dataKey="value"
+                            fill={color}
+                            radius={[4, 4, 0, 0]}
+                            barSize={40}
+                            animationDuration={1500}
+                        >
+                            {data.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={color} />
+                            ))}
+                            <LabelList dataKey="value" position="top" fill={color} formatter={(val) => `${val}%`} fontSize={12} fontWeight="bold" />
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-lg">
+                    No Data
+                </div>
+            )}
+        </div>
+    </Card>
+);
 
 const StatCard = ({ title, value, icon: Icon, color }) => (
     <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex items-center justify-between">
@@ -417,18 +468,63 @@ const ReportDetails = () => {
             minutes: categoryMap[key]
         })).sort((a, b) => b.minutes - a.minutes);
 
+        // Initialize OEE sums
+        let sumWaste = 0;
+        let sumFillerReading = 0;
+
+        // Process Meter Readings for OEE
+        if (report.meter_readings) {
+            report.meter_readings.forEach(m => {
+                sumWaste += (parseFloat(m.filler_rejects) || 0);
+                sumFillerReading += (parseFloat(m.filter_reading) || 0);
+            });
+        }
+
+        // --- OEE CALCULATIONS ---
+
+        // 1. Availability
+        const prodHours = report.total_production_time_hours ? parseFloat(report.total_production_time_hours) : 1;
+        // Using totalDowntime calculated from logs above
+        const downtimeHours = totalDowntime / 60;
+        const availVal = ((prodHours - downtimeHours) / prodHours) * 100;
+
+        // 2. Quality
+        // Formula: (Total Potential Bottles - WASTE) / Total Potential Bottles * 100
+        const totalPotential = (report.total_bottles_produced ? parseFloat(report.total_bottles_produced) : 1);
+        const qualVal = ((totalPotential - sumWaste) / totalPotential) * 100;
+
+        // 3. Performance
+        // Formula: Filler Reading / (Speed * Hours) * 100
+        const speed = report.line_speed ? parseFloat(report.line_speed) : 1;
+        const weightedHours = speed * prodHours;
+        const perfVal = (sumFillerReading / weightedHours) * 100;
+
+        const oeeMetrics = {
+            availability: Math.min(Math.max(availVal || 0, 0), 100).toFixed(1),
+            quality: Math.min(Math.max(qualVal || 0, 0), 100).toFixed(1),
+            performance: Math.min(Math.max(perfVal || 0, 0), 100).toFixed(1)
+        };
+
         return {
             efficiencyData,
             downtimeData,
             totalOutput: totalOutput || report.total_bottles_produced || 0, // Fallback to report field
             totalDowntime: totalDowntime || report.total_downtime_minutes || 0,
             efficiency: Number(effVal.toFixed(1)) || report.efficiency || 0,
-            productionTime: productionTime || report.total_production_time_hours || 0
+            productionTime: productionTime || report.total_production_time_hours || 0,
+            oeeMetrics
         };
     };
 
-    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime } = report ? calculateStats() : {
-        efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
+    const chartGridColor = isDark ? '#334155' : '#e2e8f0';
+    const tooltipBg = isDark ? '#0f172a' : '#ffffff';
+    const tooltipBorder = isDark ? '#1e293b' : '#e2e8f0';
+    const tooltipText = isDark ? '#f1f5f9' : '#0f172a';
+
+    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics } = report ? calculateStats() : {
+        efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }
     };
     const COLOR_EFFICIENCY = '#10b981'; // emerald-500
     const COLOR_LOSS = '#ef4444'; // red-500
@@ -523,6 +619,40 @@ const ReportDetails = () => {
                         <DetailRow label="Prod. Manager" value={report.production_manager || '-'} />
                     </div>
                 </Card>
+            </div>
+
+            {/* OEE Analysis Charts */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <OEEBarChart
+                    title="Availability"
+                    data={[{ name: report.pet_name, value: Number(oeeMetrics.availability) }]}
+                    color="#3b82f6" // blue
+                    tooltipPrefix="Availability"
+                    gridColor={chartGridColor}
+                    textColor={tooltipText}
+                    bgColor={tooltipBg}
+                    borderColor={tooltipBorder}
+                />
+                <OEEBarChart
+                    title="Quality"
+                    data={[{ name: report.pet_name, value: Number(oeeMetrics.quality) }]}
+                    color="#10b981" // emerald
+                    tooltipPrefix="Quality"
+                    gridColor={chartGridColor}
+                    textColor={tooltipText}
+                    bgColor={tooltipBg}
+                    borderColor={tooltipBorder}
+                />
+                <OEEBarChart
+                    title="Performance"
+                    data={[{ name: report.pet_name, value: Number(oeeMetrics.performance) }]}
+                    color="#f59e0b" // amber
+                    tooltipPrefix="Performance"
+                    gridColor={chartGridColor}
+                    textColor={tooltipText}
+                    bgColor={tooltipBg}
+                    borderColor={tooltipBorder}
+                />
             </div>
 
             {/* Production Performance Analysis */}
