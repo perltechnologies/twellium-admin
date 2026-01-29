@@ -17,6 +17,9 @@ export const productionApi = {
     addBatch: (id, data) => api.post(`/production/reports/${id}/add_batch/`, data),
     addMaterial: (id, data) => api.post(`/production/reports/${id}/add_material/`, data),
     addStoppages: (id, data) => api.post(`/production/reports/${id}/add_stoppage_logs/`, data),
+    addProductionReading: (id, data) => api.post(`/production/reports/${id}/add_production_reading/`, data),
+    addSyrupReading: (id, data) => api.post(`/production/reports/${id}/add_syrup_reading/`, data),
+    addCO2Reading: (id, data) => api.post(`/production/reports/${id}/add_co2_reading/`, data),
 
     // Runs
     getRuns: (params) => api.get('/production/runs/', { params }),

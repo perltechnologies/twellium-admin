@@ -373,6 +373,124 @@ const StoppageTimeline = ({ logs }) => {
     );
 };
 
+const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) => {
+    const [activeReadingTab, setActiveReadingTab] = useState('production');
+
+    console.log('MeterReadingsView props:', { productionReadings, syrupReadings, co2Readings });
+
+    const ReadingCard = ({ title, data, fields }) => {
+        console.log(`ReadingCard for ${title}:`, data);
+
+        if (!data) {
+            return (
+                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                    <p className="text-sm">No {title} data recorded</p>
+                </div>
+            );
+        }
+
+        return (
+            <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {fields.map((field) => (
+                        <div key={field.key} className="bg-slate-50 dark:bg-slate-950/30 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50">
+                            <span className="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider block mb-1">
+                                {field.label}
+                            </span>
+                            <span className="text-slate-900 dark:text-slate-100 font-medium">
+                                {data[field.key] !== null && data[field.key] !== undefined ? data[field.key] : '-'}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+                {data.remarks && (
+                    <div className="mt-4 bg-slate-50 dark:bg-slate-950/30 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50">
+                        <span className="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider block mb-1">
+                            Remarks
+                        </span>
+                        <p className="text-slate-700 dark:text-slate-300 text-sm">{data.remarks}</p>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const productionFields = [
+        { key: 'start_reading', label: 'Start Reading' },
+        { key: 'end_reading', label: 'End Reading' },
+        { key: 'reading_difference', label: 'Difference' },
+        { key: 'total_consumed', label: 'Total Consumed' },
+        { key: 'filler_reading', label: 'Filler Reading' },
+        { key: 'filler_rejects', label: 'Filler Rejects' },
+        { key: 'blower_rejects', label: 'Blower Rejects' },
+        { key: 'shrink_reading', label: 'Shrink Reading' },
+        { key: 'shrink_reading_packs_percent', label: 'Shrink %' },
+    ];
+
+    const syrupFields = [
+        { key: 'start_reading', label: 'Start Reading' },
+        { key: 'end_reading', label: 'End Reading' },
+        { key: 'reading_difference', label: 'Difference' },
+        { key: 'total_consumed', label: 'Total Consumed' },
+        { key: 'total_syrup_used_liters', label: 'Syrup Used (L)' },
+        { key: 'std_syrup_consumption', label: 'Std Consumption' },
+        { key: 'syrup_yield_percentage', label: 'Yield %' },
+        { key: 'syrup_density', label: 'Density' },
+        { key: 'dilution_ratio', label: 'Dilution Ratio' },
+        { key: 'syrup_dilution_ratio', label: 'Syrup DR' },
+    ];
+
+    const co2Fields = [
+        { key: 'start_reading', label: 'Start Reading' },
+        { key: 'end_reading', label: 'End Reading' },
+        { key: 'reading_difference', label: 'Difference' },
+        { key: 'total_consumed', label: 'Total Consumed' },
+        { key: 'total_co2_consumed_kg', label: 'CO2 Consumed (kg)' },
+        { key: 'std_co2_consumed_kg', label: 'Std CO2 (kg)' },
+        { key: 'co2_yield_percentage', label: 'CO2 Yield %' },
+        { key: 'dilution_ratio', label: 'Dilution Ratio' },
+        { key: 'yield_percentage', label: 'Yield %' },
+    ];
+
+    const readingTabs = [
+        { id: 'production', label: 'Production', data: productionReadings, fields: productionFields },
+        { id: 'syrup', label: 'Syrup', data: syrupReadings, fields: syrupFields },
+        { id: 'co2', label: 'CO2', data: co2Readings, fields: co2Fields },
+    ];
+
+    return (
+        <div className="space-y-4">
+            {/* Segmented Control */}
+            <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">
+                {readingTabs.map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveReadingTab(tab.id)}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeReadingTab === tab.id
+                            ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                            }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Reading Content */}
+            {readingTabs.map((tab) => (
+                activeReadingTab === tab.id && (
+                    <ReadingCard
+                        key={tab.id}
+                        title={tab.label}
+                        data={tab.data}
+                        fields={tab.fields}
+                    />
+                )
+            ))}
+        </div>
+    );
+};
+
 const ReportDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -536,7 +654,6 @@ const ReportDetails = () => {
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
         { id: 'materials', label: 'Materials', count: report.materials?.length || 0 }, // Materials is an array of groups, count might be misleading if just groups, but OK for now.
         { id: 'stoppages', label: 'Stoppages', count: report.stoppage_logs?.length || 0 },
-        { id: 'meters', label: 'Meter Readings', count: report.meter_readings?.length || 0 },
         { id: 'workers', label: 'Workers', count: report.workers?.length || 0 },
     ];
 
@@ -619,40 +736,6 @@ const ReportDetails = () => {
                         <DetailRow label="Prod. Manager" value={report.production_manager || '-'} />
                     </div>
                 </Card>
-            </div>
-
-            {/* OEE Analysis Charts */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <OEEBarChart
-                    title="Availability"
-                    data={[{ name: report.pet_name, value: Number(oeeMetrics.availability) }]}
-                    color="#3b82f6" // blue
-                    tooltipPrefix="Availability"
-                    gridColor={chartGridColor}
-                    textColor={tooltipText}
-                    bgColor={tooltipBg}
-                    borderColor={tooltipBorder}
-                />
-                <OEEBarChart
-                    title="Quality"
-                    data={[{ name: report.pet_name, value: Number(oeeMetrics.quality) }]}
-                    color="#10b981" // emerald
-                    tooltipPrefix="Quality"
-                    gridColor={chartGridColor}
-                    textColor={tooltipText}
-                    bgColor={tooltipBg}
-                    borderColor={tooltipBorder}
-                />
-                <OEEBarChart
-                    title="Performance"
-                    data={[{ name: report.pet_name, value: Number(oeeMetrics.performance) }]}
-                    color="#f59e0b" // amber
-                    tooltipPrefix="Performance"
-                    gridColor={chartGridColor}
-                    textColor={tooltipText}
-                    bgColor={tooltipBg}
-                    borderColor={tooltipBorder}
-                />
             </div>
 
             {/* Production Performance Analysis */}
@@ -755,6 +838,53 @@ const ReportDetails = () => {
                     </div>
                 </Card>
             </div>
+
+            {/* OEE Analysis Charts */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <OEEBarChart
+                    title="Availability"
+                    data={[{ name: report.pet_name, value: Number(oeeMetrics.availability) }]}
+                    color="#3b82f6" // blue
+                    tooltipPrefix="Availability"
+                    gridColor={chartGridColor}
+                    textColor={tooltipText}
+                    bgColor={tooltipBg}
+                    borderColor={tooltipBorder}
+                />
+                <OEEBarChart
+                    title="Quality"
+                    data={[{ name: report.pet_name, value: Number(oeeMetrics.quality) }]}
+                    color="#10b981" // emerald
+                    tooltipPrefix="Quality"
+                    gridColor={chartGridColor}
+                    textColor={tooltipText}
+                    bgColor={tooltipBg}
+                    borderColor={tooltipBorder}
+                />
+                <OEEBarChart
+                    title="Performance"
+                    data={[{ name: report.pet_name, value: Number(oeeMetrics.performance) }]}
+                    color="#f59e0b" // amber
+                    tooltipPrefix="Performance"
+                    gridColor={chartGridColor}
+                    textColor={tooltipText}
+                    bgColor={tooltipBg}
+                    borderColor={tooltipBorder}
+                />
+            </div>
+
+            {/* Meter Readings Section */}
+            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                <div className="mb-6">
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Meter Readings</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Production, Syrup, and CO2 consumption data</p>
+                </div>
+                <MeterReadingsView
+                    productionReadings={report.production_readings}
+                    syrupReadings={report.syrup_readings}
+                    co2Readings={report.co2_readings}
+                />
+            </Card>
 
             {/* Remarks Section */}
             {(report.remarks || report.summary_text) && (
@@ -862,20 +992,6 @@ const ReportDetails = () => {
 
                     {activeTab === 'stoppages' && (
                         <StoppageLogsView logs={report.stoppage_logs} />
-                    )}
-
-                    {activeTab === 'meters' && (
-                        <DataTable
-                            columns={[
-                                { header: 'Type', accessor: 'reading_type' },
-                                { header: 'Start', accessor: 'start_reading' },
-                                { header: 'End', accessor: 'end_reading' },
-                                { header: 'Difference', accessor: 'reading_difference' },
-                                { header: 'Consump.', accessor: 'total_consumed' },
-                            ]}
-                            data={report.meter_readings}
-                            isLoading={false}
-                        />
                     )}
 
                     {activeTab === 'workers' && (
