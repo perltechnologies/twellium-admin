@@ -17,7 +17,7 @@ const ProductList = () => {
                 { header: 'ID', accessor: 'id' },
                 { header: 'SKU Code', accessor: 'sku_code' },
                 { header: 'Name', accessor: 'name' },
-                { header: 'Size', accessor: 'size' },
+                { header: 'Size (ML)', accessor: 'size' },
                 { header: 'Density', accessor: 'standard_density' },
                 { header: 'Dilution Ratio', accessor: 'dilution_ratio' },
                 { header: 'DR Sum', accessor: 'dr_sum' },

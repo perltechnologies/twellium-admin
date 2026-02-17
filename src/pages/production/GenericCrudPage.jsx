@@ -22,18 +22,18 @@ const GenericCrudPage = ({
     const [formData, setFormData] = useState({});
     const [submitting, setSubmitting] = useState(false);
 
-    // Search and Filter State
+
     const [params, setParams] = useState({
         search: '',
         ...filters.reduce((acc, f) => ({ ...acc, [f.name]: '' }), {})
     });
 
-    // Delete Modal State
+
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
     const [deleting, setDeleting] = useState(false);
 
-    // Pagination State
+
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize] = useState(15);
     const [totalCount, setTotalCount] = useState(0);
@@ -49,9 +49,7 @@ const GenericCrudPage = ({
             };
             const res = await api.list(apiParams);
 
-            // Handle different possible response structures
-            // 1. DRF Standard: { count: 100, results: [...] }
-            // 2. Wrapped: { data: [...] } or { data: { results: [...] } }
+
             const responseData = res.data;
             let listData = [];
             let count = 0;
@@ -89,7 +87,7 @@ const GenericCrudPage = ({
         }
     };
 
-    // Reset pagination when switching modules (title changes)
+
     useEffect(() => {
         setCurrentPage(1);
         setParams(prev => ({ ...prev, search: '' })); // Reset search too
@@ -97,7 +95,7 @@ const GenericCrudPage = ({
 
     useEffect(() => {
         fetchData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [currentPage, title, params]); // Re-fetch when params change
 
     const handlePageChange = (newPage) => {

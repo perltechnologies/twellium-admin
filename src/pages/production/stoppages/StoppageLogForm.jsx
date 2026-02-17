@@ -43,7 +43,6 @@ const StoppageLogForm = () => {
                     productionApi.getDowntimeSubCategories({ page_size: 1000 })
                 ]);
 
-                // Helper to extract results array from varied API responses
                 const getResults = (res) => {
                     const data = res.data;
                     if (Array.isArray(data)) return data;
@@ -58,7 +57,7 @@ const StoppageLogForm = () => {
                 setDowntimeCategories(getResults(dtCatsRes));
                 setDowntimeSubCategories(getResults(dtSubCatsRes));
 
-                // If Edit Mode, Fetch Existing Log
+
                 if (isEditMode) {
                     const logRes = await productionApi.getStoppage(id);
                     const log = logRes.data.data;
@@ -142,8 +141,7 @@ const StoppageLogForm = () => {
                 }))
             };
 
-            // Clean up payload (incidents sometimes need stoppage_log id if updating existing, 
-            // but often nested serializers handle this. Following request payload structure)
+
 
             if (isEditMode) {
                 await productionApi.updateStoppage(id, payload);

@@ -1,5 +1,5 @@
 import React from 'react';
-import GenericCrudPage from '../production/GenericCrudPage'; // Reusing GenericCrudPage as it fits well
+import GenericCrudPage from '../production/GenericCrudPage';
 import { usersApi } from '../../api/users';
 import { useNavigate } from 'react-router-dom';
 

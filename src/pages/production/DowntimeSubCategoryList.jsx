@@ -10,10 +10,7 @@ const DowntimeSubCategoryList = () => {
         const fetchCategories = async () => {
             try {
                 const res = await productionApi.getDowntimeCategories({ page_size: 1000 }); // Get all categories
-                // Handle various response structures:
-                // 1. DRF { results: [...] }
-                // 2. Wrapped { data: [...] }
-                // 3. Wrapped { data: { results: [...] } }
+
                 const responseData = res.data;
                 let listData = [];
 

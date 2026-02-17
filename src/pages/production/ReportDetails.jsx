@@ -350,15 +350,24 @@ const StoppageTimeline = ({ logs }) => {
                             {log.incidents && log.incidents.length > 0 ? (
                                 <div className="space-y-2 mt-3">
                                     {log.incidents.map((inc, i) => (
-                                        <div key={i} className="flex gap-3 items-start text-sm p-2 bg-white dark:bg-slate-950/30 rounded border border-slate-100 dark:border-slate-800/50">
-                                            <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                                            <div>
-                                                <p className="font-medium text-slate-800 dark:text-slate-200">
-                                                    {inc.downtime_category_name || 'Uncategorized'}
-                                                    {inc.sub_downtime_category_name && <span className="text-slate-400 font-normal"> / {inc.sub_downtime_category_name}</span>}
-                                                </p>
-                                                <p className="text-slate-600 dark:text-slate-400 text-xs mt-0.5">{inc.incident_description}</p>
+                                        <div key={i} className="flex gap-3 items-start justify-between text-sm p-2 bg-white dark:bg-slate-950/30 rounded border border-slate-100 dark:border-slate-800/50">
+                                            <div className="flex gap-3 items-start">
+                                                <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                                                <div>
+                                                    <p className="font-medium text-slate-800 dark:text-slate-200">
+                                                        {inc.downtime_category_name || 'Uncategorized'}
+                                                        {inc.sub_downtime_category_name && <span className="text-slate-400 font-normal"> / {inc.sub_downtime_category_name}</span>}
+                                                    </p>
+                                                    <p className="text-slate-600 dark:text-slate-400 text-xs mt-0.5">{inc.incident_description}</p>
+                                                </div>
                                             </div>
+                                            {inc.incident_duration && (
+                                                <div className="flex flex-col items-end flex-shrink-0 ml-4">
+                                                    <span className="text-slate-900 dark:text-slate-100 font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded text-xs border border-amber-100 dark:border-amber-500/20 whitespace-nowrap">
+                                                        {inc.incident_duration} min
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -518,12 +527,14 @@ const ReportDetails = () => {
 
         let totalEfficiency = 0;
         let logCount = 0;
+        let totalDowntimeSum = 0;
         let totalDowntime = 0;
         let totalOutput = 0;
         const categoryMap = {};
+        let plannedDowntime = 0;
 
         // Stoppage Logs Processing
-        if (report.stoppage_logs) {
+        if (report.stoppage_logs && report.stoppage_logs.length > 0) {
             report.stoppage_logs.forEach(log => {
                 // Efficiency
                 const eff = parseFloat(log.efficiency);
@@ -532,7 +543,8 @@ const ReportDetails = () => {
                     logCount++;
                 }
                 const minutes = log.downtime_minutes || 0;
-                if (minutes > 0) totalDowntime += minutes;
+                // Accumulate sum for average calculation
+                totalDowntimeSum += minutes;
 
                 // Bottles
                 if (log.bottles_produced) {
@@ -544,30 +556,36 @@ const ReportDetails = () => {
                     log.incidents.forEach(inc => {
                         const catName = inc.downtime_category_name || 'Uncategorized';
                         if (!categoryMap[catName]) categoryMap[catName] = 0;
-                        categoryMap[catName] += minutes;
+                        categoryMap[catName] += (inc.incident_duration || 0);
+
+                        // Check for Planned Downtime
+                        if (catName.toLowerCase().includes('planned')) {
+                            // Only sum planned downtime (user didn't ask to average this, but be careful with mixed units)
+                            // Assuming planned downtime incidents are absolute durations.
+                            plannedDowntime += (inc.incident_duration || 0);
+                        }
                     });
                 } else if (minutes > 0) {
                     if (!categoryMap['Unspecified']) categoryMap['Unspecified'] = 0;
                     categoryMap['Unspecified'] += minutes;
                 }
             });
+
+
+            totalDowntime = totalDowntimeSum / report.stoppage_logs.length;
         }
 
-        // Also add bottles from runs if available (assuming runs are separate from log output for now, or just fallback)
-        // If stoppage logs have bottles, usually that's the source for hourly logs. 
-        // If "runs" exist (legacy?), might calculate there. 
-        // Let's rely on stoppage_logs for now based on user's recent tasks.
+
 
         const avgEff = logCount > 0 ? totalEfficiency / logCount : 0;
         const effVal = Math.min(Math.max(avgEff, 0), 100);
 
-        // Calculate Production Time (Hours) from Start/End
+
         let productionTime = 0;
         if (report.start_time && report.end_time) {
             const start = new Date(`${report.production_date}T${report.start_time}`);
             const end = new Date(`${report.production_date}T${report.end_time}`);
-            // Handle cross-day shift? Assuming same day or standard date handling if full ISO provided
-            // If time string only:
+
             const sTime = new Date(`1970-01-01T${report.start_time}`);
             const eTime = new Date(`1970-01-01T${report.end_time}`);
             if (eTime < sTime) eTime.setDate(eTime.getDate() + 1); // Next day
@@ -586,11 +604,11 @@ const ReportDetails = () => {
             minutes: categoryMap[key]
         })).sort((a, b) => b.minutes - a.minutes);
 
-        // Initialize OEE sums
+
         let sumWaste = 0;
         let sumFillerReading = 0;
 
-        // Process Meter Readings for OEE
+
         if (report.meter_readings) {
             report.meter_readings.forEach(m => {
                 sumWaste += (parseFloat(m.filler_rejects) || 0);
@@ -600,22 +618,26 @@ const ReportDetails = () => {
 
         // --- OEE CALCULATIONS ---
 
-        // 1. Availability
-        const prodHours = report.total_production_time_hours ? parseFloat(report.total_production_time_hours) : 1;
-        // Using totalDowntime calculated from logs above
+        // Base values
+        const prodHours = report.total_production_time_hours ? parseFloat(report.total_production_time_hours) : (productionTime || 1);
         const downtimeHours = totalDowntime / 60;
-        const availVal = ((prodHours - downtimeHours) / prodHours) * 100;
-
-        // 2. Quality
-        // Formula: (Total Potential Bottles - WASTE) / Total Potential Bottles * 100
-        const totalPotential = (report.total_bottles_produced ? parseFloat(report.total_bottles_produced) : 1);
-        const qualVal = ((totalPotential - sumWaste) / totalPotential) * 100;
-
-        // 3. Performance
-        // Formula: Filler Reading / (Speed * Hours) * 100
+        const plannedDowntimeHours = plannedDowntime / 60;
+        const totalProductionPcs = (report.total_packs && report.bottles_per_pack)
+            ? (parseInt(report.total_packs) * parseInt(report.bottles_per_pack))
+            : (totalOutput || 1);
         const speed = report.line_speed ? parseFloat(report.line_speed) : 1;
-        const weightedHours = speed * prodHours;
-        const perfVal = (sumFillerReading / weightedHours) * 100;
+
+
+        const availNumerator = prodHours - downtimeHours;
+        const availDenominator = prodHours - plannedDowntimeHours;
+        const availVal = availDenominator > 0 ? (availNumerator / availDenominator) * 100 : 0;
+
+
+        const qualVal = totalProductionPcs > 0 ? ((totalProductionPcs - sumWaste) / totalProductionPcs) * 100 : 0;
+
+
+        const expectedProduction = availNumerator * speed;
+        const perfVal = expectedProduction > 0 ? (totalProductionPcs / expectedProduction) * 100 : 0;
 
         const oeeMetrics = {
             availability: Math.min(Math.max(availVal || 0, 0), 100).toFixed(1),

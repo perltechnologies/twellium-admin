@@ -73,6 +73,7 @@ const Sidebar = ({ isOpen, isMobile, onClose }) => {
                 { name: 'Dilution Ratios', path: '/dashboard/production/configs/ratios' },
                 { name: 'Syrup Concentrations', path: '/dashboard/production/configs/concentrations' },
                 { name: 'Bottles Per Pack', path: '/dashboard/production/configs/bottles-per-pack' },
+                { name: 'Line Speeds', path: '/dashboard/production/configs/line-speeds' },
             ]
         },
         {

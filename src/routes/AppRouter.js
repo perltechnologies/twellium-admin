@@ -12,6 +12,10 @@ const Formulas = React.lazy(() => import('../pages/dashboard/Formulas'));
 const ProductionList = React.lazy(() => import('../pages/production/ProductionList'));
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
 const ReportDetails = React.lazy(() => import('../pages/production/ReportDetails'));
+const ModeSelection = React.lazy(() => import('../pages/ModeSelection'));
+// Post Production Pages
+const PostProductionLayout = React.lazy(() => import('../components/layout/PostProductionLayout'));
+const PostProduction = React.lazy(() => import('../pages/post-production/Production'));
 const StoppageLogList = React.lazy(() => import('../pages/production/stoppages/StoppageLogList'));
 const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/StoppageLogForm'));
 const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppages/StoppageLogDetails'));
@@ -37,6 +41,24 @@ export const AppRouter = () => {
                 <React.Suspense fallback={<div className="h-screen w-screen bg-slate-950 flex items-center justify-center text-emerald-500">Loading...</div>}>
                     <Routes>
                         <Route path="/login" element={<Login />} />
+
+                        <Route path="/mode-selection" element={
+                            <ProtectedRoute>
+                                <ModeSelection />
+                            </ProtectedRoute>
+                        } />
+
+                        {/* Post Production Routes */}
+                        <Route path="/post-production" element={
+                            <ProtectedRoute>
+                                <PostProductionLayout />
+                            </ProtectedRoute>
+                        }>
+                            <Route path="production" element={<PostProduction />} />
+                            {/* Placeholders for now */}
+                            <Route path="warehouse" element={<div className="p-8 text-center text-slate-500">Warehouse Scanning Module Coming Soon</div>} />
+                            <Route path="loading" element={<div className="p-8 text-center text-slate-500">Loading Module Coming Soon</div>} />
+                        </Route>
 
                         <Route path="/dashboard" element={
                             <ProtectedRoute>
@@ -386,12 +408,36 @@ export const AppRouter = () => {
                                                 }}
                                                 columns={[
                                                     { header: 'ID', accessor: 'id' },
+                                                    { header: 'Size', accessor: 'size' },
+                                                    { header: 'Quantity', accessor: 'quantity' },
                                                     { header: 'Name', accessor: 'name' },
-                                                    { header: 'Value', accessor: 'value' },
                                                 ]}
                                                 formFields={[
-                                                    { name: 'name', label: 'Config Name', required: true },
-                                                    { name: 'value', label: 'Number of Bottles', type: 'number', required: true },
+                                                    { name: 'size', label: 'Size', type: 'number', step: '0.01', required: true },
+                                                    { name: 'quantity', label: 'Quantity', type: 'number', required: true },
+                                                ]}
+                                            />
+                                        }
+                                    />
+                                    <Route
+                                        path="line-speeds"
+                                        element={
+                                            <GenericCrudPage
+                                                title="Line Speeds"
+                                                api={{
+                                                    list: productionApi.getLineSpeeds,
+                                                    create: productionApi.createLineSpeed,
+                                                    update: productionApi.updateLineSpeed,
+                                                    delete: productionApi.deleteLineSpeed
+                                                }}
+                                                columns={[
+                                                    { header: 'ID', accessor: 'id' },
+                                                    { header: 'Name', accessor: 'name' },
+                                                    { header: 'Speed', accessor: 'speed' },
+                                                ]}
+                                                formFields={[
+                                                    { name: 'name', label: 'Name', required: true },
+                                                    { name: 'speed', label: 'Speed', type: 'number', step: '0.01', required: true },
                                                 ]}
                                             />
                                         }

@@ -43,7 +43,7 @@ const StatCard = ({ title, value, subtext, icon: Icon, color, delay }) => {
     );
 };
 
-// OEE Chart Component
+
 const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, bgColor, borderColor }) => (
     <Card className="p-6 flex flex-col min-h-[500px]">
         <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">{title}</h3>
@@ -98,7 +98,7 @@ const Overview = () => {
     const navigate = useNavigate();
     const { theme } = useTheme();
 
-    // Stats State
+
     const [stats, setStats] = useState({
         activePets: 0,
         totalDowntime: 0,
@@ -109,20 +109,20 @@ const Overview = () => {
         downtimeByPet: []
     });
 
-    // Data State
+
     const [recentReports, setRecentReports] = useState([]);
     const [allReports, setAllReports] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // Filter/Selection State
+
     const [selectedPet, setSelectedPet] = useState('');
     const [petEfficiencyData, setPetEfficiencyData] = useState([]);
 
-    // OEE State
+
     const [selectedOeePets, setSelectedOeePets] = useState([]);
     const [oeeData, setOeeData] = useState([]);
 
-    // Delete Modal State
+
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
     const [deleting, setDeleting] = useState(false);
@@ -142,27 +142,23 @@ const Overview = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // Use local date for "Today" instead of UTC
+
             const today = format(new Date(), 'yyyy-MM-dd');
 
-            // 1. Fetch Today's Reports (for Output and Active PETs)
-            // 1. Fetch Today's Reports (for Output and Active PETs)
             const reportsRes = await productionApi.getReports({ production_date: today, page_size: 100 });
             const reports = reportsRes.data.data || reportsRes.data.results || [];
             setAllReports(reports);
 
-            // Default select first pet if none selected
+
             if (!selectedPet && reports.length > 0) {
                 const availablePets = [...new Set(reports.map(r => r.pet_name).filter(Boolean))];
                 if (availablePets.length > 0) setSelectedPet(availablePets[0]);
             }
 
-            // 2. Fetch Recent Reports (for Table)
             const recentReportsRes = await productionApi.getReports({ page_size: 10 });
             const recent = recentReportsRes.data.data || recentReportsRes.data.results || [];
 
-            // 3. Calculate Downtime from Report Stoppage Logs
-            // We iterate through reports and their nested stoppage_logs to ensure consistency with Efficiency calculations.
+
             let totalDowntimeCalc = 0;
             const downtimeMap = {};
 
@@ -182,16 +178,14 @@ const Overview = () => {
 
             const downtimeByPetData = Object.entries(downtimeMap).map(([name, value]) => ({ name, value }));
 
-            // --- Calculations ---
 
-            // Active PETs (Unique PETs in today's reports)
             const uniquePets = new Set(reports.map(r => r.pet_name).filter(Boolean));
             const activePetsCount = uniquePets.size;
 
-            // Running Reports (Status = STARTED)
+
             const runningCount = reports.filter(r => r.status === 'STARTED').length;
 
-            // Chart: Output by PET
+
             const outputMap = {};
             reports.forEach(r => {
                 const pet = r.pet_name || 'Unknown';
@@ -229,8 +223,7 @@ const Overview = () => {
             const petReports = allReports.filter(r => r.pet_name === selectedPet);
 
             if (petReports.length > 0) {
-                // Calculate average efficiency from stoppage_logs
-                // Logic: Flatten all stoppage_logs from all reports for this PET, extract valid efficiency numbers, and average them.
+
                 let totalEfficiency = 0;
                 let logCount = 0;
 
@@ -265,9 +258,7 @@ const Overview = () => {
 
     // OEE Logic Effect
     useEffect(() => {
-        // Initialize with all available PETs or just the first one? User said "first pet is automatically selected".
-        // So on load, if selectedOeePets is empty and we have reports, select first one.
-        // We do this inside the fetchData or here.
+
         if (allReports.length > 0 && selectedOeePets.length === 0) {
             const available = [...new Set(allReports.map(r => r.pet_name).filter(Boolean))];
             if (available.length > 0) setSelectedOeePets([available[0]]);
@@ -280,16 +271,16 @@ const Overview = () => {
                 const petReports = allReports.filter(r => r.pet_name === petName);
                 if (petReports.length === 0) return null;
 
-                // --- AGGREGATION ---
-                let sumPlannedTime = 0; // total_production_time_hours
-                let sumExternalDowntime = 0; // downtime_minutes (converted to hours)
 
-                let sumTotalBottlesProduced = 0; // total_bottles_produced
-                let sumWaste = 0; // filler_rejects
+                let sumPlannedTime = 0;
+                let sumExternalDowntime = 0;
 
-                let sumFillerReading = 0; // filter_reading
-                let sumLineSpeed = 0; // line_speed
-                let weightedProductionHours = 0; // for performance denom: speed * time
+                let sumTotalBottlesProduced = 0;
+                let sumWaste = 0;
+
+                let sumFillerReading = 0;
+                let sumLineSpeed = 0;
+                let weightedProductionHours = 0;
 
                 // Helper to safely get number or default 1
                 const safeNum = (val, def = 1) => {
@@ -335,23 +326,22 @@ const Overview = () => {
                     weightedProductionHours += (rSpeed * prodHours);
                 });
 
-                // --- 1. AVAILABILITY ---
+                // 1. AVAILABILITY
                 // Formula: (PLANNED TIME - EXT DOWNTIME HOURS) / PLANNED TIME * 100
                 const downtimeHours = sumExternalDowntime / 60;
                 let availability = ((sumPlannedTime - downtimeHours) / sumPlannedTime) * 100;
 
-                // --- 2. QUALITY ---
+                // 2. QUALITY
                 // Formula: (Total Potential - WASTE) / Total Potential * 100
                 // Potential = total_bottles_produced
                 const totalPotential = sumTotalBottlesProduced; // already defaulted to 1 if null per item
                 let quality = ((totalPotential - sumWaste) / totalPotential) * 100;
 
-                // --- 3. PERFORMANCE ---
+                // 3. PERFORMANCE
                 // Formula: filler reading / (speed * hours) * 100
-                // We calculated weightedProductionHours = sum(speed * hours) for each report
                 let performance = (sumFillerReading / weightedProductionHours) * 100;
 
-                // Constraints 0-100
+
                 return {
                     pet: petName,
                     availability: Math.min(Math.max(availability || 0, 0), 100).toFixed(1),

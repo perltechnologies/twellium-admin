@@ -28,13 +28,8 @@ export const DataTable = ({
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Debounce search internally or pass up immediately if debounced parent-side? 
-    // GenericCrudPage does not appear to debounce, so let's debounce here or assume parent handles raw input if we want instant feedback.
-    // However, GenericCrudPage sets params on change, which triggers fetch. We should probably debounce in DataTable or GenericCrudPage.
-    // Given the current setup, we'll let parent handle it but maybe add a small delay here if needed.
-    // For now, let's keep it simple: pass changes up. 
 
-    // Better: Debounce here to avoid rapid re-fetches
+
     React.useEffect(() => {
         const timer = setTimeout(() => {
             if (onSearch) onSearch(searchTerm);

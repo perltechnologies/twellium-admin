@@ -15,8 +15,8 @@ const UserForm = () => {
         email: '',
         full_name: '',
         role: 'OPERATOR',
-        company: '', // Will store ID
-        pet: '', // Will store ID
+        company: '',
+        pet: '',
         password: ''
     });
 
@@ -59,8 +59,7 @@ const UserForm = () => {
             setLoading(true);
             try {
                 const res = await usersApi.getUsers();
-                // Assuming standard wrapped response, or array. logic from previous implementation
-                // If users endpoints returns { data: [...] } or just [...]
+
                 let userList = [];
                 if (res.data.data) userList = res.data.data;
                 else if (Array.isArray(res.data)) userList = res.data;

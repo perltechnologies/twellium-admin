@@ -1,18 +1,15 @@
 import api from './axios';
 
 export const productionApi = {
-    // Lines & Shifts
     getLines: () => api.get('/production/lines/'),
     getShifts: () => api.get('/production/shifts/'),
 
-    // Reports
     getReports: (params) => api.get('/production/reports/', { params }),
     getReport: (id) => api.get(`/production/reports/${id}/`),
     createReport: (data) => api.post('/production/reports/', data),
     updateReport: (id, data) => api.patch(`/production/reports/${id}/`, data),
     deleteReport: (id) => api.delete(`/production/reports/${id}/`),
 
-    // Report Actions
     updateStatus: (id, status) => api.post(`/production/reports/${id}/update_status/`, { status }),
     addBatch: (id, data) => api.post(`/production/reports/${id}/add_batch/`, data),
     addMaterial: (id, data) => api.post(`/production/reports/${id}/add_material/`, data),
@@ -21,13 +18,11 @@ export const productionApi = {
     addSyrupReading: (id, data) => api.post(`/production/reports/${id}/add_syrup_reading/`, data),
     addCO2Reading: (id, data) => api.post(`/production/reports/${id}/add_co2_reading/`, data),
 
-    // Runs
     getRuns: (params) => api.get('/production/runs/', { params }),
     startRun: (data) => api.post('/production/runs/', data),
     stopRun: (id) => api.post(`/production/runs/${id}/stop/`),
 
 
-    // Stoppages
     getStoppages: (params) => api.get('/production/stoppages/', { params }),
     getStoppage: (id) => api.get(`/production/stoppages/${id}/`),
     createStoppage: (data) => api.post('/production/stoppages/', data),
@@ -35,56 +30,45 @@ export const productionApi = {
     deleteStoppage: (id) => api.delete(`/production/stoppages/${id}/`),
     addIncident: (id, data) => api.post(`/production/stoppages/${id}/add_incident/`, data),
 
-    // Downtime Categories
     getDowntimeCategories: (params) => api.get('/production/downtime-categories/', { params }),
     createDowntimeCategory: (data) => api.post('/production/downtime-categories/', data),
     updateDowntimeCategory: (id, data) => api.patch(`/production/downtime-categories/${id}/`, data),
     deleteDowntimeCategory: (id) => api.delete(`/production/downtime-categories/${id}/`),
 
-    // Downtime Sub-Categories
     getDowntimeSubCategories: (params) => api.get('/production/downtime-sub-categories/', { params }),
     createDowntimeSubCategory: (data) => api.post('/production/downtime-sub-categories/', data),
     updateDowntimeSubCategory: (id, data) => api.patch(`/production/downtime-sub-categories/${id}/`, data),
     deleteDowntimeSubCategory: (id) => api.delete(`/production/downtime-sub-categories/${id}/`),
 
-    // Incident Categories
     getIncidentCategories: (params) => api.get('/production/incident-categories/', { params }),
     createIncidentCategory: (data) => api.post('/production/incident-categories/', data),
     updateIncidentCategory: (id, data) => api.patch(`/production/incident-categories/${id}/`, data),
     deleteIncidentCategory: (id) => api.delete(`/production/incident-categories/${id}/`),
 
-    // Materials
     getMaterials: (params) => api.get('/production/materials/', { params }),
     createMaterial: (data) => api.post('/production/materials/', data),
     updateMaterial: (id, data) => api.patch(`/production/materials/${id}/`, data),
     deleteMaterial: (id) => api.delete(`/production/materials/${id}/`),
 
-    // Meters
     getMeters: (params) => api.get('/production/meters/', { params }),
     createMeter: (data) => api.post('/production/meters/', data),
     updateMeter: (id, data) => api.patch(`/production/meters/${id}/`, data),
     deleteMeter: (id) => api.delete(`/production/meters/${id}/`),
 
-    // Pets (Core)
     getPets: (params) => api.get('/core/pets/', { params }),
     createPet: (data) => api.post('/core/pets/', data),
     updatePet: (id, data) => api.patch(`/core/pets/${id}/`, data),
     deletePet: (id) => api.delete(`/core/pets/${id}/`),
 
-    // Shifts
     createShift: (data) => api.post('/production/shifts/', data),
     updateShift: (id, data) => api.patch(`/production/shifts/${id}/`, data),
     deleteShift: (id) => api.delete(`/production/shifts/${id}/`),
 
-    // Batches
     getBatches: (params) => api.get('/production/batches/', { params }),
     createBatch: (data) => api.post('/production/batches/', data),
     updateBatch: (id, data) => api.patch(`/production/batches/${id}/`, data),
     deleteBatch: (id) => api.delete(`/production/batches/${id}/`),
 
-    // --- Material Lookups ---
-
-    // Generic Name-Based Lookups
     getSuppliers: (params) => api.get('/production/suppliers/', { params }),
     createSupplier: (data) => api.post('/production/suppliers/', data),
     updateSupplier: (id, data) => api.patch(`/production/suppliers/${id}/`, data),
@@ -130,13 +114,13 @@ export const productionApi = {
     updateShrinkName: (id, data) => api.patch(`/production/shrink-names/${id}/`, data),
     deleteShrinkName: (id) => api.delete(`/production/shrink-names/${id}/`),
 
-    // Preform Size Lookup (Grams) - uses value_gr
+
     getPreformSizes: (params) => api.get('/production/preform-sizes/', { params }),
     createPreformSize: (data) => api.post('/production/preform-sizes/', data),
     updatePreformSize: (id, data) => api.patch(`/production/preform-sizes/${id}/`, data),
     deletePreformSize: (id) => api.delete(`/production/preform-sizes/${id}/`),
 
-    // Quantity Lookups (Pieces) - uses value_pcs
+
     getCageQuantities: (params) => api.get('/production/cage-quantities/', { params }),
     createCageQuantity: (data) => api.post('/production/cage-quantities/', data),
     updateCageQuantity: (id, data) => api.patch(`/production/cage-quantities/${id}/`, data),
@@ -147,50 +131,54 @@ export const productionApi = {
     updateCapBoxQuantity: (id, data) => api.patch(`/production/cap-box-quantities/${id}/`, data),
     deleteCapBoxQuantity: (id) => api.delete(`/production/cap-box-quantities/${id}/`),
 
-    // --- New Configurations ---
-    // 1.1 Can Lines
+
     getCanLines: (params) => api.get('/production/can-lines/', { params }),
     createCanLine: (data) => api.post('/production/can-lines/', data),
 
-    // 1.2 Production Ranges
+
     getProductionRanges: (params) => api.get('/production/production-ranges/', { params }),
     createProductionRange: (data) => api.post('/production/production-ranges/', data),
     updateProductionRange: (id, data) => api.patch(`/production/production-ranges/${id}/`, data),
     deleteProductionRange: (id) => api.delete(`/production/production-ranges/${id}/`),
 
-    // 1.3 Measuring Units
+
     getMeasuringUnits: (params) => api.get('/production/measuring-units/', { params }),
     createMeasuringUnit: (data) => api.post('/production/measuring-units/', data),
     updateMeasuringUnit: (id, data) => api.patch(`/production/measuring-units/${id}/`, data),
     deleteMeasuringUnit: (id) => api.delete(`/production/measuring-units/${id}/`),
 
-    // 1.4 Standard CO2
     getStandardCO2s: (params) => api.get('/production/standard-co2s/', { params }),
     createStandardCO2: (data) => api.post('/production/standard-co2s/', data),
     updateStandardCO2: (id, data) => api.patch(`/production/standard-co2s/${id}/`, data),
     deleteStandardCO2: (id) => api.delete(`/production/standard-co2s/${id}/`),
 
-    // 1.5 Syrup Densities
+
     getSyrupDensities: (params) => api.get('/production/syrup-densities/', { params }),
     createSyrupDensity: (data) => api.post('/production/syrup-densities/', data),
     updateSyrupDensity: (id, data) => api.patch(`/production/syrup-densities/${id}/`, data),
     deleteSyrupDensity: (id) => api.delete(`/production/syrup-densities/${id}/`),
 
-    // 1.6 Syrup Dilution Ratios
+
     getSyrupDilutionRatios: (params) => api.get('/production/syrup-dilution-ratios/', { params }),
     createSyrupDilutionRatio: (data) => api.post('/production/syrup-dilution-ratios/', data),
     updateSyrupDilutionRatio: (id, data) => api.patch(`/production/syrup-dilution-ratios/${id}/`, data),
     deleteSyrupDilutionRatio: (id) => api.delete(`/production/syrup-dilution-ratios/${id}/`),
 
-    // 1.7 Syrup Concentrations (NEW)
+
     getSyrupConcentrations: (params) => api.get('/production/syrup-concentrations/', { params }),
     createSyrupConcentration: (data) => api.post('/production/syrup-concentrations/', data),
     updateSyrupConcentration: (id, data) => api.patch(`/production/syrup-concentrations/${id}/`, data),
     deleteSyrupConcentration: (id) => api.delete(`/production/syrup-concentrations/${id}/`),
 
-    // 1.8 Bottles Per Pack (NEW)
+
     getBottlesPerPack: (params) => api.get('/production/bottles-per-pack/', { params }),
     createBottlesPerPack: (data) => api.post('/production/bottles-per-pack/', data),
     updateBottlesPerPack: (id, data) => api.patch(`/production/bottles-per-pack/${id}/`, data),
     deleteBottlesPerPack: (id) => api.delete(`/production/bottles-per-pack/${id}/`),
+
+
+    getLineSpeeds: (params) => api.get('/production/line-speeds/', { params }),
+    createLineSpeed: (data) => api.post('/production/line-speeds/', data),
+    updateLineSpeed: (id, data) => api.patch(`/production/line-speeds/${id}/`, data),
+    deleteLineSpeed: (id) => api.delete(`/production/line-speeds/${id}/`),
 };

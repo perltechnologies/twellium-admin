@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { Plus, FileText, Activity } from 'lucide-react';
 import { DataTable, Button, Card, Input, ConfirmationModal } from '../../components/ui';
 import { productionApi } from '../../api/production';
-import { useAuth } from '../../context/AuthContext';
+
 
 const ProductionList = () => {
     const navigate = useNavigate();
@@ -38,8 +38,7 @@ const ProductionList = () => {
             };
             const res = await productionApi.getReports(params);
 
-            // Handle pagination response
-            // Handle different possible response structures
+
             const responseData = res.data;
             let listData = [];
             let count = 0;
@@ -190,7 +189,7 @@ const ProductionList = () => {
                     INCOMPLETE: 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20',
                     IDLE: 'bg-gray-100 dark:bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-500/20',
                 };
-                // Simple dropdown for status change could be implemented here or a separate action
+
                 return (
                     <select
                         value={status}

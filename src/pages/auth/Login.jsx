@@ -23,7 +23,7 @@ const Login = () => {
         const result = await login(username, password);
 
         if (result.success) {
-            navigate('/dashboard');
+            navigate('/mode-selection');
         } else {
             setError(result.message || 'Invalid credentials');
         }

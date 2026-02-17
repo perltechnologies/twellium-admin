@@ -48,7 +48,6 @@ const ReportForm = () => {
                         line: data.line,
                         shift: data.shift,
                         supervisor: data.supervisor,
-                        supervisor: data.supervisor,
                         report_code: data.report_code,
                         packs_per_pallet: data.packs_per_pallet
                     });
