@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-const DEBUG = true;
-const BASE_URL = DEBUG ? 'http://localhost:8000/api' : 'https://api.twellium-api.com/api';
+const DEBUG = process.env.REACT_APP_DEBUG === 'true';
+const BASE_URL = DEBUG ? process.env.REACT_APP_BASE_URL : process.env.REACT_APP_BASE_URL_PROD;
+
 
 const api = axios.create({
     baseURL: BASE_URL,
@@ -13,6 +14,7 @@ const api = axios.create({
 // Request interceptor to add token
 api.interceptors.request.use(
     (config) => {
+        console.log(process.env.REACT_APP_DEBUG)
         const token = localStorage.getItem('access_token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;

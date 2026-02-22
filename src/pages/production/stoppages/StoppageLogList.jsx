@@ -4,10 +4,12 @@ import { format } from 'date-fns';
 import { Activity, Clock } from 'lucide-react';
 import GenericCrudPage from '../GenericCrudPage';
 import { productionApi } from '../../../api/production';
+import { StoppageStatsCards, StoppageGraphs } from '../../../components/production';
 
 const StoppageLogList = () => {
     const navigate = useNavigate();
     const [pets, setPets] = React.useState([]);
+    const [allStoppages, setAllStoppages] = React.useState([]);
 
     React.useEffect(() => {
         // Fetch Pets for filter
@@ -20,7 +22,20 @@ const StoppageLogList = () => {
                 console.error("Failed to load filter options", err);
             }
         };
+        
+        // Fetch all stoppages for stats
+        const loadAllStoppages = async () => {
+            try {
+                const res = await productionApi.getStoppages({ page_size: 1000 });
+                const results = res.data.data || res.data.results || [];
+                setAllStoppages(results);
+            } catch (err) {
+                console.error("Failed to load stoppages", err);
+            }
+        };
+        
         loadPets();
+        loadAllStoppages();
     }, []);
 
     const columns = [
@@ -81,19 +96,27 @@ const StoppageLogList = () => {
     ];
 
     return (
-        <GenericCrudPage
-            title="Stoppage Logs"
-            columns={columns}
-            filters={filters}
-            onAdd={() => navigate('/dashboard/production/stoppages/new')}
-            onEdit={(item) => navigate(`/dashboard/production/stoppages/${item.id}/edit`)}
-            onView={(item) => navigate(`/dashboard/production/stoppages/${item.id}`)}
-            api={{
-                list: productionApi.getStoppages,
-                delete: productionApi.deleteStoppage
-            }}
-            searchPlaceholder="Search Stoppage Logs..."
-        />
+        <>
+            <div className="mb-6">
+                <StoppageStatsCards stoppages={allStoppages} />
+            </div>
+            <div className="mb-6">
+                <StoppageGraphs stoppages={allStoppages} />
+            </div>
+            <GenericCrudPage
+                title="Stoppage Logs"
+                columns={columns}
+                filters={filters}
+                onAdd={() => navigate('/dashboard/production/stoppages/new')}
+                onEdit={(item) => navigate(`/dashboard/production/stoppages/${item.id}/edit`)}
+                onView={(item) => navigate(`/dashboard/production/stoppages/${item.id}`)}
+                api={{
+                    list: productionApi.getStoppages,
+                    delete: productionApi.deleteStoppage
+                }}
+                searchPlaceholder="Search Stoppage Logs..."
+            />
+        </>
     );
 };
 

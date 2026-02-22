@@ -66,7 +66,7 @@ const ModeSelection = () => {
                                     <Factory className="w-12 h-12" />
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-3">Pro Production</h2>
+                                    <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-3">Pre Production</h2>
                                     <p className="text-slate-500 dark:text-slate-400">
                                         Access the main production dashboard, stoppage logs, and reports management.
                                     </p>

@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { Plus, FileText, Activity } from 'lucide-react';
 import { DataTable, Button, Card, Input, ConfirmationModal } from '../../components/ui';
 import { productionApi } from '../../api/production';
+import ProductionStatsCards from '../../components/production/ProductionStatsCards';
+import {ProductionGraphs} from "../../components/production";
 
 
 const ProductionList = () => {
@@ -37,8 +39,6 @@ const ProductionList = () => {
                 page_size: filters.page_size
             };
             const res = await productionApi.getReports(params);
-
-
             const responseData = res.data;
             let listData = [];
             let count = 0;
@@ -222,6 +222,9 @@ const ProductionList = () => {
                     Create New Report
                 </Button>
             </div>
+
+            <ProductionStatsCards reports={reports} />
+            <ProductionGraphs reports={reports} />
 
             <div className="flex gap-4 items-center bg-white dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                 <Input
