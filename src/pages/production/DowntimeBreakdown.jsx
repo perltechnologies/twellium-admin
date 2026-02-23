@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button } from '../../components/ui';
+import { Card, Button, CardHeader, CardBody } from '../../components/ui';
 import { productionApi } from '../../api/production';
 import { Clock, AlertTriangle, TrendingUp, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -188,90 +188,88 @@ const DowntimeBreakdown = () => {
             {/* Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Category Breakdown Bar Chart */}
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">
-                        Top 10 Downtime Categories
-                    </h3>
-                    <div className="h-80">
-                        {stats.categoryData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={stats.categoryData} layout="vertical" margin={{ left: 100 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
-                                    <XAxis type="number" tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 12 }} />
-                                    <YAxis
-                                        type="category"
-                                        dataKey="name"
-                                        tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11 }}
-                                        width={90}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                                            border: `1px solid ${isDark ? '#1e293b' : '#e2e8f0'}`,
-                                            borderRadius: '8px'
-                                        }}
-                                        formatter={(value) => [`${value} min`, 'Duration']}
-                                    />
-                                    <Bar dataKey="minutes" fill="#f59e0b" radius={[0, 4, 4, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400">
-                                No data available
-                            </div>
-                        )}
-                    </div>
+                <Card>
+                    <CardHeader>Top 10 Downtime Categories</CardHeader>
+                    <CardBody className="pb-0">
+                        <div className="h-80">
+                            {stats.categoryData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={stats.categoryData} layout="vertical" margin={{ left: 100 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke={isDark ? '#334155' : '#e2e8f0'} />
+                                        <XAxis type="number" tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 12 }} />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="name"
+                                            tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11 }}
+                                            width={90}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                                                border: `1px solid ${isDark ? '#1e293b' : '#e2e8f0'}`,
+                                                borderRadius: '8px'
+                                            }}
+                                            formatter={(value) => [`${value} min`, 'Duration']}
+                                        />
+                                        <Bar dataKey="minutes" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-slate-400">
+                                    No data available
+                                </div>
+                            )}
+                        </div>
+                    </CardBody>
                 </Card>
 
                 {/* Type Breakdown Pie Chart */}
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">
-                        Downtime by Type
-                    </h3>
-                    <div className="h-80">
-                        {stats.typeData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={stats.typeData}
-                                        cx="50%"
-                                        cy="50%"
-                                        labelLine={false}
-                                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                                        outerRadius={100}
-                                        fill="#8884d8"
-                                        dataKey="value"
-                                    >
-                                        {stats.typeData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: isDark ? '#0f172a' : '#ffffff',
-                                            border: `1px solid ${isDark ? '#1e293b' : '#e2e8f0'}`,
-                                            borderRadius: '8px'
-                                        }}
-                                        formatter={(value) => [`${value} min`, 'Duration']}
-                                    />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400">
-                                No data available
-                            </div>
-                        )}
-                    </div>
+                <Card>
+                    <CardHeader>Downtime by Type</CardHeader>
+                    <CardBody className="pb-0">
+                        <div className="h-80">
+                            {stats.typeData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={stats.typeData}
+                                            cx="50%"
+                                            cy="50%"
+                                            labelLine={false}
+                                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                            outerRadius={100}
+                                            fill="#8884d8"
+                                            dataKey="value"
+                                        >
+                                            {stats.typeData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={entry.color} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: isDark ? '#0f172a' : '#ffffff',
+                                                border: `1px solid ${isDark ? '#1e293b' : '#e2e8f0'}`,
+                                                borderRadius: '8px'
+                                            }}
+                                            formatter={(value) => [`${value} min`, 'Duration']}
+                                        />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-slate-400">
+                                    No data available
+                                </div>
+                            )}
+                        </div>
+                    </CardBody>
                 </Card>
             </div>
 
             {/* Detailed Table */}
-            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">
-                    Detailed Breakdown
-                </h3>
-                <div className="overflow-x-auto">
+            <Card>
+                <CardHeader>Detailed Breakdown</CardHeader>
+                <CardBody>
                     <table className="w-full">
                         <thead>
                             <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -292,7 +290,7 @@ const DowntimeBreakdown = () => {
                             ))}
                         </tbody>
                     </table>
-                </div>
+                </CardBody>
             </Card>
         </div>
     );
