@@ -532,6 +532,7 @@ const ReportDetails = () => {
         let totalOutput = 0;
         const categoryMap = {};
         let plannedDowntime = 0;
+        let mechanicalDowntime = 0;
 
         // Stoppage Logs Processing
         if (report.stoppage_logs && report.stoppage_logs.length > 0) {
@@ -560,9 +561,11 @@ const ReportDetails = () => {
 
                         // Check for Planned Downtime
                         if (catName.toLowerCase().includes('planned')) {
-                            // Only sum planned downtime (user didn't ask to average this, but be careful with mixed units)
-                            // Assuming planned downtime incidents are absolute durations.
                             plannedDowntime += (inc.incident_duration || 0);
+                        }
+                        // Check for Mechanical Downtime
+                        if (catName.toLowerCase().includes('mechanical')) {
+                            mechanicalDowntime += (inc.incident_duration || 0);
                         }
                     });
                 } else if (minutes > 0) {
@@ -656,11 +659,13 @@ const ReportDetails = () => {
         return {
             efficiencyData,
             downtimeData,
-            totalOutput: totalOutput || report.total_bottles_produced || 0, // Fallback to report field
+            totalOutput: totalOutput || report.total_bottles_produced || 0,
             totalDowntime: totalDowntime || report.total_downtime_minutes || 0,
             efficiency: Number(effVal.toFixed(1)) || report.efficiency || 0,
             productionTime: productionTime || report.total_production_time_hours || 0,
-            oeeMetrics
+            oeeMetrics,
+            plannedDowntime,
+            mechanicalDowntime
         };
     };
 
@@ -671,8 +676,8 @@ const ReportDetails = () => {
     const tooltipBorder = isDark ? '#1e293b' : '#e2e8f0';
     const tooltipText = isDark ? '#f1f5f9' : '#0f172a';
 
-    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics } = report ? calculateStats() : {
-        efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }
+    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = report ? calculateStats() : {
+        efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }, plannedDowntime: 0, mechanicalDowntime: 0
     };
     const COLOR_EFFICIENCY = '#10b981'; // emerald-500
     const COLOR_LOSS = '#ef4444'; // red-500
@@ -967,6 +972,32 @@ const ReportDetails = () => {
                     icon={AlertTriangle}
                     color="text-amber-400"
                 />
+            </div>
+
+            {/* Downtime Breakdown Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Mechanical Downtime</p>
+                            <p className="text-3xl font-bold text-red-600 dark:text-red-400">{mechanicalDowntime} min</p>
+                        </div>
+                        <div className="p-4 rounded-xl bg-red-100 dark:bg-red-500/10">
+                            <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                        </div>
+                    </div>
+                </Card>
+                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Planned Downtime</p>
+                            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{plannedDowntime} min</p>
+                        </div>
+                        <div className="p-4 rounded-xl bg-blue-100 dark:bg-blue-500/10">
+                            <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                        </div>
+                    </div>
+                </Card>
             </div>
 
 
