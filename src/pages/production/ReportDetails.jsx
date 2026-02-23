@@ -622,22 +622,30 @@ const ReportDetails = () => {
         const prodHours = report.total_production_time_hours ? parseFloat(report.total_production_time_hours) : (productionTime || 1);
         const downtimeHours = totalDowntime / 60;
         const plannedDowntimeHours = plannedDowntime / 60;
-        const totalProductionPcs = (report.total_packs && report.bottles_per_pack)
-            ? (parseInt(report.total_packs) * parseInt(report.bottles_per_pack))
-            : (totalOutput || 1);
-        const speed = report.line_speed ? parseFloat(report.line_speed) : 1;
+        const unplannedDowntimeHours = downtimeHours - plannedDowntimeHours;
+        
+        // Use filler_reading from meter_readings if available
+        let fillerReading = 0;
+        let fillerRejects = 0;
+        if (report.meter_readings && report.meter_readings.length > 0) {
+            report.meter_readings.forEach(m => {
+                fillerReading += (parseFloat(m.filler_reading) || 0);
+                fillerRejects += (parseFloat(m.filler_rejects) || 0);
+            });
+        }
 
-
+        // Availability = (Total Production Time − Total Downtime) / (Total Production Time − Unplanned Downtime)
         const availNumerator = prodHours - downtimeHours;
-        const availDenominator = prodHours - plannedDowntimeHours;
+        const availDenominator = prodHours - unplannedDowntimeHours;
         const availVal = availDenominator > 0 ? (availNumerator / availDenominator) * 100 : 0;
 
+        // Quality = (Filler Reading − Filler Reject) / Filler Reading
+        const qualVal = fillerReading > 0 ? ((fillerReading - fillerRejects) / fillerReading) * 100 : 0;
 
-        const qualVal = totalProductionPcs > 0 ? ((totalProductionPcs - sumWaste) / totalProductionPcs) * 100 : 0;
-
-
-        const expectedProduction = availNumerator * speed;
-        const perfVal = expectedProduction > 0 ? (totalProductionPcs / expectedProduction) * 100 : 0;
+        // Performance = (Total Production Time − Total Downtime) / (Total Production Time − Planned Downtime)
+        const perfNumerator = prodHours - downtimeHours;
+        const perfDenominator = prodHours - plannedDowntimeHours;
+        const perfVal = perfDenominator > 0 ? (perfNumerator / perfDenominator) * 100 : 0;
 
         const oeeMetrics = {
             availability: Math.min(Math.max(availVal || 0, 0), 100).toFixed(1),
