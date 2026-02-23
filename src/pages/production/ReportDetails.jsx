@@ -60,17 +60,33 @@ const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, 
     </Card>
 );
 
-const StatCard = ({ title, value, icon: Icon, color }) => (
-    <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 flex items-center justify-between">
-        <div>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">{title}</p>
-            <p className={`text-2xl font-bold ${color.replace('text-', 'text-emerald-600 dark:text-emerald-400 ').replace('text-emerald-400', '')}`}>{value}</p>
-        </div>
-        <div className={`p-3 rounded-xl bg-opacity-10 dark:bg-opacity-10 bg-slate-100 dark:bg-slate-800`}>
-            <Icon className={`h-5 w-5 ${color}`} />
-        </div>
-    </Card>
-);
+const statCardColorMap = {
+    green: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800', text: 'text-emerald-600 dark:text-emerald-400', decorImg: '/img/icons/elemnt-02.svg' },
+    blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-600 dark:text-blue-400', decorImg: '/img/icons/elemnt-01.svg' },
+    indigo: { bg: 'bg-indigo-50 dark:bg-indigo-900/20', border: 'border-indigo-200 dark:border-indigo-800', text: 'text-indigo-600 dark:text-indigo-400', decorImg: '/img/icons/elemnt-01.svg' },
+    amber: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-600 dark:text-amber-400', decorImg: '/img/icons/elemnt-03.svg' },
+    red: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', text: 'text-red-600 dark:text-red-400', decorImg: '/img/icons/elemnt-04.svg' },
+};
+
+const StatCard = ({ title, value, icon: Icon, cardColor }) => {
+    const c = statCardColorMap[cardColor] || statCardColorMap.blue;
+    return (
+        <Card className="relative overflow-hidden mb-0">
+            <div className="p-5 relative z-[1]">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <p className="text-sm text-[#707070] dark:text-[#828997] mb-1">{title}</p>
+                        <h2 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff]">{value}</h2>
+                    </div>
+                    <span className={`inline-flex items-center justify-center h-10 w-10 rounded-full ${c.bg} border ${c.border}`}>
+                        <Icon className={`h-4 w-4 ${c.text}`} />
+                    </span>
+                </div>
+            </div>
+            <img src={c.decorImg} alt="" className="absolute top-0 left-0 w-auto h-auto" />
+        </Card>
+    );
+};
 
 const DetailRow = ({ label, value }) => (
     <div className="flex flex-col py-2 border-b border-slate-100 dark:border-slate-800/50 last:border-0">
@@ -952,52 +968,42 @@ const ReportDetails = () => {
                     title="Total Output"
                     value={totalOutput.toLocaleString()}
                     icon={Layers}
-                    color="text-emerald-400"
+                    cardColor="green"
                 />
                 <StatCard
                     title="Production Time"
                     value={`${productionTime} hrs`}
                     icon={Clock}
-                    color="text-blue-400"
+                    cardColor="blue"
                 />
                 <StatCard
                     title="Efficiency"
                     value={`${efficiency}%`}
                     icon={Activity}
-                    color="text-indigo-400"
+                    cardColor="indigo"
                 />
                 <StatCard
                     title="Downtime"
                     value={`${totalDowntime} min`}
                     icon={AlertTriangle}
-                    color="text-amber-400"
+                    cardColor="amber"
                 />
             </div>
 
             {/* Downtime Breakdown Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Mechanical Downtime</p>
-                            <p className="text-3xl font-bold text-red-600 dark:text-red-400">{mechanicalDowntime} min</p>
-                        </div>
-                        <div className="p-4 rounded-xl bg-red-100 dark:bg-red-500/10">
-                            <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
-                        </div>
-                    </div>
-                </Card>
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm mb-1">Planned Downtime</p>
-                            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{plannedDowntime} min</p>
-                        </div>
-                        <div className="p-4 rounded-xl bg-blue-100 dark:bg-blue-500/10">
-                            <Clock className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                        </div>
-                    </div>
-                </Card>
+                <StatCard
+                    title="Mechanical Downtime"
+                    value={`${mechanicalDowntime} min`}
+                    icon={AlertTriangle}
+                    cardColor="red"
+                />
+                <StatCard
+                    title="Planned Downtime"
+                    value={`${plannedDowntime} min`}
+                    icon={Clock}
+                    cardColor="blue"
+                />
             </div>
 
 

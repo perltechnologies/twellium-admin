@@ -21,6 +21,7 @@ const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/S
 const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppages/StoppageLogDetails'));
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
+const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
 const UserForm = React.lazy(() => import('../pages/users/UserForm'));
 const ProductList = React.lazy(() => import('../pages/inventory/ProductList'));
@@ -128,6 +129,7 @@ export const AppRouter = () => {
                                     }
                                 />
                                 <Route path="downtime-sub-categories" element={<DowntimeSubCategoryList />} />
+                                <Route path="downtime-breakdown" element={<DowntimeBreakdown />} />
 
                                 {/* Production Sub-modules */}
                                 <Route
