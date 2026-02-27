@@ -1,791 +1,594 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, DataTable, ConfirmationModal } from '../../components/ui';
-import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    PieChart,
-    Pie,
-    Cell,
-    Legend,
-    Label,
-    LabelList
-} from 'recharts';
-import { Factory, AlertTriangle, Clock, FileText } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { productionApi } from '../../api/production';
-import { format } from 'date-fns';
-import { useTheme } from '../../context/ThemeContext';
 
-const colorMap = {
-    blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-600 dark:text-blue-400', decorImg: '/img/icons/elemnt-01.svg' },
-    red: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', text: 'text-red-600 dark:text-red-400', decorImg: '/img/icons/elemnt-04.svg' },
-    amber: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-600 dark:text-amber-400', decorImg: '/img/icons/elemnt-03.svg' },
-    green: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', text: 'text-green-600 dark:text-green-400', decorImg: '/img/icons/elemnt-02.svg' },
+/* ── helpers ─────────────────────────────────────── */
+const extractList = (res) => {
+    const d = res.data;
+    if (Array.isArray(d)) return d;
+    if (d?.data?.results && Array.isArray(d.data.results)) return d.data.results;
+    if (d?.results && Array.isArray(d.results)) return d.results;
+    if (d?.data && Array.isArray(d.data)) return d.data;
+    return [];
 };
 
-const StatCard = ({ title, value, subtext, icon: Icon, color, delay, trend }) => {
-    const c = colorMap[color] || colorMap.blue;
-    const isUp = trend === 'up';
+const formatNum = (n) => (n ?? 0).toLocaleString();
+
+const formatDuration = (mins) => {
+    if (!mins || mins <= 0) return '0m';
+    const h = Math.floor(mins / 60);
+    const m = Math.round(mins % 60);
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+};
+
+const clamp = (v) => Math.min(100, Math.max(0, v));
+
+const computeLineOee = (l) => {
+    const a = l.plannedMins > 0 ? ((l.plannedMins - l.downtimeMins) / l.plannedMins) * 100 : 0;
+    const q = l.target > 0 ? (l.actual / l.target) * 100 : 0;
+    const runH = (l.plannedMins - l.downtimeMins) / 60;
+    let p = 0;
+    if (l.speedline > 0 && runH > 0) {
+        p = (l.actual / (l.speedline * runH)) * 100;
+    } else if (l.target > 0) {
+        p = (l.actual / l.target) * 100;
+    }
+    const oeeVal = (Math.min(1, a / 100) * Math.min(1, q / 100) * Math.min(1, p / 100)) * 100;
+    return {
+        name: l.name,
+        availability: clamp(a),
+        quality: clamp(q),
+        performance: clamp(p),
+        oee: clamp(oeeVal),
+        reports: l.reports,
+    };
+};
+
+/* ── SVG Gauge ───────────────────────────────────── */
+const GaugeChart = ({ value, label, color }) => {
+    const pct = Math.min(100, Math.max(0, value));
+    const cx = 100, cy = 90, r = 70;
+    const trackColor = '#e9ecef';
+    const fillColor = color || (pct >= 75 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444');
+
+    const startX = cx - r, startY = cy;
+    const endFull = { x: cx + r, y: cy };
+
+    const angle = Math.PI * (1 - pct / 100);
+    const endX = +(cx + r * Math.cos(angle)).toFixed(2);
+    const endY = +(cy - r * Math.sin(angle)).toFixed(2);
+    const largeArc = pct > 50 ? 1 : 0;
+
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: delay * 0.1, duration: 0.5 }}
-            className="flex"
-        >
-            <Card className="flex-1 mb-0 relative overflow-hidden">
-                <div className="p-5 relative z-[1]">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-sm text-[#707070] dark:text-[#828997] mb-1">{title}</p>
-                            <h2 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff] mb-1">{value}</h2>
-                            {subtext && (
-                                <p className={`text-13 mb-0 ${isUp ? 'text-green-500' : 'text-red-500'}`}>
-                                    {isUp ? (
-                                        <svg className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
-                                    ) : (
-                                        <svg className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
-                                    )}
-                                    <span className="text-[#707070] dark:text-[#828997]">{subtext}</span>
-                                </p>
-                            )}
-                        </div>
-                        <span className={`inline-flex items-center justify-center h-10 w-10 rounded-full ${c.bg} border ${c.border}`}>
-                            <Icon className={`h-4 w-4 ${c.text}`} />
-                        </span>
-                    </div>
-                </div>
-                <img src={c.decorImg} alt="" className="absolute top-0 left-0 w-auto h-auto" />
-            </Card>
-        </motion.div>
+        <div className="text-center">
+            <svg width="200" height="120" viewBox="0 0 200 120">
+                <path
+                    d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endFull.x} ${endFull.y}`}
+                    fill="none" stroke={trackColor} strokeWidth="14" strokeLinecap="round"
+                />
+                {pct > 0.5 && (
+                    <path
+                        d={`M ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY}`}
+                        fill="none" stroke={fillColor} strokeWidth="14" strokeLinecap="round"
+                    />
+                )}
+                <text x={cx} y={cy - 12} textAnchor="middle" fontSize="24" fontWeight="bold" fill="#1f2937">
+                    {pct.toFixed(1)}%
+                </text>
+                <text x={cx} y={cy + 8} textAnchor="middle" fontSize="12" fill="#6b7280">
+                    {label}
+                </text>
+            </svg>
+        </div>
     );
 };
 
-
-const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, bgColor, borderColor }) => (
-    <Card className="flex flex-col min-h-[500px]">
-        <div className="px-5 py-4 border-b border-[#e2e8f0] dark:border-[#161641]">
-            <h3 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff]">{title}</h3>
-        </div>
-        <div className="p-5">
-        <div className="flex-1 w-full min-h-[400px]">
-            {data.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data} margin={{ top: 30, right: 10, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                        <XAxis
-                            dataKey="name"
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fill: textColor, fontSize: 12 }}
-                            dy={10}
-                        />
-                        <YAxis
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fill: textColor, fontSize: 12 }}
-                            domain={[0, 100]}
-                        />
-                        <Tooltip
-                            cursor={{ fill: 'transparent' }}
-                            contentStyle={{ backgroundColor: bgColor, borderColor: borderColor, borderRadius: '8px', color: textColor }}
-                            formatter={(value) => [`${value}%`, tooltipPrefix]}
-                        />
-                        <Bar
-                            dataKey="value"
-                            fill={color}
-                            radius={[4, 4, 0, 0]}
-                            barSize={40}
-                            animationDuration={1500}
-                        >
-                            {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={color} />
-                            ))}
-                            <LabelList dataKey="value" position="top" fill={color} formatter={(val) => `${val}%`} fontSize={12} fontWeight="bold" />
-                        </Bar>
-                    </BarChart>
-                </ResponsiveContainer>
-            ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#9d9d9d] text-sm border-2 border-dashed border-[#e2e8f0] dark:border-[#161641] rounded-lg">
-                    Select a PET to view data
-                </div>
-            )}
-        </div>
-        </div>
-    </Card>
-);
-
-
+/* ── component ───────────────────────────────────── */
 const Overview = () => {
     const navigate = useNavigate();
-    const { theme } = useTheme();
-
-
-    const [stats, setStats] = useState({
-        activePets: 0,
-        totalDowntime: 0,
-        runningReports: 0
-    });
-    const [charts, setCharts] = useState({
-        outputByPet: [],
-        downtimeByPet: []
-    });
-
-
-    const [recentReports, setRecentReports] = useState([]);
-    const [allReports, setAllReports] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedPet, setSelectedPet] = useState('');   // '' = All Lines
+    const [selectedDate, setSelectedDate] = useState(''); // '' = All Dates (YYYY-MM-DD)
 
+    /* raw data from API */
+    const [rawReports, setRawReports] = useState([]);
+    const [rawPets, setRawPets] = useState([]);
+    const [rawStoppages, setRawStoppages] = useState([]);
+    const [rawShifts, setRawShifts] = useState([]);
 
-    const [selectedPet, setSelectedPet] = useState('');
-    const [petEfficiencyData, setPetEfficiencyData] = useState([]);
-
-
-    const [selectedOeePets, setSelectedOeePets] = useState([]);
-    const [oeeData, setOeeData] = useState([]);
-
-
-    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState(null);
-    const [deleting, setDeleting] = useState(false);
-
-    const isDark = theme === 'dark';
-    const chartGridColor = isDark ? '#334155' : '#e2e8f0'; // slate-700 : slate-200
-    const tooltipBg = isDark ? '#0f172a' : '#ffffff';
-    const tooltipBorder = isDark ? '#1e293b' : '#e2e8f0';
-    const tooltipText = isDark ? '#f1f5f9' : '#0f172a';
-
-    const COLORS_DOWNTIME = ['#3b82f6', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#6366f1']; // Blue, Amber, Violet, Cyan, Pink, Indigo
-    const COLOR_EFFICIENCY = '#10b981'; // Emerald
-    const COLOR_LOSS = '#ef4444'; // Red
-
-    const petsList = [...new Set(allReports.map(r => r.pet_name).filter(Boolean))];
-
-    const fetchData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         try {
-
-            const today = format(new Date(), 'yyyy-MM-dd');
-
-            const reportsRes = await productionApi.getReports({ production_date: today, page_size: 100 });
-            const reports = reportsRes.data.data || reportsRes.data.results || [];
-            setAllReports(reports);
-
-
-            if (!selectedPet && reports.length > 0) {
-                const availablePets = [...new Set(reports.map(r => r.pet_name).filter(Boolean))];
-                if (availablePets.length > 0) setSelectedPet(availablePets[0]);
-            }
-
-            const recentReportsRes = await productionApi.getReports({ page_size: 10 });
-            const recent = recentReportsRes.data.data || recentReportsRes.data.results || [];
-
-
-            let totalDowntimeCalc = 0;
-            const downtimeMap = {};
-
-            reports.forEach(report => {
-                const pet = report.pet_name || 'Unknown';
-
-                if (report.stoppage_logs && Array.isArray(report.stoppage_logs)) {
-                    report.stoppage_logs.forEach(log => {
-                        const minutes = log.downtime_minutes || 0;
-                        if (minutes > 0) {
-                            downtimeMap[pet] = (downtimeMap[pet] || 0) + minutes;
-                            totalDowntimeCalc += minutes;
-                        }
-                    });
-                }
-            });
-
-            const downtimeByPetData = Object.entries(downtimeMap).map(([name, value]) => ({ name, value }));
-
-
-            const uniquePets = new Set(reports.map(r => r.pet_name).filter(Boolean));
-            const activePetsCount = uniquePets.size;
-
-
-            const runningCount = reports.filter(r => r.status === 'STARTED').length;
-
-
-            const outputMap = {};
-            reports.forEach(r => {
-                const pet = r.pet_name || 'Unknown';
-                outputMap[pet] = (outputMap[pet] || 0) + (r.total_bottles_produced || 0);
-            });
-            const outputByPetData = Object.entries(outputMap).map(([name, value]) => ({ name, value }));
-
-            setStats({
-                activePets: activePetsCount,
-                totalDowntime: totalDowntimeCalc,
-                runningReports: runningCount
-            });
-            setCharts({
-                outputByPet: outputByPetData,
-                downtimeByPet: downtimeByPetData
-            });
-            setRecentReports(recent);
-
-        } catch (err) {
-            console.error("Failed to load dashboard data", err);
+            const [reportsRes, petsRes, stoppagesRes, shiftsRes] = await Promise.all([
+                productionApi.getReports({ page_size: 500 }),
+                productionApi.getPets({ page_size: 100 }),
+                productionApi.getStoppages({ page_size: 1000 }),
+                productionApi.getShifts(),
+            ]);
+            setRawReports(extractList(reportsRes));
+            setRawPets(extractList(petsRes));
+            setRawStoppages(extractList(stoppagesRes));
+            setRawShifts(extractList(shiftsRes));
+        } catch (error) {
+            console.error('Failed to load dashboard data:', error);
         } finally {
             setLoading(false);
         }
-    };
-
-    useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 300000); // Refresh every 5 mins
-        return () => clearInterval(interval);
     }, []);
 
-    // Calculate Efficiency Chart Data when selectedPet changes
+    useEffect(() => { loadData(); }, [loadData]);
+
+    /* PETs available for the selected date (derived from reports) */
+    const availablePets = useMemo(() => {
+        let filtered = rawReports;
+        if (selectedDate) {
+            filtered = filtered.filter(r => (r.production_date || '').slice(0, 10) === selectedDate);
+        }
+        const petNames = [...new Set(filtered.map(r => r.pet_name).filter(Boolean))];
+        return rawPets.filter(p => petNames.includes(p.pet_name || p.name));
+    }, [rawReports, rawPets, selectedDate]);
+
+    /* Reset PET selection when date changes and current PET has no data for that date */
     useEffect(() => {
-        if (selectedPet && allReports.length > 0) {
-            const petReports = allReports.filter(r => r.pet_name === selectedPet);
+        if (selectedPet && availablePets.length > 0) {
+            const stillAvailable = availablePets.some(p => (p.pet_name || p.name) === selectedPet);
+            if (!stillAvailable) setSelectedPet('');
+        }
+    }, [availablePets, selectedPet]);
 
-            if (petReports.length > 0) {
+    /* ── Derived data (recomputed when filter or raw data changes) ── */
+    const { stats, oee, oeeByLine, downtimeCategories } = useMemo(() => {
+        const pets = rawPets;
+        const shifts = rawShifts;
 
-                let totalEfficiency = 0;
-                let logCount = 0;
+        /* Filter reports by date first, then by PET */
+        let reports = selectedDate
+            ? rawReports.filter(r => (r.production_date || '').slice(0, 10) === selectedDate)
+            : rawReports;
+        if (selectedPet) {
+            reports = reports.filter(r => (r.pet_name || '') === selectedPet);
+        }
 
-                petReports.forEach(report => {
-                    if (report.stoppage_logs && Array.isArray(report.stoppage_logs)) {
-                        report.stoppage_logs.forEach(log => {
-                            const eff = parseFloat(log.efficiency);
-                            // Include 0 efficiency logs as they represent full downtime
-                            if (!isNaN(eff)) {
-                                totalEfficiency += eff;
-                                logCount++;
-                            }
-                        });
-                    }
-                });
+        let stoppages = rawStoppages;
+        if (selectedDate) {
+            stoppages = stoppages.filter(s => {
+                const d = (s.created_at || s.start_time || '').slice(0, 10);
+                return d === selectedDate;
+            });
+        }
+        if (selectedPet) {
+            stoppages = stoppages.filter(s => (s.pet_name || s.line_name || '') === selectedPet);
+        }
 
-                const avgEff = logCount > 0 ? totalEfficiency / logCount : 0;
+        /* Stats */
+        const refDate = selectedDate || new Date().toISOString().slice(0, 10);
+        const startedShifts = reports.filter(r => r.status === 'STARTED').length;
+        const stoppagesToday = stoppages.filter(s => {
+            const d = (s.created_at || s.start_time || '').slice(0, 10);
+            return d === refDate;
+        }).length;
+        let totalDowntime = 0;
+        stoppages.forEach(s => { totalDowntime += s.downtime_minutes || s.duration || 0; });
+        let totalProduced = 0;
+        reports.forEach(r => { totalProduced += r.total_bottles_produced || 0; });
 
-                // Ensure values are sane (0-100)
-                const effVal = Math.min(Math.max(avgEff, 0), 100);
-                const downtimeVal = 100 - effVal;
+        const stats = {
+            activeLines: selectedPet ? 1 : pets.length,
+            shiftsStarted: startedShifts,
+            totalDowntime: Math.round(totalDowntime),
+            stoppagesToday,
+            recentReports: Math.min(reports.length, 10),
+            totalProduced,
+        };
 
-                setPetEfficiencyData([
-                    { name: 'Efficiency', value: Number(effVal.toFixed(1)) },
-                    { name: 'Downtime', value: Number(downtimeVal.toFixed(1)) }
-                ]);
-            } else {
-                setPetEfficiencyData([]);
+        /* OEE */
+        const shiftHours = shifts.length > 0 ? (shifts[0].duration_hours || 8) : 8;
+        let totalPlannedMins = 0, totalDowntimeMins = 0, totalActual = 0, totalTarget = 0;
+        const lineOeeMap = {};
+
+        reports.forEach(r => {
+            const plannedMins = (r.shift_duration_hours || shiftHours) * 60;
+            let reportDowntime = 0;
+            (r.stoppage_logs || []).forEach(log => {
+                reportDowntime += log.downtime_minutes || 0;
+                (log.incidents || []).forEach(inc => { reportDowntime += inc.incident_duration || 0; });
+            });
+            const actual = r.total_bottles_produced || 0;
+            const target = r.target_output || r.planned_output || 0;
+
+            totalPlannedMins += plannedMins;
+            totalDowntimeMins += reportDowntime;
+            totalActual += actual;
+            totalTarget += target > 0 ? target : actual;
+
+            const lineName = r.pet_name || 'Unknown';
+            if (!lineOeeMap[lineName]) {
+                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, actual: 0, target: 0, speedline: 0, reports: 0 };
             }
-        }
-    }, [selectedPet, allReports]);
+            lineOeeMap[lineName].plannedMins += plannedMins;
+            lineOeeMap[lineName].downtimeMins += reportDowntime;
+            lineOeeMap[lineName].actual += actual;
+            lineOeeMap[lineName].target += target > 0 ? target : actual;
+            lineOeeMap[lineName].reports += 1;
 
-    // OEE Logic Effect
-    useEffect(() => {
-
-        if (allReports.length > 0 && selectedOeePets.length === 0) {
-            const available = [...new Set(allReports.map(r => r.pet_name).filter(Boolean))];
-            if (available.length > 0) setSelectedOeePets([available[0]]);
-        }
-    }, [allReports]);
-
-    useEffect(() => {
-        if (selectedOeePets.length > 0 && allReports.length > 0) {
-            const data = selectedOeePets.map(petName => {
-                const petReports = allReports.filter(r => r.pet_name === petName);
-                if (petReports.length === 0) return null;
-
-
-                let sumPlannedTime = 0;
-                let sumExternalDowntime = 0;
-
-                let sumTotalBottlesProduced = 0;
-                let sumWaste = 0;
-
-                let sumFillerReading = 0;
-                let sumLineSpeed = 0;
-                let weightedProductionHours = 0;
-
-                // Helper to safely get number or default 1
-                const safeNum = (val, def = 1) => {
-                    const parsed = parseFloat(val);
-                    return isNaN(parsed) || parsed === 0 ? def : parsed; // User said "null values use default 1". Interpreting 0 as needing default too for denominators? 
-                    // Actually, for raw values like downtime, 0 is valid. 
-                    // But for multiplication/division denominators, we need safety.
-                };
-
-                // Safe Sum Helper (treats null/undefined as 0 for additive)
-                const add = (acc, val) => acc + (parseFloat(val) || 0);
-
-                petReports.forEach(r => {
-                    // Availability
-                    const prodHours = parseFloat(r.total_production_time_hours) || 1; // User: "null values use default 1"
-                    sumPlannedTime += prodHours;
-
-                    // Downtime from stoppage logs or root? 
-                    // Using root `total_downtime_minutes` just in case, or calculating from logs like previous code?
-                    // Previous code calculated `totalDowntimeCalc` from logs. Let's do same for consistency.
-                    let rDowntime = 0;
-                    if (r.stoppage_logs) {
-                        r.stoppage_logs.forEach(l => rDowntime += (parseFloat(l.downtime_minutes) || 0));
-                    }
-                    sumExternalDowntime += rDowntime;
-
-                    // Quality
-                    // Formula: (Total Potential Bottles - WASTE) / Total Potential Bottles * 100
-                    // Potential = total_bottles_produced (if null default 1)
-                    const rBottles = parseFloat(r.total_bottles_produced) || 1;
-                    sumTotalBottlesProduced += rBottles;
-
-                    if (r.meter_readings) {
-                        r.meter_readings.forEach(m => {
-                            sumWaste = add(sumWaste, m.filler_rejects);
-                            sumFillerReading = add(sumFillerReading, m.filter_reading);
-                        });
-                    }
-
-                    // Performance
-                    const rSpeed = parseFloat(r.line_speed) || 1;
-                    // Denom: speed * hours
-                    weightedProductionHours += (rSpeed * prodHours);
-                });
-
-                // 1. AVAILABILITY
-                // Formula: (PLANNED TIME - EXT DOWNTIME HOURS) / PLANNED TIME * 100
-                const downtimeHours = sumExternalDowntime / 60;
-                let availability = ((sumPlannedTime - downtimeHours) / sumPlannedTime) * 100;
-
-                // 2. QUALITY
-                // Formula: (Total Potential - WASTE) / Total Potential * 100
-                // Potential = total_bottles_produced
-                const totalPotential = sumTotalBottlesProduced; // already defaulted to 1 if null per item
-                let quality = ((totalPotential - sumWaste) / totalPotential) * 100;
-
-                // 3. PERFORMANCE
-                // Formula: filler reading / (speed * hours) * 100
-                let performance = (sumFillerReading / weightedProductionHours) * 100;
-
-
-                return {
-                    pet: petName,
-                    availability: Math.min(Math.max(availability || 0, 0), 100).toFixed(1),
-                    quality: Math.min(Math.max(quality || 0, 0), 100).toFixed(1),
-                    performance: Math.min(Math.max(performance || 0, 0), 100).toFixed(1),
-                };
-            }).filter(Boolean);
-
-            setOeeData(data);
-        } else {
-            setOeeData([]);
-        }
-    }, [selectedOeePets, allReports]);
-
-    const handleOeePetToggle = (pet) => {
-        setSelectedOeePets(prev => {
-            if (prev.includes(pet)) return prev.filter(p => p !== pet);
-            return [...prev, pet];
+            const pet = pets.find(p => (p.pet_name || p.name) === lineName);
+            if (pet && pet.speedline) lineOeeMap[lineName].speedline = pet.speedline;
         });
-    };
 
+        const availability = totalPlannedMins > 0
+            ? ((totalPlannedMins - totalDowntimeMins) / totalPlannedMins) * 100 : 0;
+        const quality = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
 
-    const reportColumns = [
-        { header: 'Code', accessor: 'report_code', render: (r) => <span className="font-mono text-blue-600 dark:text-blue-400 font-medium">{r.report_code}</span> },
-        { header: 'Date', accessor: 'production_date', render: (r) => format(new Date(r.production_date), 'MMM dd') },
-        { header: 'PET', accessor: 'pet_name' },
-        { header: 'Shift', accessor: 'shift_name' },
+        let performance = 0;
+        const totalSpeedCapacity = Object.values(lineOeeMap).reduce((sum, l) => {
+            return sum + (l.speedline > 0 ? l.speedline * (l.plannedMins - l.downtimeMins) / 60 : 0);
+        }, 0);
+        if (totalSpeedCapacity > 0) {
+            performance = (totalActual / totalSpeedCapacity) * 100;
+        } else if (totalTarget > 0) {
+            performance = (totalActual / totalTarget) * 100;
+        }
+
+        const a01 = Math.min(1, Math.max(0, availability / 100));
+        const q01 = Math.min(1, Math.max(0, quality / 100));
+        const p01 = Math.min(1, Math.max(0, performance / 100));
+
+        const oee = {
+            availability: clamp(availability),
+            quality: clamp(quality),
+            performance: clamp(performance),
+            oee: clamp(a01 * q01 * p01 * 100),
+        };
+
+        const oeeByLine = Object.values(lineOeeMap)
+            .map(computeLineOee)
+            .sort((a, b) => b.oee - a.oee);
+
+        /* Downtime breakdown by category (from stoppage_logs → incidents) */
+        const downtimeMap = {};
+        reports.forEach(r => {
+            (r.stoppage_logs || []).forEach(log => {
+                (log.incidents || []).forEach(inc => {
+                    const cat = inc.downtime_category_name || 'Other';
+                    const dur = inc.incident_duration || 0;
+                    downtimeMap[cat] = (downtimeMap[cat] || 0) + dur;
+                });
+            });
+        });
+        
+        const categoryColors = {
+            'Mechanical': '#ef4444',
+            'Planned': '#3b82f6',
+            'Electrical': '#f59e0b',
+            'Quality': '#8b5cf6',
+            'Material': '#10b981',
+            'Other': '#6b7280'
+        };
+        
+        const downtimeCategories = Object.entries(downtimeMap)
+            .map(([name, value]) => ({
+                name: name,
+                value: Math.round(Number(value) || 0),
+                color: categoryColors[name] || categoryColors['Other']
+            }))
+            .filter(d => d.value > 0)
+            .sort((a, b) => b.value - a.value);
+
+        return { stats, oee, oeeByLine, downtimeCategories };
+    }, [rawReports, rawPets, rawStoppages, rawShifts, selectedPet, selectedDate]);
+
+    const statCards = [
         {
-            header: 'Output',
-            accessor: 'total_bottles_produced',
-            render: (r) => <span className="text-emerald-600 dark:text-emerald-400 font-medium">{r.total_bottles_produced?.toLocaleString()}</span>
+            label: selectedPet || 'Active PET Lines',
+            value: selectedPet ? stats.recentReports : stats.activeLines,
+            subtext: selectedPet ? `${stats.shiftsStarted} shifts currently started` : `${stats.shiftsStarted} shifts currently started`,
+            icon: 'ti-building-factory-2', color: 'success', elemnt: 'elemnt-02',
         },
         {
-            header: 'Status',
-            accessor: 'status',
-            render: (r) => (
-                <span className={`text-xs px-2 py-1 rounded border ${r.status === 'STARTED' ? 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20' :
-                    r.status === 'COMPLETED' ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
-                        'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                    }`}>
-                    {r.status}
-                </span>
-            )
-        }
+            label: 'Total Downtime', value: formatDuration(stats.totalDowntime),
+            subtext: `${stats.stoppagesToday} stoppages${selectedDate ? '' : ' recorded today'}`,
+            icon: 'ti-clock-pause', color: 'danger', elemnt: 'elemnt-04',
+        },
+        {
+            label: 'Recent Reports', value: stats.recentReports,
+            subtext: 'Latest submissions',
+            icon: 'ti-file-report', color: 'primary', elemnt: 'elemnt-01',
+        },
+        {
+            label: 'Total Produced', value: formatNum(stats.totalProduced),
+            subtext: selectedPet ? `Bottles on ${selectedPet}` : 'Bottles across all lines',
+            icon: 'ti-bottle', color: 'warning', elemnt: 'elemnt-03',
+        },
     ];
 
-    const handleView = (row) => {
-        navigate(`/dashboard/production/${row.id}`);
-    };
-
-    const handleEdit = (row) => {
-        navigate(`/dashboard/production/${row.id}/edit`);
-    };
-
-    const handleDelete = (row) => {
-        setItemToDelete(row);
-        setDeleteModalOpen(true);
-    };
-
-    const confirmDelete = async () => {
-        if (!itemToDelete) return;
-        setDeleting(true);
-        try {
-            await productionApi.deleteReport(itemToDelete.id);
-            setDeleteModalOpen(false);
-            setItemToDelete(null);
-            fetchData(); // Refresh data
-        } catch (err) {
-            console.error("Failed to delete report", err);
-        } finally {
-            setDeleting(false);
-        }
-    };
+    const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
 
     return (
-        <div className="space-y-6 animate-fade-in-up">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                    <h4 className="text-base font-bold text-[#1f2020] dark:text-[#d9dcff] mb-1">Factory Overview</h4>
-                    <p className="text-sm text-[#707070] dark:text-[#828997]">Real-time production insights for today</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="px-3 py-1.5 bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 rounded-lg text-xs font-medium border border-green-200 dark:border-green-800 animate-pulse">
-                        Live Data
-                    </span>
+        <>
+            {/* Page Header */}
+            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+                <h4 className="mb-0">Dashboard</h4>
+                <div className="d-flex align-items-center gap-2">
+                    <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-outline-primary btn-sm shadow">
+                        <i className="ti ti-chart-bar me-1"></i>Production Charts
+                    </button>
+                    <button className="btn btn-icon btn-outline-light shadow" title="Refresh" onClick={loadData}>
+                        <i className={`ti ti-refresh${loading ? ' spin' : ''}`}></i>
+                    </button>
                 </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                <StatCard
-                    title="Active PET Lines"
-                    value={stats.activePets}
-                    subtext={`${stats.runningReports} shifts currently started`}
-                    icon={Factory}
-                    color="blue"
-                    delay={1}
-                    trend="up"
-                />
-                <StatCard
-                    title="Total Downtime"
-                    value={`${stats.totalDowntime} min`}
-                    subtext="Recorded stoppages today"
-                    icon={Clock}
-                    color="red"
-                    delay={2}
-                    trend="down"
-                />
-                <StatCard
-                    title="Recent Reports"
-                    value={recentReports.length}
-                    subtext="Latest submissions"
-                    icon={FileText}
-                    color="amber"
-                    delay={3}
-                    trend="up"
-                />
-            </div>
-
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                {/* 1. Pet Efficiency Pie Chart */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5 }}
+            {/* Filters Row */}
+            <div className="d-flex align-items-center gap-2 mb-4 flex-wrap">
+                <div className="d-flex align-items-center gap-2">
+                    <i className="ti ti-filter fs-16 text-muted"></i>
+                    <input
+                        type="date"
+                        className="form-control form-control-sm shadow"
+                        style={{ width: 160 }}
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                    />
+                    {selectedDate && (
+                        <button
+                            className="btn btn-outline-secondary btn-sm shadow px-2"
+                            title="Clear date"
+                            onClick={() => setSelectedDate('')}
+                        >
+                            <i className="ti ti-x fs-14"></i>
+                        </button>
+                    )}
+                </div>
+                <select
+                    className="form-select form-select-sm shadow"
+                    style={{ width: 200 }}
+                    value={selectedPet}
+                    onChange={(e) => setSelectedPet(e.target.value)}
                 >
-                    <Card className="min-h-[400px] flex flex-col">
-                        <div className="px-5 py-4 border-b border-[#e2e8f0] dark:border-[#161641] flex items-center justify-between">
-                            <div>
-                                <h6 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff]">Pet Efficiency</h6>
-                                <p className="text-13 text-[#9d9d9d]">Performance breakdown</p>
-                            </div>
-                            <select
-                                value={selectedPet}
-                                onChange={(e) => setSelectedPet(e.target.value)}
-                                className="text-sm bg-[#f7f8f9] dark:bg-[#0c0c20] border border-[#e2e8f0] dark:border-[#161641] rounded-lg px-3 py-1.5 text-[#1f2020] dark:text-[#d9dcff] focus:ring-2 focus:ring-blue-500/30 cursor-pointer hover:bg-[#eef2f6] dark:hover:bg-[#161641] transition font-medium"
-                            >
-                                {petsList.length === 0 && <option value="">No Data</option>}
-                                {petsList.map(pet => (
-                                    <option key={pet} value={pet}>{pet}</option>
-                                ))}
-                            </select>
-                        </div>
+                    <option value="">All PET Lines{selectedDate ? ` (${availablePets.length})` : ''}</option>
+                    {availablePets.map(p => (
+                        <option key={p.id} value={p.pet_name || p.name}>
+                            {p.pet_name || p.name}
+                        </option>
+                    ))}
+                </select>
+                {(selectedDate || selectedPet) && (
+                    <button
+                        className="btn btn-soft-danger btn-sm"
+                        onClick={() => { setSelectedDate(''); setSelectedPet(''); }}
+                    >
+                        <i className="ti ti-filter-off me-1"></i>Clear Filters
+                    </button>
+                )}
+            </div>
 
-                        <div className="p-5 flex flex-col md:flex-row items-center gap-8 flex-1">
-                            {/* Chart */}
-                            <div className="relative w-48 h-48 flex-shrink-0">
-                                {petEfficiencyData.length > 0 ? (
-                                    <div className="w-full h-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={petEfficiencyData}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius={60}
-                                                    outerRadius={80}
-                                                    paddingAngle={5}
-                                                    dataKey="value"
-                                                    cornerRadius={4}
-                                                    stroke="none"
-                                                >
-                                                    {petEfficiencyData.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={entry.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip
-                                                    cursor={false}
-                                                    contentStyle={{ backgroundColor: tooltipBg, borderColor: tooltipBorder, borderRadius: '12px', color: tooltipText, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                    itemStyle={{ color: tooltipText, fontWeight: 600 }}
-                                                    formatter={(value) => [`${value}%`, '']}
-                                                />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                        {/* Center Label */}
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                            <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Score</span>
-                                            <span className={`text-2xl font-bold ${petEfficiencyData[0]?.value >= 80 ? 'text-emerald-500' : petEfficiencyData[0]?.value >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
-                                                {petEfficiencyData[0]?.value}%
-                                            </span>
+            {/* Stat Cards */}
+            <div className="row row-gap-3 mb-4">
+                {statCards.map((card) => (
+                    <div key={card.label} className="col-xl-3 col-sm-6 d-flex">
+                        <div className="card flex-fill mb-0 position-relative overflow-hidden">
+                            <div className="card-body position-relative z-1">
+                                <div className="d-flex align-items-start justify-content-between">
+                                    <div className="d-flex align-items-start justify-content-between">
+                                        <div>
+                                            <p className="fs-14 mb-1">{card.label}</p>
+                                            <h2 className="mb-1 fs-16">{loading ? '…' : card.value}</h2>
+                                            <p className="text-muted mb-0 fs-13">{loading ? '' : card.subtext}</p>
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="w-full h-full rounded-full border-4 border-[#e2e8f0] dark:border-[#161641] border-dashed flex items-center justify-center">
-                                        <span className="text-[#9d9d9d] text-xs">No Data</span>
+                                    <div className="d-flex align-items-center justify-content-between">
+                                        <span className={`avatar avatar-md rounded-circle bg-soft-${card.color} border border-${card.color}`}>
+                                            <i className={`ti ${card.icon} fs-16 text-${card.color}`}></i>
+                                        </span>
                                     </div>
-                                )}
+                                </div>
                             </div>
+                            <img src={`/assets/img/icons/${card.elemnt}.svg`} alt="" className="img-fluid position-absolute top-0 start-0" />
+                        </div>
+                    </div>
+                ))}
+            </div>
 
+            {/* OEE Gauges */}
+            <div className="row row-gap-3 mb-4">
+                <div className="col-12">
+                    <div className="card">
+                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                            <h6 className="mb-0">Overall Equipment Effectiveness (OEE)</h6>
+                            <button onClick={() => navigate('/dashboard/formulas')} className="btn btn-outline-light shadow btn-xs">
+                                <i className="ti ti-math-function me-1"></i>View Formulas
+                            </button>
+                        </div>
+                        <div className="card-body">
+                            {loading ? (
+                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
+                            ) : (
+                                <div className="row g-3">
+                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                        <GaugeChart value={oee.availability} label="Availability" color={gaugeColor(oee.availability)} />
+                                    </div>
+                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                        <GaugeChart value={oee.quality} label="Quality" color={gaugeColor(oee.quality)} />
+                                    </div>
+                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                        <GaugeChart value={oee.performance} label="Performance" color={gaugeColor(oee.performance)} />
+                                    </div>
+                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                        <GaugeChart value={oee.oee} label="OEE" color={gaugeColor(oee.oee)} />
+                                    </div>
+                                </div>
+                            )}
                             {/* Legend */}
-                            <div className="flex-1 w-full space-y-3">
-                                {petEfficiencyData.map((item, index) => (
-                                    <div key={index} className="flex items-start gap-3 group">
-                                        <div
-                                            className="w-1.5 h-10 rounded-full mt-1 flex-shrink-0 transition-all group-hover:scale-110"
-                                            style={{ backgroundColor: item.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS }}
-                                        />
-                                        <div>
-                                            <p className="text-xs font-medium text-[#9d9d9d] uppercase tracking-wider mb-0.5">{item.name}</p>
-                                            <div className="flex items-baseline gap-2">
-                                                <h4 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff]">{item.value}%</h4>
-                                                <span className="text-xs text-[#9d9d9d]">
-                                                    {item.name === 'Efficiency' ? 'Operational Time' : 'Lost Production Time'}
+                            {!loading && (
+                                <div className="d-flex align-items-center justify-content-center gap-4 mt-3 pt-3 border-top">
+                                    <span className="d-flex align-items-center gap-1 fs-13">
+                                        <i className="ti ti-circle-filled" style={{ color: '#22c55e', fontSize: 8 }}></i> ≥85% World Class
+                                    </span>
+                                    <span className="d-flex align-items-center gap-1 fs-13">
+                                        <i className="ti ti-circle-filled" style={{ color: '#f59e0b', fontSize: 8 }}></i> 60–84% Acceptable
+                                    </span>
+                                    <span className="d-flex align-items-center gap-1 fs-13">
+                                        <i className="ti ti-circle-filled" style={{ color: '#ef4444', fontSize: 8 }}></i> &lt;60% Needs Improvement
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Downtime Breakdown + OEE by Line */}
+            <div className="row row-gap-3 mb-4">
+                {/* Downtime Breakdown */}
+                <div className="col-5 col-md-5 d-flex">
+                    <div className="card flex-fill">
+                        <div className="card-header d-flex align-items-center justify-content-between">
+                            <h6 className="mb-0">Downtime Breakdown (Minutes)</h6>
+                            <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
+                                <i className="ti ti-external-link me-1"></i>Details
+                            </button>
+                        </div>
+                        <div className="card-body">
+                            {loading ? (
+                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
+                            ) : (() => {
+                                const totalDowntime = downtimeCategories.reduce((sum, d) => sum + d.value, 0);
+                                return downtimeCategories.length === 0 || totalDowntime === 0 ? (
+                                    <div className="text-center text-muted py-5">
+                                        <i className="ti ti-clock-pause fs-1 mb-3 d-block"></i>
+                                        <p className="mb-0">No downtime recorded</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Total Summary */}
+                                        <div className="alert alert-light border mb-4">
+                                            <div className="d-flex align-items-center justify-content-between">
+                                                <div>
+                                                    <small className="text-muted d-block mb-1">Total Downtime</small>
+                                                    <h4 className="mb-0">{formatDuration(totalDowntime)}</h4>
+                                                </div>
+                                                <span className="avatar avatar-lg bg-soft-danger text-danger">
+                                                    <i className="ti ti-clock-pause fs-4"></i>
                                                 </span>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
-                                {petEfficiencyData.length === 0 && (
-                                    <p className="text-sm text-[#9d9d9d] italic">Select a PET with production data to view efficiency breakdown.</p>
-                                )}
-                            </div>
-                        </div>
-                    </Card>
-                </motion.div>
 
-                {/* 2. All Pets Downtime Distribution */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 }}
-                >
-                    <Card className="min-h-[400px] flex flex-col">
-                        <div className="px-5 py-4 border-b border-[#e2e8f0] dark:border-[#161641]">
-                            <h6 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff]">Downtime Contribution</h6>
-                            <p className="text-13 text-[#9d9d9d]">Total Minutes Lost: {stats.totalDowntime}</p>
-                        </div>
-
-                        <div className="p-5 flex flex-col md:flex-row items-center gap-8 flex-1">
-                            {/* Chart */}
-                            <div className="relative w-48 h-48 flex-shrink-0">
-                                {charts.downtimeByPet.length > 0 ? (
-                                    <div className="w-full h-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie
-                                                    data={charts.downtimeByPet}
-                                                    cx="50%"
-                                                    cy="50%"
-                                                    innerRadius={60}
-                                                    outerRadius={80}
-                                                    paddingAngle={5}
-                                                    dataKey="value"
-                                                    cornerRadius={4}
-                                                    stroke="none"
-                                                >
-                                                    {charts.downtimeByPet.map((entry, index) => (
-                                                        <Cell key={`cell-${index}`} fill={COLORS_DOWNTIME[index % COLORS_DOWNTIME.length]} />
-                                                    ))}
-                                                </Pie>
-                                                <Tooltip
-                                                    cursor={false}
-                                                    contentStyle={{ backgroundColor: tooltipBg, borderColor: tooltipBorder, borderRadius: '12px', color: tooltipText, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                    itemStyle={{ color: tooltipText, fontWeight: 600 }}
-                                                    formatter={(value) => [`${value} min`, 'Downtime']}
-                                                />
-                                            </PieChart>
-                                        </ResponsiveContainer>
-                                        {/* Center Label */}
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                            <AlertTriangle className="h-6 w-6 text-slate-300 dark:text-slate-600 mb-1" />
-                                            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                                                {stats.totalDowntime}m
-                                            </span>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="w-full h-full rounded-full border-4 border-[#e2e8f0] dark:border-[#161641] border-dashed flex items-center justify-center">
-                                        <span className="text-[#9d9d9d] text-xs">No Downtime</span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Legend - Scrollable if many PETs */}
-                            <div className="flex-1 w-full max-h-[240px] overflow-y-auto pr-2 custom-scrollbar">
-                                <div className="space-y-3">
-                                    {charts.downtimeByPet.length > 0 ? (
-                                        charts.downtimeByPet
-                                            .sort((a, b) => b.value - a.value) // Sort by highest downtime
-                                            .map((item, index) => {
-                                                const percentage = ((item.value / stats.totalDowntime) * 100).toFixed(1);
+                                        {/* Category Breakdown */}
+                                        <div className="d-flex flex-column gap-3">
+                                            {downtimeCategories.map(cat => {
+                                                const percentage = totalDowntime > 0 ? ((cat.value / totalDowntime) * 100).toFixed(1) : 0;
                                                 return (
-                                                    <div key={index} className="flex items-start gap-3 group">
-                                                        <div
-                                                            className="w-1.5 h-10 rounded-full mt-1 flex-shrink-0 transition-all group-hover:scale-110"
-                                                            style={{ backgroundColor: COLORS_DOWNTIME[index % COLORS_DOWNTIME.length] }}
-                                                        />
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center justify-between">
-                                                    <p className="text-xs font-medium text-[#9d9d9d] uppercase tracking-wider mb-0.5">{item.name}</p>
-                                                <span className="text-[10px] font-medium bg-[#f7f8f9] dark:bg-[#0c0c20] text-[#707070] dark:text-[#828997] px-1.5 py-0.5 rounded">
-                                                                    {percentage}%
+                                                    <div key={cat.name} className="border rounded p-3" style={{
+                                                        transition: 'all 0.3s ease',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}>
+                                                        <div className="d-flex align-items-center justify-content-between mb-2">
+                                                            <div className="d-flex align-items-center gap-2">
+                                                                <span className="avatar avatar-sm" style={{ backgroundColor: cat.color }}>
+                                                                    <i className="ti ti-alert-triangle text-white"></i>
                                                                 </span>
+                                                                <span className="fw-semibold">{cat.name}</span>
                                                             </div>
-                                                            <div className="flex items-baseline gap-2">
-                                                            <h4 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff]">{item.value} <span className="text-xs font-normal text-[#9d9d9d]">min</span></h4>
+                                                            <div className="text-end">
+                                                                <div className="fw-bold">{formatDuration(cat.value)}</div>
+                                                                <small className="text-muted">{percentage}%</small>
                                                             </div>
+                                                        </div>
+                                                        <div className="progress" style={{ height: 8, backgroundColor: '#f3f4f6' }}>
+                                                            <div
+                                                                className="progress-bar"
+                                                                role="progressbar"
+                                                                style={{
+                                                                    width: `${percentage}%`,
+                                                                    backgroundColor: cat.color,
+                                                                    transition: 'width 0.8s ease'
+                                                                }}
+                                                                aria-valuenow={percentage}
+                                                                aria-valuemin="0"
+                                                                aria-valuemax="100"
+                                                            ></div>
                                                         </div>
                                                     </div>
                                                 );
-                                            })
-                                    ) : (
-                                        <p className="text-sm text-[#9d9d9d] italic">No downtime recorded today. Great job!</p>
-                                    )}
-                                </div>
+                                            })}
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    </div>
+                </div>
+                {/* OEE by Line Table */}
+                <div className="col-xl-7 d-flex">
+                    <div className="card flex-fill">
+                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                            <h6 className="mb-0">OEE by Production Line</h6>
+                            <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-primary btn-xs">View Charts</button>
+                        </div>
+                        <div className="card-body p-0">
+                            <div className="table-responsive">
+                                <table className="table table-hover mb-0">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th className="ps-3">Line</th>
+                                            <th className="text-center">Reports</th>
+                                            <th className="text-center">Availability</th>
+                                            <th className="text-center">Quality</th>
+                                            <th className="text-center">Performance</th>
+                                            <th className="text-center">OEE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan="6" className="text-center text-muted py-4">
+                                                    <span className="spinner-border spinner-border-sm me-2"></span> Loading…
+                                                </td>
+                                            </tr>
+                                        ) : oeeByLine.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="6" className="text-center text-muted py-4">No data available</td>
+                                            </tr>
+                                        ) : (
+                                            oeeByLine.map((line) => (
+                                                <tr key={line.name}>
+                                                    <td className="ps-3 fw-medium">{line.name}</td>
+                                                    <td className="text-center">{line.reports}</td>
+                                                    <td className="text-center">
+                                                        <span className={`badge bg-soft-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'} text-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'}`}>
+                                                            {line.availability.toFixed(1)}%
+                                                        </span>
+                                                    </td>
+                                                    <td className="text-center">
+                                                        <span className={`badge bg-soft-${line.quality >= 85 ? 'success' : line.quality >= 60 ? 'warning' : 'danger'} text-${line.quality >= 85 ? 'success' : line.quality >= 60 ? 'warning' : 'danger'}`}>
+                                                            {line.quality.toFixed(1)}%
+                                                        </span>
+                                                    </td>
+                                                    <td className="text-center">
+                                                        <span className={`badge bg-soft-${line.performance >= 85 ? 'success' : line.performance >= 60 ? 'warning' : 'danger'} text-${line.performance >= 85 ? 'success' : line.performance >= 60 ? 'warning' : 'danger'}`}>
+                                                            {line.performance.toFixed(1)}%
+                                                        </span>
+                                                    </td>
+                                                    <td className="text-center">
+                                                        <span className={`fw-bold ${line.oee >= 85 ? 'text-success' : line.oee >= 60 ? 'text-warning' : 'text-danger'}`}>
+                                                            {line.oee.toFixed(1)}%
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-                    </Card>
-                </motion.div>
-            </div>
-
-            {/* ==================== OEE SECTION ==================== */}
-            <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h4 className="text-base font-bold text-[#1f2020] dark:text-[#d9dcff] mb-1">OEE Metrics</h4>
-                        <p className="text-sm text-[#707070] dark:text-[#828997]">Availability, Quality, and Performance Analysis</p>
                     </div>
                 </div>
-
-                {/* Pet Selector (Horizontal Scroll) */}
-                <div className="w-full overflow-x-auto pb-2 custom-scrollbar">
-                    <div className="flex items-center gap-2">
-                        {petsList.map(pet => {
-                            const isSelected = selectedOeePets.includes(pet);
-                            return (
-                                <button
-                                    key={pet}
-                                    onClick={() => handleOeePetToggle(pet)}
-                                    className={`
-                                        flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all border
-                                        ${isSelected
-                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                                            : 'bg-white dark:bg-[#030318] text-[#707070] dark:text-[#828997] border-[#e2e8f0] dark:border-[#161641] hover:bg-[#f7f8f9] dark:hover:bg-[#0c0c20]'}
-                                    `}
-                                >
-                                    {pet}
-                                </button>
-                            );
-                        })}
-                        {petsList.length === 0 && <span className="text-sm text-[#9d9d9d] italic">No PETs found for today</span>}
-                    </div>
-                </div>
-
-                {/* OEE Charts Grid */}
-                <div className="grid grid-cols-1 gap-8">
-                    {/* Availability Chart */}
-                    <OEEBarChart
-                        title="Availability"
-                        data={oeeData.map(d => ({ name: d.pet, value: d.availability }))}
-                        color="#3b82f6" // blue
-                        tooltipPrefix="Availability"
-                        gridColor={chartGridColor}
-                        textColor={tooltipText}
-                        bgColor={tooltipBg}
-                        borderColor={tooltipBorder}
-                    />
-
-                    {/* Quality Chart */}
-                    <OEEBarChart
-                        title="Quality"
-                        data={oeeData.map(d => ({ name: d.pet, value: d.quality }))}
-                        color="#10b981" // emerald
-                        tooltipPrefix="Quality"
-                        gridColor={chartGridColor}
-                        textColor={tooltipText}
-                        bgColor={tooltipBg}
-                        borderColor={tooltipBorder}
-                    />
-
-                    {/* Performance Chart */}
-                    <OEEBarChart
-                        title="Performance"
-                        data={oeeData.map(d => ({ name: d.pet, value: d.performance }))}
-                        color="#f59e0b" // amber
-                        tooltipPrefix="Performance"
-                        gridColor={chartGridColor}
-                        textColor={tooltipText}
-                        bgColor={tooltipBg}
-                        borderColor={tooltipBorder}
-                    />
-                </div>
             </div>
-
-            {/* Recent Reports Table */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.7 }}
-            >
-                <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-base font-bold text-[#1f2020] dark:text-[#d9dcff]">Recent Production Reports</h4>
-                </div>
-                <DataTable
-                    columns={reportColumns}
-                    data={recentReports}
-                    isLoading={loading}
-                    pagination={null} // Hide pagination for this summary view
-                    onView={handleView}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                />
-            </motion.div>
-
-            <ConfirmationModal
-                isOpen={deleteModalOpen}
-                onClose={() => setDeleteModalOpen(false)}
-                onConfirm={confirmDelete}
-                title="Confirm Deletion"
-                message={`Are you sure you want to delete report ${itemToDelete?.report_code}? This action cannot be undone.`}
-                confirmText="Delete"
-                isLoading={deleting}
-            />
-        </div >
+        </>
     );
 };
 

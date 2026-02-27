@@ -1,39 +1,38 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
-import { Card } from '../../components/ui';
-import { Calculator, Info } from 'lucide-react';
+import {Card} from '../../components/ui';
+import {Calculator, Info} from 'lucide-react';
 
-const FormulaCard = ({ title, description, formula, variables }) => {
+const FormulaCard = ({title, description, formula, variables}) => {
     return (
-        <Card className="p-6 h-full flex flex-col hover:border-blue-500/30 transition-colors">
-            <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
-                    <Calculator className="h-5 w-5" />
+        <Card className="p-4 h-100 d-flex flex-column" >
+            <div className="d-flex align-items-center gap-3 mb-4">
+                <div className="p-2 bg-primary bg-opacity-10 rounded text-primary">
+                    <Calculator size={20}/>
                 </div>
                 <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
+                    <h5 className="mb-1">{title}</h5>
+                    <p className="text-muted small mb-0">{description}</p>
                 </div>
             </div>
 
-            <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-xl mb-6 flex items-center justify-center min-h-[120px] overflow-x-auto">
-                <div className="text-lg text-slate-800 dark:text-slate-200">
+            <div className="bg-light p-4 rounded mb-4 d-flex align-items-center justify-content-center overflow-auto" style={{minHeight: '120px'}}>
+                <div className="fs-5">
                     <Latex>{`$$${formula}$$`}</Latex>
                 </div>
             </div>
 
-            <div className="mt-auto space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300 border-b border-slate-100 dark:border-slate-800 pb-2">
-                    <Info className="h-4 w-4 text-blue-500" />
+            <div className="mt-auto">
+                <div className="d-flex align-items-center gap-2 small fw-semibold border-bottom pb-2 mb-3">
+                    <Info size={16} className="text-primary"/>
                     <span>Variable Mapping</span>
                 </div>
-                <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <div className="small text-muted">
                     {variables.map((v, idx) => (
-                        <div key={idx} className="flex items-start gap-2">
-                            <span className="font-mono text-xs bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300 mt-0.5">
-                                {v.name}
-                            </span>
+                        <div key={idx} className="d-flex align-items-start gap-2 mb-2">
+                            <span className="font-monospace badge bg-secondary">{v.name}</span>
                             <span>= {v.desc}</span>
                         </div>
                     ))}
@@ -50,8 +49,8 @@ const Formulas = () => {
             description: "Measure of uptime and reliability.",
             formula: "\\frac{\\text{Planned Time} - \\text{Ext. Downtime}}{\\text{Planned Time}} \\times 100",
             variables: [
-                { name: "Planned Time", desc: "Total Production Time (Hours)" },
-                { name: "Ext. Downtime", desc: "External Downtime (converted to Hours)" }
+                {name: "Planned Time", desc: "Total Production Time (Hours)"},
+                {name: "Ext. Downtime", desc: "External Downtime (converted to Hours)"}
             ]
         },
         {
@@ -59,8 +58,8 @@ const Formulas = () => {
             description: "Percentage of good units produced.",
             formula: "\\frac{\\text{Total Potential} - \\text{Waste}}{\\text{Total Potential}} \\times 100",
             variables: [
-                { name: "Total Potential", desc: "Total Bottles Produced (or Total Packs × Bottles/Pack)" },
-                { name: "Waste", desc: "Filler Rejects (from Meter Readings)" }
+                {name: "Total Potential", desc: "Total Bottles Produced (or Total Packs × Bottles/Pack)"},
+                {name: "Waste", desc: "Filler Rejects (from Meter Readings)"}
             ]
         },
         {
@@ -68,9 +67,9 @@ const Formulas = () => {
             description: "Speed relative to designed capacity.",
             formula: "\\frac{\\text{Filler Reading}}{\\text{Line Speed} \\times \\text{Total Hours}} \\times 100",
             variables: [
-                { name: "Filler Reading", desc: "Meter Reading (Filler)" },
-                { name: "Line Speed", desc: "Target Speed (BPH)" },
-                { name: "Total Hours", desc: "Total Production Time (Hours)" }
+                {name: "Filler Reading", desc: "Meter Reading (Filler)"},
+                {name: "Line Speed", desc: "Target Speed (BPH)"},
+                {name: "Total Hours", desc: "Total Production Time (Hours)"}
             ]
         },
         {
@@ -78,26 +77,40 @@ const Formulas = () => {
             description: "Overall Equipment Effectiveness.",
             formula: "\\text{Availability} \\times \\text{Quality} \\times \\text{Performance}",
             variables: [
-                { name: "Note", desc: "Calculated as the product of the three factors." }
+                {name: "Note", desc: "Calculated as the product of the three factors."}
             ]
         }
     ];
 
     return (
-        <div className="space-y-6 animate-in fade-in">
-            <div className="flex items-center justify-between">
+        <div className="content pb-0">
+
+            <div className="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Production Formulas</h1>
-                    <p className="text-slate-500 dark:text-slate-400">Mathematical models used for OEE calculations</p>
+                    <h4 className="mb-1">Production Formulas</h4>
+                    <p className="text-muted">Mathematical models used for OEE calculations</p>
+                    <nav aria-label="breadcrumb">
+                        <ol className="breadcrumb mb-0 p-0">
+                            <li className="breadcrumb-item"><Link to="/Dashboard">Home</Link></li>
+                            <li className="breadcrumb-item active" aria-current="page">Formulas</li>
+                        </ol>
+                    </nav>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="row">
+
                 {formulas.map((f, idx) => (
-                    <FormulaCard key={idx} {...f} />
+                    <div className="col-xxl-6 col-xl-6 col-md-6 p-0" key={idx}>
+                        <FormulaCard key={idx} {...f} />
+                    </div>
                 ))}
+
             </div>
+
+
         </div>
+
     );
 };
 

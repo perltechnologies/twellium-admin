@@ -81,12 +81,12 @@ const PostProductionLayout = () => {
                 <div className="h-[56px] flex items-center justify-between px-4 border-b border-[#e2e8f0] dark:border-[#161641] flex-shrink-0">
                     {!sidebarCollapsed ? (
                         <Link to="/post-production/production" className="flex items-center gap-2.5 no-underline">
-                            <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">T</div>
+                            <img src="/twellium-logo-square.jpeg" alt="Twellium" className="h-8 w-8 rounded-lg object-cover flex-shrink-0" />
                             <span className="text-15 font-bold text-[#1f2020] dark:text-[#d9dcff]">Post Prod</span>
                         </Link>
                     ) : (
                         <Link to="/post-production/production" className="mx-auto">
-                            <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm">T</div>
+                            <img src="/twellium-logo-square.jpeg" alt="Twellium" className="h-8 w-8 rounded-lg object-cover" />
                         </Link>
                     )}
                     {!isMobile && !sidebarCollapsed && (

@@ -92,27 +92,31 @@ const DowntimeBreakdown = () => {
     const stats = calculateDowntimeStats();
 
     const cardColorMap = {
-        red: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', text: 'text-red-600 dark:text-red-400', decorImg: '/img/icons/elemnt-04.svg' },
-        blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-600 dark:text-blue-400', decorImg: '/img/icons/elemnt-01.svg' },
-        amber: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-600 dark:text-amber-400', decorImg: '/img/icons/elemnt-03.svg' },
-        slate: { bg: 'bg-gray-50 dark:bg-gray-900/20', border: 'border-gray-200 dark:border-gray-800', text: 'text-gray-600 dark:text-gray-400', decorImg: '/img/icons/elemnt-01.svg' },
+        danger: { bg: 'var(--danger-transparent)', border: 'var(--danger)', text: 'var(--danger)', decorImg: '/img/icons/elemnt-04.svg' },
+        primary: { bg: 'var(--primary-transparent)', border: 'var(--primary)', text: 'var(--primary)', decorImg: '/img/icons/elemnt-01.svg' },
+        info: { bg: 'var(--info-transparent)', border: 'var(--info)', text: 'var(--info)', decorImg: '/img/icons/elemnt-01.svg' },
+        warning: { bg: 'var(--warning-transparent)', border: 'var(--warning)', text: 'var(--warning)', decorImg: '/img/icons/elemnt-03.svg' },
+        teal: { bg: 'var(--teal-transparent)', border: 'var(--teal)', text: 'var(--teal)', decorImg: '/img/icons/elemnt-02.svg' },
     };
 
     const StatCard = ({ title, value, icon: Icon, cardColor }) => {
-        const c = cardColorMap[cardColor] || cardColorMap.blue;
+        const c = cardColorMap[cardColor] || cardColorMap.primary;
         return (
             <Card className="relative overflow-hidden mb-0">
                 <div className="p-5 relative z-[1]">
                     <div className="flex items-start justify-between">
                         <div>
-                            <p className="text-sm text-[#707070] dark:text-[#828997] mb-1">{title}</p>
-                            <h2 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff] mb-1">{value} min</h2>
-                            <p className="text-13 text-[#9d9d9d] mb-0">
+                            <p className="text-[0.875rem] text-[#707070] dark:text-[#828997] mb-1">{title}</p>
+                            <h2 className="text-[1rem] font-semibold text-[#1f2020] dark:text-[#d9dcff] mb-1">{value} min</h2>
+                            <p className="text-[0.8125rem] text-[#9d9d9d] mb-0">
                                 {stats.totalDowntime > 0 ? ((value / stats.totalDowntime) * 100).toFixed(1) : 0}% of total
                             </p>
                         </div>
-                        <span className={`inline-flex items-center justify-center h-10 w-10 rounded-full ${c.bg} border ${c.border}`}>
-                            <Icon className={`h-4 w-4 ${c.text}`} />
+                        <span
+                            className="inline-flex items-center justify-center h-10 w-10 rounded-full border"
+                            style={{ backgroundColor: c.bg, borderColor: c.border }}
+                        >
+                            <Icon className="h-4 w-4" style={{ color: c.text }} />
                         </span>
                     </div>
                 </div>
@@ -163,25 +167,25 @@ const DowntimeBreakdown = () => {
                     title="Mechanical Downtime"
                     value={stats.totalMechanical}
                     icon={AlertTriangle}
-                    cardColor="red"
+                    cardColor="danger"
                 />
                 <StatCard
                     title="Planned Downtime"
                     value={stats.totalPlanned}
                     icon={Clock}
-                    cardColor="blue"
+                    cardColor="info"
                 />
                 <StatCard
                     title="Unplanned Downtime"
                     value={stats.totalUnplanned}
                     icon={AlertTriangle}
-                    cardColor="amber"
+                    cardColor="warning"
                 />
                 <StatCard
                     title="Other Downtime"
                     value={stats.totalOther}
                     icon={TrendingUp}
-                    cardColor="slate"
+                    cardColor="teal"
                 />
             </div>
 

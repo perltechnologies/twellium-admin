@@ -8,6 +8,7 @@ import { productionApi } from '../api/production';
 const Login = React.lazy(() => import('../pages/auth/Login'));
 const DashboardLayout = React.lazy(() => import('../components/layout/DashboardLayout'));
 const DashboardOverview = React.lazy(() => import('../pages/dashboard/Overview'));
+const ProductionOverview = React.lazy(() => import('../pages/dashboard/ProductionOverview'));
 const Formulas = React.lazy(() => import('../pages/dashboard/Formulas'));
 const ProductionList = React.lazy(() => import('../pages/production/ProductionList'));
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
@@ -72,6 +73,8 @@ export const AppRouter = () => {
                             {/* Production Routes */}
                             <Route path="production">
                                 <Route index element={<ProductionList />} />
+                                <Route path="overview" element={<ProductionOverview />} />
+                                <Route path="reports" element={<ProductionList />} />
                                 <Route path="new" element={<ReportForm />} />
                                 <Route path=":id" element={<ReportDetails />} />
                                 <Route path=":id/edit" element={<ReportForm />} />
@@ -96,10 +99,16 @@ export const AppRouter = () => {
                                             columns={[
                                                 { header: 'ID', accessor: 'id' },
                                                 { header: 'Category Name', accessor: 'category_name' },
+                                                { 
+                                                    header: 'Created', 
+                                                    accessor: 'created_at',
+                                                    render: (row) => row.created_at ? new Date(row.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'
+                                                }
                                             ]}
                                             formFields={[
                                                 { name: 'category_name', label: 'Category Name', required: true }
                                             ]}
+                                            showStats={true}
                                         />
                                     }
                                 />
@@ -197,6 +206,7 @@ export const AppRouter = () => {
                                                 { name: 'pet_name', label: 'Pet Name', required: true },
                                                 { name: 'speedline', label: 'Speedline', type: 'number', step: '0.01', required: true }
                                             ]}
+                                            showStats={true}
                                         />
                                     }
                                 />

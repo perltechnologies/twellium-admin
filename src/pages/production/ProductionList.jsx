@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Plus, FileText, Activity } from 'lucide-react';
-import { DataTable, Button, Card, Input, ConfirmationModal } from '../../components/ui';
 import { productionApi } from '../../api/production';
-import ProductionStatsCards from '../../components/production/ProductionStatsCards';
-import {ProductionGraphs} from "../../components/production";
-
 
 const ProductionList = () => {
     const navigate = useNavigate();
@@ -16,25 +11,35 @@ const ProductionList = () => {
         production_date: '',
         status: '',
         search: '',
+        pet: '',
         page: 1,
         page_size: 15
     });
     const [totalCount, setTotalCount] = useState(0);
     const [paginationLinks, setPaginationLinks] = useState({ next: null, previous: null });
-
-    // Delete State
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [reportToDelete, setReportToDelete] = useState(null);
     const [deleting, setDeleting] = useState(false);
+    const [pets, setPets] = useState([]);
+    const [stats, setStats] = useState({
+        totalReports: 0,
+        completedReports: 0,
+        totalOutput: 0,
+        avgOutput: 0,
+        activeLines: 0,
+        totalStoppages: 0,
+        totalDowntime: 0,
+        approvalRate: 0
+    });
 
     const fetchReports = async () => {
         setLoading(true);
         try {
-            // Include pagination in params
             const params = {
                 production_date: filters.production_date,
                 status: filters.status,
                 search: filters.search,
+                pet: filters.pet,
                 page: filters.page,
                 page_size: filters.page_size
             };
@@ -55,10 +60,9 @@ const ProductionList = () => {
                 previous = responseData.previous;
             } else if (responseData.data && Array.isArray(responseData.data)) {
                 listData = responseData.data;
-                // Fix: Check for count/total explicitly
                 count = responseData.count || responseData.total || responseData.data.length;
-                next = responseData.next || (responseData.data.next); // Fallback if data is wrapped
-                previous = responseData.previous || (responseData.data.previous);
+                next = responseData.next;
+                previous = responseData.previous;
             } else if (responseData.data?.results && Array.isArray(responseData.data.results)) {
                 listData = responseData.data.results;
                 count = responseData.data.count || responseData.data.results.length;
@@ -69,6 +73,41 @@ const ProductionList = () => {
             setReports(listData);
             setTotalCount(count);
             setPaginationLinks({ next, previous });
+
+            // Calculate stats
+            const completed = listData.filter(r => r.status === 'COMPLETED' || r.status === 'APPROVED').length;
+            const totalOutput = listData.reduce((sum, r) => sum + (r.total_bottles_produced || 0), 0);
+            const approved = listData.filter(r => r.status === 'APPROVED').length;
+            
+            setStats({
+                totalReports: count,
+                completedReports: completed,
+                totalOutput: totalOutput,
+                avgOutput: listData.length > 0 ? Math.round(totalOutput / listData.length) : 0,
+                activeLines: 0,
+                totalStoppages: 0,
+                totalDowntime: 0,
+                approvalRate: listData.length > 0 ? Math.round((approved / listData.length) * 100) : 0
+            });
+
+            // Fetch additional stats
+            const [petsRes, stoppagesRes] = await Promise.all([
+                productionApi.getPets({ page_size: 100 }),
+                productionApi.getStoppages({ page_size: 500 })
+            ]);
+
+            const petsData = Array.isArray(petsRes.data) ? petsRes.data : petsRes.data?.results || [];
+            const stoppages = Array.isArray(stoppagesRes.data) ? stoppagesRes.data : stoppagesRes.data?.results || [];
+            const totalDowntime = stoppages.reduce((sum, s) => sum + (s.downtime_minutes || s.duration || 0), 0);
+
+            setPets(petsData);
+            setStats(prev => ({
+                ...prev,
+                activeLines: petsData.length,
+                totalStoppages: stoppages.length,
+                totalDowntime: Math.round(totalDowntime)
+            }));
+
         } catch (error) {
             console.error("Failed to fetch reports", error);
         } finally {
@@ -121,161 +160,416 @@ const ProductionList = () => {
         }
     };
 
-    const handleSearch = (val) => {
-        setFilters(prev => ({ ...prev, search: val }));
+    const handleSearch = (e) => {
+        setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }));
     };
 
-    useEffect(() => {
-        fetchReports();
-    }, []);
+    const STATUS_BADGES = {
+        STARTED: 'badge bg-soft-info text-info',
+        COMPLETED: 'badge bg-soft-success text-success',
+        APPROVED: 'badge bg-soft-purple text-purple',
+        DECLINED: 'badge bg-soft-danger text-danger',
+        INCOMPLETE: 'badge bg-soft-warning text-warning',
+        IDLE: 'badge bg-soft-secondary text-secondary',
+    };
 
-    const columns = [
-        {
-            header: 'Code',
-            accessor: 'report_code',
-            render: (row) => (
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                        <FileText className="h-4 w-4" />
-                    </div>
-                    <span className="font-medium text-slate-700 dark:text-slate-200">{row.report_code}</span>
-                </div>
-            )
-        },
-        {
-            header: 'Date',
-            accessor: 'production_date',
-            render: (row) => format(new Date(row.production_date), 'MMM dd, yyyy')
-        },
-        {
-            header: 'PET',
-            accessor: 'pet_name',
-            render: (row) => row.pet_name || '-'
-        },
-        {
-            header: 'Shift',
-            accessor: 'shift_name',
-            render: (row) => (
-                <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                    {row.shift_name}
-                </span>
-            )
-        },
-        {
-            header: 'Output',
-            accessor: 'total_bottles_produced',
-            render: (row) => (
-                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                    <Activity className="h-3 w-3" />
-                    <span className="font-medium">{row.total_bottles_produced?.toLocaleString() || 0}</span>
-                </div>
-            )
-        },
-        {
-            header: 'Packs/Pallet',
-            accessor: 'packs_per_pallet',
-            render: (row) => row.packs_per_pallet || '-'
-        },
-        {
-            header: 'Status',
-            accessor: 'status',
-            render: (row) => {
-                const status = row.status || 'STARTED';
-                const styles = {
-                    STARTED: 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
-                    COMPLETED: 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
-                    APPROVED: 'bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20',
-                    DECLINED: 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20',
-                    INCOMPLETE: 'bg-orange-100 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20',
-                    IDLE: 'bg-gray-100 dark:bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-500/20',
-                };
-
-                return (
-                    <select
-                        value={status}
-                        onClick={(e) => e.stopPropagation()} // Prevent row click
-                        onChange={(e) => handleStatusChange(row, e.target.value)}
-                        className={`px-2 py-1 rounded text-xs font-medium border bg-transparent cursor-pointer focus:outline-none ${styles[status] || 'text-slate-500 dark:text-slate-400'} `}
-                    >
-                        {['STARTED', 'COMPLETED', 'APPROVED', 'DECLINED', 'INCOMPLETE', 'IDLE'].map(s => (
-                            <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200">{s}</option>
-                        ))}
-                    </select>
-                );
-            }
-        }
-    ];
+    const totalPages = Math.ceil(totalCount / filters.page_size);
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-                        Production Reports
-                    </h1>
+        <>
+            {/* Page Header */}
+            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2" style={{
+                animation: 'fadeInDown 0.5s ease-out'
+            }}>
+                <h4 className="mb-0">Production Reports</h4>
+                <button className="btn btn-primary" onClick={() => navigate('/dashboard/production/new')}>
+                    <i className="ti ti-plus me-2"></i>Create New Report
+                </button>
+            </div>
+
+            {/* Top Filters - Date and PET */}
+            <div className="card mb-4" style={{ animation: 'fadeInUp 0.5s ease-out 0.05s both' }}>
+                <div className="card-body">
+                    <div className="row g-3 align-items-end">
+                        <div className="col-md-3">
+                            <label className="form-label fw-medium">Production Date</label>
+                            <input
+                                type="date"
+                                className="form-control"
+                                value={filters.production_date}
+                                onChange={(e) => setFilters(prev => ({ ...prev, production_date: e.target.value, page: 1 }))}
+                            />
+                        </div>
+                        <div className="col-md-3">
+                            <label className="form-label fw-medium">PET Line</label>
+                            <select
+                                className="form-select"
+                                value={filters.pet}
+                                onChange={(e) => setFilters(prev => ({ ...prev, pet: e.target.value, page: 1 }))}
+                            >
+                                <option value="">All Lines</option>
+                                {pets.map(pet => (
+                                    <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="col-md-2">
+                            <button className="btn btn-primary w-100" onClick={fetchReports}>
+                                <i className={`ti ti-filter${loading ? ' spin' : ''} me-2`}></i>Apply Filter
+                            </button>
+                        </div>
+                        <div className="col-md-2">
+                            <button 
+                                className="btn btn-outline-secondary w-100" 
+                                onClick={() => setFilters({ production_date: '', status: '', search: '', pet: '', page: 1, page_size: 15 })}
+                            >
+                                <i className="ti ti-x me-2"></i>Clear All
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <Button
-                    onClick={() => navigate('/dashboard/production/new')}
-                    className="bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20"
-                >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create New Report
-                </Button>
             </div>
 
-            <ProductionStatsCards reports={reports} />
-            <ProductionGraphs reports={reports} />
-
-            <div className="flex gap-4 items-center bg-white dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                <Input
-                    type="date"
-                    value={filters.production_date}
-                    onChange={(e) => setFilters(prev => ({ ...prev, production_date: e.target.value }))}
-                    className="w-auto"
-                />
-                <select
-                    value={filters.status}
-                    onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
-                    className="px-3 py-2 bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-700/50 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none"
-                >
-                    <option value="">All Statuses</option>
-                    {['STARTED', 'COMPLETED', 'APPROVED', 'DECLINED', 'INCOMPLETE', 'IDLE'].map(s => (
-                        <option key={s} value={s}>{s}</option>
-                    ))}
-                </select>
+            {/* Stats Cards - Row 1 */}
+            <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.1s both' }}>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Total Reports</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalReports}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-primary border border-primary">
+                                    <i className="ti ti-file-report fs-16 text-primary"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Completed</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.completedReports}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-success border border-success">
+                                    <i className="ti ti-check fs-16 text-success"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Total Output</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalOutput.toLocaleString()}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-info border border-info">
+                                    <i className="ti ti-bottle fs-16 text-info"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Avg Output</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.avgOutput.toLocaleString()}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-warning border border-warning">
+                                    <i className="ti ti-chart-line fs-16 text-warning"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <DataTable
-                columns={columns}
-                data={reports}
-                isLoading={loading}
-                onDelete={handleDelete}
-                pagination={{
-                    currentPage: filters.page,
-                    pageSize: filters.page_size,
-                    totalCount: totalCount,
-                    hasNext: !!paginationLinks.next,
-                    hasPrev: !!paginationLinks.previous,
-                    next: filters.page + 1,
-                    prev: filters.page - 1
-                }}
-                onPageChange={handlePageChange}
-                searchPlaceholder="Search by Report Code..."
-                onSearch={handleSearch}
-                onEdit={(row) => navigate(`/dashboard/production/${row.id}/edit`)}
-                onView={(row) => navigate(`/dashboard/production/${row.id}`)}
-            />
+            {/* Stats Cards - Row 2 */}
+            <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.15s both' }}>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Active PET Lines</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.activeLines}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-success border border-success">
+                                    <i className="ti ti-building-factory-2 fs-16 text-success"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Total Stoppages</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalStoppages}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-warning border border-warning">
+                                    <i className="ti ti-alert-triangle fs-16 text-warning"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Total Downtime</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.totalDowntime} min`}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-danger border border-danger">
+                                    <i className="ti ti-clock-pause fs-16 text-danger"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-xl-3 col-sm-6">
+                    <div className="card mb-0">
+                        <div className="card-body">
+                            <div className="d-flex align-items-start justify-content-between">
+                                <div>
+                                    <p className="fs-14 mb-1">Approval Rate</p>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.approvalRate}%`}</h2>
+                                </div>
+                                <span className="avatar avatar-md rounded-circle bg-soft-purple border border-purple">
+                                    <i className="ti ti-thumb-up fs-16 text-purple"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-            <ConfirmationModal
-                isOpen={deleteModalOpen}
-                onClose={() => setDeleteModalOpen(false)}
-                onConfirm={confirmDelete}
-                title="Delete Report"
-                message="Are you sure you want to delete this report? This action cannot be undone."
-                confirmText="Delete Report"
-                isLoading={deleting}
-            />
-        </div >
+            {/* Additional Filters */}
+            <div className="card mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.2s both' }}>
+                <div className="card-body">
+                    <div className="row g-3">
+                        <div className="col-md-5">
+                            <label className="form-label">Search</label>
+                            <div className="input-group">
+                                <span className="input-group-text"><i className="ti ti-search"></i></span>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="Search by report code..."
+                                    value={filters.search}
+                                    onChange={handleSearch}
+                                />
+                            </div>
+                        </div>
+                        <div className="col-md-3">
+                            <label className="form-label">Status</label>
+                            <select
+                                className="form-select"
+                                value={filters.status}
+                                onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value, page: 1 }))}
+                            >
+                                <option value="">All Statuses</option>
+                                {['STARTED', 'COMPLETED', 'APPROVED', 'DECLINED', 'INCOMPLETE', 'IDLE'].map(s => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="col-md-2 d-flex align-items-end">
+                            <button className="btn btn-outline-secondary w-100" onClick={fetchReports}>
+                                <i className={`ti ti-refresh${loading ? ' spin' : ''} me-2`}></i>Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Table Card */}
+            <div className="card" style={{ animation: 'fadeInUp 0.6s ease-out 0.2s both' }}>
+                <div className="card-header d-flex align-items-center justify-content-between">
+                    <h6 className="mb-0">All Reports ({totalCount})</h6>
+                </div>
+                <div className="card-body p-0">
+                    {loading ? (
+                        <div className="text-center py-5">
+                            <div className="spinner-border text-primary" role="status">
+                                <span className="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    ) : reports.length === 0 ? (
+                        <div className="text-center py-5">
+                            <i className="ti ti-file-off fs-1 text-muted mb-3 d-block"></i>
+                            <p className="text-muted mb-0">No reports found</p>
+                        </div>
+                    ) : (
+                        <div className="table-responsive">
+                            <table className="table table-hover mb-0">
+                                <thead className="table-light">
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Date</th>
+                                        <th>PET Line</th>
+                                        <th>Shift</th>
+                                        <th>Output</th>
+                                        <th>Packs/Pallet</th>
+                                        <th>Status</th>
+                                        <th className="text-end">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {reports.map((row, idx) => (
+                                        <tr key={row.id} style={{
+                                            animation: `fadeInUp 0.4s ease-out ${idx * 0.05}s both`,
+                                            cursor: 'pointer'
+                                        }} onClick={() => navigate(`/dashboard/production/${row.id}`)}>
+                                            <td>
+                                                <div className="d-flex align-items-center gap-2">
+                                                    <span className="avatar avatar-sm bg-soft-primary text-primary">
+                                                        <i className="ti ti-file-text"></i>
+                                                    </span>
+                                                    <span className="fw-medium">{row.report_code}</span>
+                                                </div>
+                                            </td>
+                                            <td>{format(new Date(row.production_date), 'MMM dd, yyyy')}</td>
+                                            <td>{row.pet_name || '-'}</td>
+                                            <td>
+                                                <span className="badge bg-light text-dark border">
+                                                    {row.shift_name}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span className="text-success fw-medium">
+                                                    <i className="ti ti-trending-up me-1"></i>
+                                                    {row.total_bottles_produced?.toLocaleString() || 0}
+                                                </span>
+                                            </td>
+                                            <td>{row.packs_per_pallet || '-'}</td>
+                                            <td onClick={(e) => e.stopPropagation()}>
+                                                <select
+                                                    value={row.status || 'STARTED'}
+                                                    onChange={(e) => handleStatusChange(row, e.target.value)}
+                                                    className={`form-select form-select-sm ${STATUS_BADGES[row.status || 'STARTED']}`}
+                                                    style={{ width: 'auto', cursor: 'pointer' }}
+                                                >
+                                                    {['STARTED', 'COMPLETED', 'APPROVED', 'DECLINED', 'INCOMPLETE', 'IDLE'].map(s => (
+                                                        <option key={s} value={s}>{s}</option>
+                                                    ))}
+                                                </select>
+                                            </td>
+                                            <td className="text-end" onClick={(e) => e.stopPropagation()}>
+                                                <div className="d-flex gap-2 justify-content-end">
+                                                    <button
+                                                        className="btn btn-sm btn-icon btn-outline-primary"
+                                                        onClick={() => navigate(`/dashboard/production/${row.id}`)}
+                                                        title="View"
+                                                    >
+                                                        <i className="ti ti-eye"></i>
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-icon btn-outline-info"
+                                                        onClick={() => navigate(`/dashboard/production/${row.id}/edit`)}
+                                                        title="Edit"
+                                                    >
+                                                        <i className="ti ti-edit"></i>
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-icon btn-outline-danger"
+                                                        onClick={() => handleDelete(row)}
+                                                        title="Delete"
+                                                    >
+                                                        <i className="ti ti-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+                {totalPages > 1 && (
+                    <div className="card-footer d-flex align-items-center justify-content-between">
+                        <p className="mb-0 text-muted">
+                            Showing {((filters.page - 1) * filters.page_size) + 1} to {Math.min(filters.page * filters.page_size, totalCount)} of {totalCount} entries
+                        </p>
+                        <nav>
+                            <ul className="pagination mb-0">
+                                <li className={`page-item ${!paginationLinks.previous ? 'disabled' : ''}`}>
+                                    <button className="page-link" onClick={() => handlePageChange(filters.page - 1)} disabled={!paginationLinks.previous}>
+                                        <i className="ti ti-chevron-left"></i>
+                                    </button>
+                                </li>
+                                {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                                    const pageNum = i + 1;
+                                    return (
+                                        <li key={pageNum} className={`page-item ${filters.page === pageNum ? 'active' : ''}`}>
+                                            <button className="page-link" onClick={() => handlePageChange(pageNum)}>
+                                                {pageNum}
+                                            </button>
+                                        </li>
+                                    );
+                                })}
+                                <li className={`page-item ${!paginationLinks.next ? 'disabled' : ''}`}>
+                                    <button className="page-link" onClick={() => handlePageChange(filters.page + 1)} disabled={!paginationLinks.next}>
+                                        <i className="ti ti-chevron-right"></i>
+                                    </button>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                )}
+            </div>
+
+            {/* Delete Confirmation Modal */}
+            {deleteModalOpen && (
+                <div className="modal fade show d-block" style={{ 
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    animation: 'fadeIn 0.2s ease-out'
+                }} onClick={() => setDeleteModalOpen(false)}>
+                    <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()} style={{
+                        animation: 'shake 0.5s ease-out'
+                    }}>
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <h5 className="modal-title">Delete Report</h5>
+                                <button type="button" className="btn-close" onClick={() => setDeleteModalOpen(false)}></button>
+                            </div>
+                            <div className="modal-body">
+                                <p className="mb-0">Are you sure you want to delete this report? This action cannot be undone.</p>
+                            </div>
+                            <div className="modal-footer">
+                                <button type="button" className="btn btn-secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</button>
+                                <button type="button" className="btn btn-danger" onClick={confirmDelete} disabled={deleting}>
+                                    {deleting ? (
+                                        <>
+                                            <span className="spinner-border spinner-border-sm me-2"></span>Deleting...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="ti ti-trash me-2"></i>Delete Report
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 

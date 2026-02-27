@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { login as apiLogin, logout as apiLogout } from '../api/auth';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 
 const AuthContext = createContext(null);
 
@@ -44,11 +45,17 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
     };
 
+    if (loading) {
+        return <LoadingSpinner fullScreen size="lg" />;
+    }
+
     return (
         <AuthContext.Provider value={{ user, login, logout, loading }}>
-            {!loading && children}
+            {children}
         </AuthContext.Provider>
     );
 };
 
 export const useAuth = () => useContext(AuthContext);
+
+export { AuthContext };

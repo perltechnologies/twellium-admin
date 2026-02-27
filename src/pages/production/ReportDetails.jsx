@@ -61,25 +61,29 @@ const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, 
 );
 
 const statCardColorMap = {
-    green: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800', text: 'text-emerald-600 dark:text-emerald-400', decorImg: '/img/icons/elemnt-02.svg' },
-    blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-600 dark:text-blue-400', decorImg: '/img/icons/elemnt-01.svg' },
-    indigo: { bg: 'bg-indigo-50 dark:bg-indigo-900/20', border: 'border-indigo-200 dark:border-indigo-800', text: 'text-indigo-600 dark:text-indigo-400', decorImg: '/img/icons/elemnt-01.svg' },
-    amber: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-600 dark:text-amber-400', decorImg: '/img/icons/elemnt-03.svg' },
-    red: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', text: 'text-red-600 dark:text-red-400', decorImg: '/img/icons/elemnt-04.svg' },
+    success: { bg: 'var(--success-transparent)', border: 'var(--success)', text: 'var(--success)', decorImg: '/img/icons/elemnt-02.svg' },
+    primary: { bg: 'var(--primary-transparent)', border: 'var(--primary)', text: 'var(--primary)', decorImg: '/img/icons/elemnt-01.svg' },
+    info: { bg: 'var(--info-transparent)', border: 'var(--info)', text: 'var(--info)', decorImg: '/img/icons/elemnt-01.svg' },
+    indigo: { bg: 'var(--indigo-transparent)', border: 'var(--indigo)', text: 'var(--indigo)', decorImg: '/img/icons/elemnt-01.svg' },
+    warning: { bg: 'var(--warning-transparent)', border: 'var(--warning)', text: 'var(--warning)', decorImg: '/img/icons/elemnt-03.svg' },
+    danger: { bg: 'var(--danger-transparent)', border: 'var(--danger)', text: 'var(--danger)', decorImg: '/img/icons/elemnt-04.svg' },
 };
 
 const StatCard = ({ title, value, icon: Icon, cardColor }) => {
-    const c = statCardColorMap[cardColor] || statCardColorMap.blue;
+    const c = statCardColorMap[cardColor] || statCardColorMap.primary;
     return (
         <Card className="relative overflow-hidden mb-0">
             <div className="p-5 relative z-[1]">
                 <div className="flex items-start justify-between">
                     <div>
-                        <p className="text-sm text-[#707070] dark:text-[#828997] mb-1">{title}</p>
-                        <h2 className="text-base font-semibold text-[#1f2020] dark:text-[#d9dcff]">{value}</h2>
+                        <p className="text-[0.875rem] text-[#707070] dark:text-[#828997] mb-1">{title}</p>
+                        <h2 className="text-[1rem] font-semibold text-[#1f2020] dark:text-[#d9dcff]">{value}</h2>
                     </div>
-                    <span className={`inline-flex items-center justify-center h-10 w-10 rounded-full ${c.bg} border ${c.border}`}>
-                        <Icon className={`h-4 w-4 ${c.text}`} />
+                    <span
+                        className="inline-flex items-center justify-center h-10 w-10 rounded-full border"
+                        style={{ backgroundColor: c.bg, borderColor: c.border }}
+                    >
+                        <Icon className="h-4 w-4" style={{ color: c.text }} />
                     </span>
                 </div>
             </div>
@@ -968,13 +972,13 @@ const ReportDetails = () => {
                     title="Total Output"
                     value={totalOutput.toLocaleString()}
                     icon={Layers}
-                    cardColor="green"
+                    cardColor="success"
                 />
                 <StatCard
                     title="Production Time"
                     value={`${productionTime} hrs`}
                     icon={Clock}
-                    cardColor="blue"
+                    cardColor="info"
                 />
                 <StatCard
                     title="Efficiency"
@@ -986,7 +990,7 @@ const ReportDetails = () => {
                     title="Downtime"
                     value={`${totalDowntime} min`}
                     icon={AlertTriangle}
-                    cardColor="amber"
+                    cardColor="warning"
                 />
             </div>
 
@@ -996,13 +1000,13 @@ const ReportDetails = () => {
                     title="Mechanical Downtime"
                     value={`${mechanicalDowntime} min`}
                     icon={AlertTriangle}
-                    cardColor="red"
+                    cardColor="danger"
                 />
                 <StatCard
                     title="Planned Downtime"
                     value={`${plannedDowntime} min`}
                     icon={Clock}
-                    cardColor="blue"
+                    cardColor="info"
                 />
             </div>
 

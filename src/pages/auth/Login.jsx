@@ -1,19 +1,26 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Button, Input, Card } from '../../components/ui';
-import { Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 const Login = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [rememberMe, setRememberMe] = useState(true);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [mounted, setMounted] = useState(false);
 
     const { login } = useAuth();
     const navigate = useNavigate();
+
+    useEffect(() => {
+        document.body.classList.add('account-page', 'bg-white');
+        setMounted(true);
+        return () => {
+            document.body.classList.remove('account-page', 'bg-white');
+        };
+    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -31,105 +38,189 @@ const Login = () => {
     };
 
     return (
-        <div className="min-h-screen w-full bg-slate-50 dark:bg-slate-950 relative overflow-hidden flex items-center justify-center p-4">
-            {/* Abstract Background */}
-            <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-100/40 dark:from-emerald-900/20 via-slate-50 dark:via-slate-950 to-slate-50 dark:to-slate-950 animate-pulse" />
-                <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-emerald-100/20 dark:from-emerald-900/10 to-transparent" />
-            </div>
+        <div className="main-wrapper">
+            <div className="overflow-hidden p-3 acc-vh">
+                <div className="row vh-100 w-100 g-0">
 
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="relative z-10 w-full max-w-md"
-            >
-                <div className="text-center mb-8">
-                    <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="inline-block"
-                    >
-                        <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-500 dark:from-emerald-400 dark:to-teal-200">
-                            Twellium
-                        </h1>
-                        <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm tracking-wider uppercase">Admin Portal</p>
-                    </motion.div>
-                </div>
-
-                <Card className="p-8 backdrop-blur-2xl bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-2xl shadow-emerald-900/10">
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="space-y-4">
-                            <div className="relative group">
-                                <User className="absolute left-3 top-9 h-5 w-5 text-slate-400 dark:text-slate-500 group-focus-within:text-emerald-500 dark:group-focus-within:text-emerald-400 transition-colors" />
-                                <Input
-                                    label="Username"
-                                    placeholder="Enter your username"
-                                    className="pl-10 bg-white dark:bg-slate-950/50"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    required
-                                />
-                            </div>
-
-                            <div className="relative group">
-                                <Lock className="absolute left-3 top-9 h-5 w-5 text-slate-400 dark:text-slate-500 group-focus-within:text-emerald-500 dark:group-focus-within:text-emerald-400 transition-colors" />
-                                <Input
-                                    label="Password"
-                                    type={showPassword ? "text" : "password"}
-                                    placeholder="••••••••"
-                                    className="pl-10 pr-10 bg-white dark:bg-slate-950/50"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-9 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none"
+                    {/* Left: Login Form */}
+                    <div className="col-lg-6 vh-100 overflow-y-auto overflow-x-hidden">
+                        <div className="row">
+                            <div className="col-md-10 mx-auto">
+                                <form
+                                    onSubmit={handleSubmit}
+                                    className="vh-100 d-flex justify-content-between flex-column p-4 pb-0"
+                                    style={{
+                                        opacity: mounted ? 1 : 0,
+                                        transform: mounted ? 'translateY(0)' : 'translateY(20px)',
+                                        transition: 'all 0.6s ease-out'
+                                    }}
                                 >
-                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                </button>
+                                    {/* Logo */}
+                                    <div className="text-center mb-4 auth-logo" style={{
+                                        animation: mounted ? 'fadeInDown 0.8s ease-out' : 'none'
+                                    }}>
+                                        <img src="/logo.jpeg" className="img-fluid" alt="Logo" style={{ maxWidth: '180px' }} />
+                                    </div>
+
+                                    <div>
+                                        {/* Heading */}
+                                        <div className="mb-4" style={{
+                                            animation: mounted ? 'fadeInUp 0.8s ease-out 0.2s both' : 'none'
+                                        }}>
+                                            <h1 className="mb-2 fw-bold" style={{ fontSize: '2rem' }}>Welcome Back</h1>
+                                            <p className="mb-0 text-muted">Access the Twellium admin panel</p>
+                                        </div>
+
+                                        {/* Username */}
+                                        <div className="mb-3" style={{
+                                            animation: mounted ? 'fadeInUp 0.8s ease-out 0.3s both' : 'none'
+                                        }}>
+                                            <label className="form-label fw-medium">Username</label>
+                                            <div className="input-group input-group-flat">
+                                                <input
+                                                    type="text"
+                                                    className="form-control"
+                                                    placeholder="Enter your username"
+                                                    value={username}
+                                                    onChange={(e) => setUsername(e.target.value)}
+                                                    required
+                                                    style={{
+                                                        padding: '0.75rem 1rem',
+                                                        fontSize: '0.95rem',
+                                                        transition: 'all 0.3s ease'
+                                                    }}
+                                                    onFocus={(e) => e.target.style.boxShadow = '0 0 0 0.2rem rgba(228, 31, 7, 0.15)'}
+                                                    onBlur={(e) => e.target.style.boxShadow = 'none'}
+                                                />
+                                                <span className="input-group-text">
+                                                    <i className="ti ti-user"></i>
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Password */}
+                                        <div className="mb-3" style={{
+                                            animation: mounted ? 'fadeInUp 0.8s ease-out 0.4s both' : 'none'
+                                        }}>
+                                            <label className="form-label fw-medium">Password</label>
+                                            <div className="input-group input-group-flat pass-group">
+                                                <input
+                                                    type={showPassword ? 'text' : 'password'}
+                                                    className="form-control pass-input"
+                                                    placeholder="Enter your password"
+                                                    value={password}
+                                                    onChange={(e) => setPassword(e.target.value)}
+                                                    required
+                                                    style={{
+                                                        padding: '0.75rem 1rem',
+                                                        fontSize: '0.95rem',
+                                                        transition: 'all 0.3s ease'
+                                                    }}
+                                                    onFocus={(e) => e.target.style.boxShadow = '0 0 0 0.2rem rgba(228, 31, 7, 0.15)'}
+                                                    onBlur={(e) => e.target.style.boxShadow = 'none'}
+                                                />
+                                                <span
+                                                    className="input-group-text toggle-password"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    style={{ 
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s ease'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                >
+                                                    <i className={`ti ${showPassword ? 'ti-eye' : 'ti-eye-off'}`}></i>
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Remember / Forgot */}
+                                        <div className="d-flex align-items-center justify-content-between mb-4" style={{
+                                            animation: mounted ? 'fadeInUp 0.8s ease-out 0.5s both' : 'none'
+                                        }}>
+                                            <div className="form-check form-check-md d-flex align-items-center">
+                                                <input
+                                                    className="form-check-input mt-0"
+                                                    type="checkbox"
+                                                    id="rememberMe"
+                                                    checked={rememberMe}
+                                                    onChange={(e) => setRememberMe(e.target.checked)}
+                                                />
+                                                <label className="form-check-label text-dark ms-2" htmlFor="rememberMe">
+                                                    Remember Me
+                                                </label>
+                                            </div>
+                                            <div className="text-end">
+                                                <a href="#" className="link-danger fw-medium" style={{
+                                                    textDecoration: 'none',
+                                                    transition: 'all 0.2s ease'
+                                                }}>Forgot Password?</a>
+                                            </div>
+                                        </div>
+
+                                        {/* Error Alert */}
+                                        {error && (
+                                            <div className="alert alert-danger py-3 mb-3" role="alert" style={{
+                                                animation: 'shake 0.5s ease-in-out',
+                                                borderLeft: '4px solid var(--danger)'
+                                            }}>
+                                                <i className="ti ti-alert-circle me-2"></i>
+                                                {error}
+                                            </div>
+                                        )}
+
+                                        {/* Submit */}
+                                        <div className="mb-3" style={{
+                                            animation: mounted ? 'fadeInUp 0.8s ease-out 0.6s both' : 'none'
+                                        }}>
+                                            <button
+                                                type="submit"
+                                                className="btn btn-primary w-100"
+                                                disabled={isLoading}
+                                                style={{
+                                                    padding: '0.75rem 1rem',
+                                                    fontSize: '1rem',
+                                                    fontWeight: '600',
+                                                    transition: 'all 0.3s ease',
+                                                    transform: isLoading ? 'scale(0.98)' : 'scale(1)'
+                                                }}
+                                            >
+                                                {isLoading ? (
+                                                    <>
+                                                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                                        Signing In...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <i className="ti ti-login me-2"></i>
+                                                        Sign In
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="text-center pb-4" style={{
+                                        animation: mounted ? 'fadeIn 1s ease-out 0.8s both' : 'none'
+                                    }}>
+                                        <p className="text-muted mb-0" style={{ fontSize: '0.875rem' }}>
+                                            Copyright &copy; {new Date().getFullYear()} - Twellium
+                                        </p>
+                                    </div>
+                                </form>
                             </div>
                         </div>
+                    </div>
 
-                        {error && (
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                className="text-red-400 text-sm bg-red-500/10 p-3 rounded-lg border border-red-500/20"
-                            >
-                                {error}
-                            </motion.div>
-                        )}
+                    {/* Right: Background Image */}
+                    <div className="col-lg-6 login-bg-01" style={{
+                        opacity: mounted ? 1 : 0,
+                        transition: 'opacity 1s ease-out 0.3s'
+                    }}></div>
 
-                        <div className="pt-2">
-                            <Button
-                                type="submit"
-                                className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border-0"
-                                isLoading={isLoading}
-                            >
-                                {!isLoading && (
-                                    <span className="flex items-center gap-2">
-                                        Sign In <ArrowRight className="h-5 w-5" />
-                                    </span>
-                                )}
-                            </Button>
-                        </div>
-
-                        <div className="text-center pt-4">
-                            <a href="#" className="text-sm text-slate-500 hover:text-emerald-400 transition-colors">
-                                Forgot your password?
-                            </a>
-                        </div>
-                    </form>
-                </Card>
-
-                <div className="text-center mt-8 text-slate-500 dark:text-slate-600 text-xs">
-                    &copy; {new Date().getFullYear()} Twellium Company. All rights reserved.
                 </div>
-            </motion.div>
+            </div>
         </div>
     );
 };
