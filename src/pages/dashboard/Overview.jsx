@@ -27,15 +27,19 @@ const formatDuration = (mins) => {
 const clamp = (v) => Math.min(100, Math.max(0, v));
 
 const computeLineOee = (l) => {
-    const a = l.plannedMins > 0 ? ((l.plannedMins - l.downtimeMins) / l.plannedMins) * 100 : 0;
-    const q = l.target > 0 ? (l.actual / l.target) * 100 : 0;
-    const runH = (l.plannedMins - l.downtimeMins) / 60;
-    let p = 0;
-    if (l.speedline > 0 && runH > 0) {
-        p = (l.actual / (l.speedline * runH)) * 100;
-    } else if (l.target > 0) {
-        p = (l.actual / l.target) * 100;
-    }
+    const PT  = l.plannedMins / 60;
+    const TDT = l.downtimeMins / 60;
+    const MDT = (l.mechDowntime || 0) / 60;
+    const PDT = (l.plannedDowntime || 0) / 60;
+    const TP  = l.fillerReading || 0;
+    const FR  = l.fillerRejects || 0;
+
+    const aDen = PT - MDT;
+    const a = aDen > 0 ? ((PT - TDT) / aDen) * 100 : 0;
+    const pDen = PT - PDT;
+    const p = pDen > 0 ? ((PT - TDT) / pDen) * 100 : 0;
+    const q = TP > 0 ? ((TP - FR) / TP) * 100 : 0;
+
     const oeeVal = (Math.min(1, a / 100) * Math.min(1, q / 100) * Math.min(1, p / 100)) * 100;
     return {
         name: l.name,
@@ -48,47 +52,106 @@ const computeLineOee = (l) => {
 };
 
 /* ── SVG Gauge ───────────────────────────────────── */
-const GaugeChart = ({ value, label, color, formula, tooltip, calculation }) => {
+const GaugeChart = ({ value, label, color, formula, tooltip, calculation, rawValues }) => {
     const pct = Math.min(100, Math.max(0, value));
-    const cx = 100, cy = 90, r = 70;
-    const trackColor = '#e9ecef';
-    const fillColor = color || (pct >= 75 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444');
+    const size = 200;
+    const cx = size / 2;
+    const cy = size / 2 + 20;
+    const r = 65;
+    const startAngle = (Math.PI * 4) / 5;
+    const endAngle = Math.PI / 5;
+    const range = startAngle - endAngle;
+    const needleAngle = startAngle - (range * pct) / 100;
 
-    const startX = cx - r, startY = cy;
-    const endFull = { x: cx + r, y: cy };
+    const polarToCartesian = (angle) => ({
+        x: cx + r * Math.cos(angle),
+        y: cy - r * Math.sin(angle)
+    });
 
-    const angle = Math.PI * (1 - pct / 100);
-    const endX = +(cx + r * Math.cos(angle)).toFixed(2);
-    const endY = +(cy - r * Math.sin(angle)).toFixed(2);
-    const largeArc = pct > 50 ? 1 : 0;
+    const createArc = (start, end) => {
+        const startPoint = polarToCartesian(start);
+        const endPoint = polarToCartesian(end);
+        const largeArc = Math.abs(start - end) > Math.PI ? 1 : 0;
+        return `M ${startPoint.x} ${startPoint.y} A ${r} ${r} 0 ${largeArc} 1 ${endPoint.x} ${endPoint.y}`;
+    };
+
+    const zones = [
+        { end: 60, color: '#ef4444' },
+        { end: 85, color: '#f59e0b' },
+        { end: 100, color: '#22c55e' }
+    ];
 
     return (
-        <div className="text-center position-relative">
-            <div title={calculation || tooltip}>
-                <svg width="200" height="120" viewBox="0 0 200 120" style={{ cursor: 'help' }}>
-                    <path
-                        d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endFull.x} ${endFull.y}`}
-                        fill="none" stroke={trackColor} strokeWidth="14" strokeLinecap="round"
-                    />
-                    {pct > 0.5 && (
-                        <path
-                            d={`M ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY}`}
-                            fill="none" stroke={fillColor} strokeWidth="14" strokeLinecap="round"
-                        />
-                    )}
-                    <text x={cx} y={cy - 12} textAnchor="middle" fontSize="24" fontWeight="bold" fill="#1f2937">
+        <div className="d-flex flex-column align-items-center">
+            <div title={calculation || tooltip} style={{ cursor: 'help' }}>
+                <svg width={size} height={size * 0.75} viewBox={`0 0 ${size} ${size * 0.75}`}>
+                    <defs>
+                        <filter id={`shadow-${label.replace(/\s/g, '')}`}>
+                            <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.2"/>
+                        </filter>
+                    </defs>
+
+                    {/* Track background */}
+                    <path d={createArc(startAngle, endAngle)} fill="none" stroke="#e5e7eb" strokeWidth="24" strokeLinecap="round" />
+
+                    {/* Color zones */}
+                    {zones.map((zone, i) => {
+                        const prevEnd = i === 0 ? 0 : zones[i - 1].end;
+                        const zStart = startAngle - (range * prevEnd) / 100;
+                        const zEnd = startAngle - (range * zone.end) / 100;
+                        return <path key={i} d={createArc(zStart, zEnd)} fill="none" stroke={zone.color} strokeWidth="22" strokeLinecap="round" />;
+                    })}
+
+                    {/* Tick marks */}
+                    {[0, 20, 40, 60, 80, 100].map(tick => {
+                        const angle = startAngle - (range * tick) / 100;
+                        const inner = polarToCartesian(angle);
+                        const outer = { x: cx + (r + 8) * Math.cos(angle), y: cy - (r + 8) * Math.sin(angle) };
+                        const isMajor = tick % 20 === 0;
+                        return (
+                            <line key={tick} x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} 
+                                stroke="#9ca3af" strokeWidth={isMajor ? "2" : "1"} strokeLinecap="round" />
+                        );
+                    })}
+
+                    {/* Tick labels */}
+                    {[0, 25, 50, 75, 100].map(tick => {
+                        const angle = startAngle - (range * tick) / 100;
+                        const pos = { x: cx + (r + 20) * Math.cos(angle), y: cy - (r + 20) * Math.sin(angle) + 4 };
+                        return (
+                            <text key={tick} x={pos.x} y={pos.y} textAnchor="middle" fontSize="11" fontWeight="600" fill="#6b7280">
+                                {tick}
+                            </text>
+                        );
+                    })}
+
+                    {/* Needle */}
+                    <g filter={`url(#shadow-${label.replace(/\s/g, '')})`}>
+                        <line x1={cx} y1={cy} x2={cx + (r - 8) * Math.cos(needleAngle)} y2={cy - (r - 8) * Math.sin(needleAngle)} 
+                            stroke="#1f2937" strokeWidth="3" strokeLinecap="round" />
+                        <circle cx={cx} cy={cy} r="6" fill="#1f2937" />
+                        <circle cx={cx} cy={cy} r="3" fill="#ffffff" />
+                    </g>
+
+                    {/* Value */}
+                    <text x={cx} y={cy + 30} textAnchor="middle" fontSize="26" fontWeight="700" fill="#111827">
                         {pct.toFixed(1)}%
                     </text>
-                    <text x={cx} y={cy + 8} textAnchor="middle" fontSize="12" fill="#6b7280">
+                    <text x={cx} y={cy + 48} textAnchor="middle" fontSize="13" fontWeight="600" fill="#6b7280">
                         {label}
                     </text>
                 </svg>
             </div>
-            {formula && (
-                <div className="mt-2">
-                    <small className="text-muted font-monospace" style={{ fontSize: '10px' }} title={calculation || tooltip}>
-                        {formula}
-                    </small>
+            {rawValues && (
+                <div className="mt-3 text-center" style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                    {pct === 0 ? (
+                        <div className="badge bg-soft-warning text-warning px-2 py-1">
+                            <i className="ti ti-alert-circle me-1"></i>
+                            {rawValues.reason || 'No data available'}
+                        </div>
+                    ) : (
+                        <div className="text-muted font-monospace">{rawValues.display}</div>
+                    )}
                 </div>
             )}
         </div>
@@ -206,52 +269,72 @@ const Overview = () => {
         };
 
         /* OEE */
-        const shiftHours = shifts.length > 0 ? (shifts[0].duration_hours || 8) : 8;
-        let totalPlannedMins = 0, totalDowntimeMins = 0, totalActual = 0, totalTarget = 0;
+        let totalPlannedMins = 0;
+        let totalFillerReading = 0, totalFillerRejects = 0;
         const lineOeeMap = {};
 
+        // Planned time from reports start/end times; filler data from meter_readings
         reports.forEach(r => {
-            const plannedMins = (r.shift_duration_hours || shiftHours) * 60;
-            let reportDowntime = 0;
-            (r.stoppage_logs || []).forEach(log => {
-                reportDowntime += log.downtime_minutes || 0;
-                (log.incidents || []).forEach(inc => { reportDowntime += inc.incident_duration || 0; });
-            });
-            const actual = r.total_bottles_produced || 0;
-            const target = r.target_output || r.planned_output || 0;
-
+            let plannedMins = 0;
+            if (r.start_time && r.end_time) {
+                const [sh, sm] = r.start_time.split(':').map(Number);
+                const [eh, em] = r.end_time.split(':').map(Number);
+                let startM = sh * 60 + sm, endM = eh * 60 + em;
+                if (endM <= startM) endM += 24 * 60;
+                plannedMins = endM - startM;
+            } else if (r.total_production_time_hours) {
+                plannedMins = parseFloat(r.total_production_time_hours) * 60;
+            }
             totalPlannedMins += plannedMins;
-            totalDowntimeMins += reportDowntime;
-            totalActual += actual;
-            totalTarget += target > 0 ? target : actual;
+
+            (r.meter_readings || []).forEach(m => {
+                totalFillerReading += parseFloat(m.filler_reading || 0);
+                totalFillerRejects += parseFloat(m.filler_rejects || 0);
+            });
 
             const lineName = r.pet_name || 'Unknown';
             if (!lineOeeMap[lineName]) {
-                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, actual: 0, target: 0, speedline: 0, reports: 0 };
+                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, fillerReading: 0, fillerRejects: 0, reports: 0 };
             }
             lineOeeMap[lineName].plannedMins += plannedMins;
-            lineOeeMap[lineName].downtimeMins += reportDowntime;
-            lineOeeMap[lineName].actual += actual;
-            lineOeeMap[lineName].target += target > 0 ? target : actual;
             lineOeeMap[lineName].reports += 1;
-
-            const pet = pets.find(p => (p.pet_name || p.name) === lineName);
-            if (pet && pet.speedline) lineOeeMap[lineName].speedline = pet.speedline;
+            (r.meter_readings || []).forEach(m => {
+                lineOeeMap[lineName].fillerReading += parseFloat(m.filler_reading || 0);
+                lineOeeMap[lineName].fillerRejects += parseFloat(m.filler_rejects || 0);
+            });
         });
 
-        const availability = totalPlannedMins > 0
-            ? ((totalPlannedMins - totalDowntimeMins) / totalPlannedMins) * 100 : 0;
-        const quality = totalTarget > 0 ? (totalActual / totalTarget) * 100 : 0;
+        // Total/Mechanical/Planned downtime per line from stoppages
+        stoppages.forEach(s => {
+            const lineName = s.pet_name || s.line_name || 'Unknown';
+            if (!lineOeeMap[lineName]) {
+                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, fillerReading: 0, fillerRejects: 0, reports: 0 };
+            }
+            lineOeeMap[lineName].downtimeMins += (s.downtime_minutes || 0);
+            (s.incidents || []).forEach(inc => {
+                const dur = parseFloat(inc.incident_duration || 0);
+                const cat = (inc.downtime_category_name || '').toLowerCase();
+                if (cat.includes('mechanical')) lineOeeMap[lineName].mechDowntime += dur;
+                if (cat.includes('planned'))    lineOeeMap[lineName].plannedDowntime += dur;
+            });
+        });
 
-        let performance = 0;
-        const totalSpeedCapacity = Object.values(lineOeeMap).reduce((sum, l) => {
-            return sum + (l.speedline > 0 ? l.speedline * (l.plannedMins - l.downtimeMins) / 60 : 0);
-        }, 0);
-        if (totalSpeedCapacity > 0) {
-            performance = (totalActual / totalSpeedCapacity) * 100;
-        } else if (totalTarget > 0) {
-            performance = (totalActual / totalTarget) * 100;
-        }
+        // Global OEE using confirmed formula variables
+        const totalDowntimeMins   = stats.totalDowntime;
+        // Sum from lineOeeMap to avoid string-concatenation bug on incident_duration (API returns string)
+        const totalMechMins      = Object.values(lineOeeMap).reduce((s, l) => s + l.mechDowntime, 0);
+        const totalPlannedDtMins = Object.values(lineOeeMap).reduce((s, l) => s + l.plannedDowntime, 0);
+
+        const PT  = totalPlannedMins / 60;
+        const TDT = totalDowntimeMins / 60;
+        const MDT = totalMechMins / 60;
+        const PDT = totalPlannedDtMins / 60;
+
+        const aDen = PT - MDT;
+        const availability = aDen > 0 ? ((PT - TDT) / aDen) * 100 : 0;
+        const pDen = PT - PDT;
+        const performance  = pDen > 0 ? ((PT - TDT) / pDen) * 100 : 0;
+        const quality      = totalFillerReading > 0 ? ((totalFillerReading - totalFillerRejects) / totalFillerReading) * 100 : 0;
 
         const a01 = Math.min(1, Math.max(0, availability / 100));
         const q01 = Math.min(1, Math.max(0, quality / 100));
@@ -264,10 +347,11 @@ const Overview = () => {
             oee: clamp(a01 * q01 * p01 * 100),
             rawValues: {
                 plannedMins: totalPlannedMins,
-                downtimeMins: totalDowntimeMins,
-                actual: totalActual,
-                target: totalTarget,
-                speedCapacity: totalSpeedCapacity,
+                totalDowntimeMins,
+                mechDowntimeMins: totalMechMins,
+                plannedDowntimeMins: totalPlannedDtMins,
+                fillerReading: totalFillerReading,
+                fillerRejects: totalFillerRejects,
             }
         };
 
@@ -280,18 +364,19 @@ const Overview = () => {
         if (selectedPet && oeeByLine.length > 0) {
             const selectedLineOee = oeeByLine.find(l => l.name === selectedPet);
             if (selectedLineOee) {
-                const lineData = lineOeeMap[selectedPet];
+                const ld = lineOeeMap[selectedPet];
                 displayOee = {
                     availability: selectedLineOee.availability,
                     quality: selectedLineOee.quality,
                     performance: selectedLineOee.performance,
                     oee: selectedLineOee.oee,
                     rawValues: {
-                        plannedMins: lineData.plannedMins,
-                        downtimeMins: lineData.downtimeMins,
-                        actual: lineData.actual,
-                        target: lineData.target,
-                        speedCapacity: lineData.speedline > 0 ? lineData.speedline * (lineData.plannedMins - lineData.downtimeMins) / 60 : 0,
+                        plannedMins: ld.plannedMins,
+                        totalDowntimeMins: ld.downtimeMins,
+                        mechDowntimeMins: ld.mechDowntime,
+                        plannedDowntimeMins: ld.plannedDowntime,
+                        fillerReading: ld.fillerReading,
+                        fillerRejects: ld.fillerRejects,
                     }
                 };
             }
@@ -341,7 +426,7 @@ const Overview = () => {
         },
         {
             label: 'Total Downtime', value: formatDuration(stats.totalDowntime),
-            subtext: `Mech: ${formatDuration(stats.mechDowntime)} · Planned: ${formatDuration(stats.plannedDowntime)} · Other: ${formatDuration(stats.totalDowntime - stats.mechDowntime - stats.plannedDowntime)}`,
+            subtext: 'All production stoppages',
             icon: 'ti-clock-pause', color: 'danger', elemnt: 'elemnt-04',
         },
         {
@@ -464,8 +549,12 @@ const Overview = () => {
                                             value={oee.availability} 
                                             label="Availability" 
                                             color={gaugeColor(oee.availability)}
-                                            formula="(Planned - Downtime) / Planned × 100"
-                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.downtimeMins || 0).toFixed(0)}) / ${Number(oee.rawValues.plannedMins || 0).toFixed(0)} × 100 = ${oee.availability.toFixed(1)}%` : ''}
+                                            formula="(Planned Time - Total Downtime) / (Planned Time - Mechanical Downtime) × 100"
+                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.mechDowntimeMins || 0).toFixed(0)}) × 100 = ${oee.availability.toFixed(1)}%` : ''}
+                                            rawValues={oee.rawValues ? {
+                                                display: `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.mechDowntimeMins || 0).toFixed(0)}) × 100`,
+                                                reason: oee.availability === 0 ? (oee.rawValues.plannedMins === 0 ? 'Planned Time = 0' : 'Availability = 0%') : null
+                                            } : null}
                                         />
                                     </div>
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
@@ -473,8 +562,12 @@ const Overview = () => {
                                             value={oee.quality} 
                                             label="Quality" 
                                             color={gaugeColor(oee.quality)}
-                                            formula="(Total - Waste) / Total × 100"
-                                            calculation={oee.rawValues ? `${Number(oee.rawValues.actual || 0).toLocaleString()} / ${Number(oee.rawValues.target || 0).toLocaleString()} × 100 = ${oee.quality.toFixed(1)}%` : ''}
+                                            formula="(Total Production - Filler Reject) / Total Production × 100"
+                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.fillerReading || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.fillerReading || 0).toLocaleString()} × 100 = ${oee.quality.toFixed(1)}%` : ''}
+                                            rawValues={oee.rawValues ? {
+                                                display: `(${Number(oee.rawValues.fillerReading || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.fillerReading || 0).toLocaleString()} × 100`,
+                                                reason: oee.quality === 0 ? (oee.rawValues.fillerReading === 0 ? 'Filler Reading = 0' : 'Quality = 0%') : null
+                                            } : null}
                                         />
                                     </div>
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
@@ -482,11 +575,12 @@ const Overview = () => {
                                             value={oee.performance} 
                                             label="Performance" 
                                             color={gaugeColor(oee.performance)}
-                                            formula="Actual / (Speed × Hours) × 100"
-                                            calculation={oee.rawValues ? ((oee.rawValues.speedCapacity || 0) > 0 
-                                                ? `${Number(oee.rawValues.actual || 0).toLocaleString()} / ${Number(oee.rawValues.speedCapacity || 0).toFixed(0)} × 100 = ${oee.performance.toFixed(1)}%`
-                                                : `${Number(oee.rawValues.actual || 0).toLocaleString()} / ${Number(oee.rawValues.target || 0).toLocaleString()} × 100 = ${oee.performance.toFixed(1)}%`) : ''
-                                            }
+                                            formula="(Planned Time - Total Downtime) / (Planned Time - Planned Downtime) × 100"
+                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.plannedDowntimeMins || 0).toFixed(0)}) × 100 = ${oee.performance.toFixed(1)}%` : ''}
+                                            rawValues={oee.rawValues ? {
+                                                display: `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.plannedDowntimeMins || 0).toFixed(0)}) × 100`,
+                                                reason: oee.performance === 0 ? ((oee.rawValues.plannedMins - oee.rawValues.plannedDowntimeMins) === 0 ? 'Operational Time = 0' : 'Performance = 0%') : null
+                                            } : null}
                                         />
                                     </div>
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
@@ -496,49 +590,17 @@ const Overview = () => {
                                             color={gaugeColor(oee.oee)}
                                             formula="A × Q × P"
                                             calculation={`${(oee.availability/100).toFixed(3)} × ${(oee.quality/100).toFixed(3)} × ${(oee.performance/100).toFixed(3)} = ${oee.oee.toFixed(1)}%`}
+                                            rawValues={{
+                                                display: `${(oee.availability/100).toFixed(3)} × ${(oee.quality/100).toFixed(3)} × ${(oee.performance/100).toFixed(3)}`,
+                                                reason: oee.oee === 0 ? (
+                                                    oee.availability === 0 ? 'Availability = 0%' :
+                                                    oee.quality === 0 ? 'Quality = 0%' :
+                                                    oee.performance === 0 ? 'Performance = 0%' : 'OEE = 0%'
+                                                ) : null
+                                            }}
                                         />
                                     </div>
                                 </div>
-                            )}
-                            {/* Legend & Formula Breakdown */}
-                            {!loading && (
-                                <>
-                                    <div className="d-flex align-items-center justify-content-center gap-4 mt-3 pt-3 border-top">
-                                        <span className="d-flex align-items-center gap-1 fs-13">
-                                            <i className="ti ti-circle-filled" style={{ color: '#22c55e', fontSize: 8 }}></i> ≥85% World Class
-                                        </span>
-                                        <span className="d-flex align-items-center gap-1 fs-13">
-                                            <i className="ti ti-circle-filled" style={{ color: '#f59e0b', fontSize: 8 }}></i> 60–84% Acceptable
-                                        </span>
-                                        <span className="d-flex align-items-center gap-1 fs-13">
-                                            <i className="ti ti-circle-filled" style={{ color: '#ef4444', fontSize: 8 }}></i> &lt;60% Needs Improvement
-                                        </span>
-                                    </div>
-                                    
-                                    {/* Calculation Breakdown */}
-                                    <div className="alert alert-light border mt-3 mb-0">
-                                        <div className="d-flex align-items-center gap-2 mb-2">
-                                            <i className="ti ti-math-function text-primary"></i>
-                                            <small className="fw-semibold">OEE Calculation Breakdown</small>
-                                        </div>
-                                        <div className="row g-2 small text-muted">
-                                            <div className="col-md-3">
-                                                <div className="font-monospace">A = {oee.availability.toFixed(1)}%</div>
-                                            </div>
-                                            <div className="col-md-3">
-                                                <div className="font-monospace">Q = {oee.quality.toFixed(1)}%</div>
-                                            </div>
-                                            <div className="col-md-3">
-                                                <div className="font-monospace">P = {oee.performance.toFixed(1)}%</div>
-                                            </div>
-                                            <div className="col-md-3">
-                                                <div className="font-monospace fw-bold text-dark">
-                                                    OEE = {((oee.availability/100) * (oee.quality/100) * (oee.performance/100) * 100).toFixed(1)}%
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </>
                             )}
                         </div>
                     </div>

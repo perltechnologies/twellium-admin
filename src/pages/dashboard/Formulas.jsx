@@ -46,38 +46,41 @@ const Formulas = () => {
     const formulas = [
         {
             title: "Availability (%)",
-            description: "Measure of uptime and reliability.",
-            formula: "\\frac{\\text{Planned Time} - \\text{Ext. Downtime}}{\\text{Planned Time}} \\times 100",
+            description: "Measure of uptime relative to unplanned loss time.",
+            formula: "\\frac{\\text{Planned Time} - \\text{Total Downtime}}{\\text{Planned Time} - \\text{Mechanical Downtime}} \\times 100",
             variables: [
-                {name: "Planned Time", desc: "Total Production Time (Hours)"},
-                {name: "Ext. Downtime", desc: "External Downtime (converted to Hours)"}
-            ]
-        },
-        {
-            title: "Quality (%)",
-            description: "Percentage of good units produced.",
-            formula: "\\frac{\\text{Total Potential} - \\text{Waste}}{\\text{Total Potential}} \\times 100",
-            variables: [
-                {name: "Total Potential", desc: "Total Bottles Produced (or Total Packs × Bottles/Pack)"},
-                {name: "Waste", desc: "Filler Rejects (from Meter Readings)"}
+                {name: "Planned Time", desc: "Shift duration derived from report start_time → end_time (hours)"},
+                {name: "Total Downtime", desc: "Sum of stoppage_logs[].downtime_minutes across all stoppages (converted to hours)"},
+                {name: "Mechanical Downtime", desc: "Sum of incident_duration where downtime_category_name contains 'mechanical' (converted to hours)"}
             ]
         },
         {
             title: "Performance (%)",
-            description: "Speed relative to designed capacity.",
-            formula: "\\frac{\\text{Filler Reading}}{\\text{Line Speed} \\times \\text{Total Hours}} \\times 100",
+            description: "Measure of speed loss during production.",
+            formula: "\\frac{\\text{Planned Time} - \\text{Total Downtime}}{\\text{Planned Time} - \\text{Planned Downtime}} \\times 100",
             variables: [
-                {name: "Filler Reading", desc: "Meter Reading (Filler)"},
-                {name: "Line Speed", desc: "Target Speed (BPH)"},
-                {name: "Total Hours", desc: "Total Production Time (Hours)"}
+                {name: "Planned Time", desc: "Shift duration derived from report start_time → end_time (hours)"},
+                {name: "Total Downtime", desc: "Sum of stoppage_logs[].downtime_minutes across all stoppages (converted to hours)"},
+                {name: "Planned Downtime", desc: "Sum of incident_duration where downtime_category_name contains 'planned' (converted to hours)"}
+            ]
+        },
+        {
+            title: "Quality (%)",
+            description: "Percentage of good units out of total production.",
+            formula: "\\frac{\\text{Total Production} - \\text{Filler Reject}}{\\text{Total Production}} \\times 100",
+            variables: [
+                {name: "Total Production", desc: "Sum of meter_readings[].filler_reading across all meter readings"},
+                {name: "Filler Reject", desc: "Sum of meter_readings[].filler_rejects across all meter readings"}
             ]
         },
         {
             title: "OEE (%)",
-            description: "Overall Equipment Effectiveness.",
+            description: "Overall Equipment Effectiveness — product of all three factors.",
             formula: "\\text{Availability} \\times \\text{Quality} \\times \\text{Performance}",
             variables: [
-                {name: "Note", desc: "Calculated as the product of the three factors."}
+                {name: "Availability", desc: "Availability % ÷ 100"},
+                {name: "Quality", desc: "Quality % ÷ 100"},
+                {name: "Performance", desc: "Performance % ÷ 100"}
             ]
         }
     ];
@@ -91,27 +94,40 @@ const Formulas = () => {
                     <p className="text-muted">Mathematical models used for OEE calculations</p>
                     <nav aria-label="breadcrumb">
                         <ol className="breadcrumb mb-0 p-0">
-                            <li className="breadcrumb-item"><Link to="/Dashboard">Home</Link></li>
+                            <li className="breadcrumb-item"><Link to="/dashboard">Home</Link></li>
                             <li className="breadcrumb-item active" aria-current="page">Formulas</li>
                         </ol>
                     </nav>
                 </div>
             </div>
 
-            <div className="row">
+            {/* OEE Benchmark Legend */}
+            <div className="alert alert-light border d-flex align-items-center justify-content-center gap-4 mb-4 flex-wrap">
+                <span className="d-flex align-items-center gap-2 fs-13">
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }}></span>
+                    <strong>≥ 85%</strong> — World Class
+                </span>
+                <span className="d-flex align-items-center gap-2 fs-13">
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }}></span>
+                    <strong>60 – 84%</strong> — Acceptable
+                </span>
+                <span className="d-flex align-items-center gap-2 fs-13">
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}></span>
+                    <strong>&lt; 60%</strong> — Needs Improvement
+                </span>
+            </div>
 
+            <div className="row">
                 {formulas.map((f, idx) => (
                     <div className="col-xxl-6 col-xl-6 col-md-6 p-0" key={idx}>
                         <FormulaCard key={idx} {...f} />
                     </div>
                 ))}
-
             </div>
 
-
         </div>
-
     );
 };
 
 export default Formulas;
+
