@@ -6,6 +6,8 @@ import {
     PieChart, Pie, Cell,
 } from 'recharts';
 
+import GaugeChart from '../../components/charts/GaugeChart';
+
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
     const d = res.data;
@@ -185,9 +187,7 @@ const Overview = () => {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    const actualDelta = totals.planned > 0
-        ? ((totals.actual - totals.planned) / totals.planned * 100)
-        : 0;
+    const efficiency = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
 
     const statCards = [
         { label: 'Production Reports', value: stats.totalReports, icon: 'ti-file-report', color: 'primary', elemnt: 'elemnt-01', delta: null },
@@ -304,13 +304,6 @@ const Overview = () => {
                             <div className="d-flex align-items-center justify-content-between flex-wrap mb-3">
                                 <div className="mb-1">
                                     <h5 className="mb-2 fs-16 fw-bold">{formatNum(totals.actual)}</h5>
-                                    <p className="mb-0 fs-13">
-                                        <span className={`${actualDelta >= 0 ? 'text-success' : 'text-danger'} fw-normal me-1`}>
-                                            <i className={`ti ${actualDelta >= 0 ? 'ti-arrow-bar-up' : 'ti-arrow-bar-down'} me-1`}></i>
-                                            {actualDelta >= 0 ? '+' : ''}{actualDelta.toFixed(1)}%
-                                        </span>
-                                        vs planned
-                                    </p>
                                 </div>
                                 <div className="d-flex align-items-center gap-3">
                                     <p className="fs-14 text-dark d-flex align-items-center mb-1">
@@ -625,21 +618,12 @@ const Overview = () => {
                                         </div>
                                     </div>
                                     <div className="d-sm-flex justify-content-between flex-wrap mb-4">
-                                        <div className="d-flex align-items-center">
-                                            <span className={`avatar avatar-md border rounded-circle flex-shrink-0 ${actualDelta >= 0 ? 'bg-soft-success' : 'bg-soft-danger'}`}>
-                                                <i className={`ti ${actualDelta >= 0 ? 'ti-trending-up text-success' : 'ti-trending-down text-danger'} fs-16`}></i>
-                                            </span>
-                                            <div className="ms-2 flex-fill">
-                                                <h6 className="fw-medium text-truncate mb-1 fs-14">Efficiency</h6>
-                                                <p className="fs-13 mb-0">Actual vs Planned</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-sm-end mb-0">
-                                            <h6 className={`fw-medium text-truncate mb-1 fs-14 ${actualDelta >= 0 ? 'text-success' : 'text-danger'}`}>
-                                                {actualDelta >= 0 ? '+' : ''}{actualDelta.toFixed(1)}%
-                                            </h6>
-                                            <p className="fs-13 mb-0">variance</p>
-                                        </div>
+                                        <GaugeChart
+                                            value={efficiency}
+                                            label="Efficiency"
+                                            color={efficiency >= 85 ? '#22c55e' : efficiency >= 50 ? '#f59e0b' : '#ef4444'}
+                                            max={120}
+                                        />
                                     </div>
                                     <div className="d-sm-flex justify-content-between flex-wrap mb-0">
                                         <div className="d-flex align-items-center">
