@@ -12,7 +12,8 @@ const StoppageLogList = () => {
         pet: '',
         search: '',
         page: 1,
-        page_size: 15
+        page_size: 15,
+        ordering: '-log_date'
     });
     const [pets, setPets] = React.useState([]);
     const [totalCount, setTotalCount] = React.useState(0);
@@ -26,6 +27,17 @@ const StoppageLogList = () => {
         avgDowntime: 0,
         avgEfficiency: 0
     });
+    const [visibleColumns, setVisibleColumns] = React.useState({
+        dateTime: true,
+        reportCode: true,
+        petLine: true,
+        hour: true,
+        category: true,
+        efficiency: true,
+        downtime: true,
+        output: true
+    });
+    const [showColumnToggle, setShowColumnToggle] = React.useState(false);
 
     const fetchStoppages = async () => {
         setLoading(true);
@@ -35,7 +47,8 @@ const StoppageLogList = () => {
                 pet: filters.pet,
                 search: filters.search,
                 page: filters.page,
-                page_size: filters.page_size
+                page_size: filters.page_size,
+                ordering: filters.ordering
             };
             const res = await productionApi.getStoppages(params);
             const responseData = res.data;
@@ -260,7 +273,7 @@ const StoppageLogList = () => {
             <div className="card mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.15s both' }}>
                 <div className="card-body">
                     <div className="row g-3">
-                        <div className="col-md-6">
+                        <div className="col-md-4">
                             <label className="form-label">Search</label>
                             <div className="input-group">
                                 <span className="input-group-text"><i className="ti ti-search"></i></span>
@@ -273,7 +286,24 @@ const StoppageLogList = () => {
                                 />
                             </div>
                         </div>
-                        <div className="col-md-2 d-flex align-items-end">
+                        <div className="col-md-3">
+                            <label className="form-label">Order By</label>
+                            <select 
+                                className="form-select"
+                                value={filters.ordering}
+                                onChange={(e) => setFilters({...filters, ordering: e.target.value, page: 1})}
+                            >
+                                <option value="-log_date">Date (Newest)</option>
+                                <option value="log_date">Date (Oldest)</option>
+                                <option value="-downtime_minutes">Downtime (High to Low)</option>
+                                <option value="downtime_minutes">Downtime (Low to High)</option>
+                                <option value="-efficiency">Efficiency (High to Low)</option>
+                                <option value="efficiency">Efficiency (Low to High)</option>
+                                <option value="pet_name">PET Line (A-Z)</option>
+                                <option value="-pet_name">PET Line (Z-A)</option>
+                            </select>
+                        </div>
+                        <div className="col-md-3 d-flex align-items-end">
                             <button className="btn btn-outline-secondary w-100" onClick={fetchStoppages}>
                                 <i className={`ti ti-refresh${loading ? ' spin' : ''} me-2`}></i>Refresh
                             </button>
@@ -286,6 +316,41 @@ const StoppageLogList = () => {
             <div className="card" style={{ animation: 'fadeInUp 0.6s ease-out 0.2s both' }}>
                 <div className="card-header d-flex align-items-center justify-content-between">
                     <h6 className="mb-0">All Stoppages ({totalCount})</h6>
+                    <div className="position-relative">
+                        <button 
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => setShowColumnToggle(!showColumnToggle)}
+                        >
+                            <i className="ti ti-columns me-1"></i>Columns
+                        </button>
+                        {showColumnToggle && (
+                            <div className="dropdown-menu show position-absolute end-0 p-3" style={{ minWidth: '200px', zIndex: 1000 }}>
+                                {Object.entries({
+                                    dateTime: 'Date & Time',
+                                    reportCode: 'Report Code',
+                                    petLine: 'PET Line',
+                                    hour: 'Hour',
+                                    category: 'Category',
+                                    efficiency: 'Efficiency',
+                                    downtime: 'Downtime',
+                                    output: 'Output'
+                                }).map(([key, label]) => (
+                                    <div key={key} className="form-check mb-2">
+                                        <input
+                                            className="form-check-input"
+                                            type="checkbox"
+                                            id={`col-${key}`}
+                                            checked={visibleColumns[key]}
+                                            onChange={(e) => setVisibleColumns({...visibleColumns, [key]: e.target.checked})}
+                                        />
+                                        <label className="form-check-label" htmlFor={`col-${key}`}>
+                                            {label}
+                                        </label>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <div className="card-body p-0">
                     {loading ? (
@@ -304,13 +369,14 @@ const StoppageLogList = () => {
                             <table className="table table-hover mb-0">
                                 <thead className="table-light">
                                     <tr>
-                                        <th>Date & Time</th>
-                                        <th>Report Code</th>
-                                        <th>PET Line</th>
-                                        <th>Hour</th>
-                                        <th>Efficiency</th>
-                                        <th>Downtime</th>
-                                        <th>Output</th>
+                                        {visibleColumns.dateTime && <th>Date & Time</th>}
+                                        {visibleColumns.reportCode && <th>Report Code</th>}
+                                        {visibleColumns.petLine && <th>PET Line</th>}
+                                        {visibleColumns.hour && <th>Hour</th>}
+                                        {visibleColumns.category && <th>Category</th>}
+                                        {visibleColumns.efficiency && <th>Efficiency</th>}
+                                        {visibleColumns.downtime && <th>Downtime</th>}
+                                        {visibleColumns.output && <th>Output</th>}
                                         <th className="text-end">Actions</th>
                                     </tr>
                                 </thead>
@@ -320,26 +386,47 @@ const StoppageLogList = () => {
                                             animation: `fadeInUp 0.4s ease-out ${idx * 0.05}s both`,
                                             cursor: 'pointer'
                                         }} onClick={() => navigate(`/dashboard/production/stoppages/${row.id}`)}>
-                                            <td>
-                                                <div>
-                                                    <div className="fw-medium">{format(new Date(row.log_date), 'MMM dd, yyyy')}</div>
-                                                    <small className="text-muted">{row.log_time ? format(new Date(`2000-01-01T${row.log_time}`), 'hh:mm a') : '-'}</small>
-                                                </div>
-                                            </td>
-                                            <td><span className="badge bg-soft-primary text-primary">{row.report_code}</span></td>
-                                            <td>{row.pet_name}</td>
-                                            <td>Hour {row.hour_index}</td>
-                                            <td>
-                                                <span className="text-info">
-                                                    <i className="ti ti-activity me-1"></i>{row.efficiency}%
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span className="text-warning">
-                                                    <i className="ti ti-clock me-1"></i>{row.downtime_minutes} min
-                                                </span>
-                                            </td>
-                                            <td>{row.bottles_produced?.toLocaleString()}</td>
+                                            {visibleColumns.dateTime && (
+                                                <td>
+                                                    <div>
+                                                        <div className="fw-medium">{format(new Date(row.log_date), 'MMM dd, yyyy')}</div>
+                                                        <small className="text-muted">{row.log_time ? format(new Date(`2000-01-01T${row.log_time}`), 'hh:mm a') : '-'}</small>
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {visibleColumns.reportCode && <td><span className="badge bg-soft-primary text-primary">{row.report_code}</span></td>}
+                                            {visibleColumns.petLine && <td>{row.pet_name}</td>}
+                                            {visibleColumns.hour && <td>Hour {row.hour_index}</td>}
+                                            {visibleColumns.category && (
+                                                <td>
+                                                    {row.incidents && row.incidents.length > 0 ? (
+                                                        <div className="d-flex flex-wrap gap-1">
+                                                            {[...new Set(row.incidents.map(inc => inc.downtime_category_name))].filter(Boolean).map((cat, i) => (
+                                                                <span key={i} className="badge bg-soft-warning text-warning" style={{ fontSize: '10px' }}>
+                                                                    {cat}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted">-</span>
+                                                    )}
+                                                </td>
+                                            )}
+                                            {visibleColumns.efficiency && (
+                                                <td>
+                                                    <span className="text-info">
+                                                        <i className="ti ti-activity me-1"></i>{row.efficiency}%
+                                                    </span>
+                                                </td>
+                                            )}
+                                            {visibleColumns.downtime && (
+                                                <td>
+                                                    <span className="text-warning">
+                                                        <i className="ti ti-clock me-1"></i>{row.downtime_minutes} min
+                                                    </span>
+                                                </td>
+                                            )}
+                                            {visibleColumns.output && <td>{row.bottles_produced?.toLocaleString()}</td>}
                                             <td className="text-end" onClick={(e) => e.stopPropagation()}>
                                                 <div className="d-flex gap-2 justify-content-end">
                                                     <button

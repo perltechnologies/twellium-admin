@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production';
+import { groupDowntimeAndSum } from '../../utils/downtime';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -47,7 +48,7 @@ const computeLineOee = (l) => {
 };
 
 /* ── SVG Gauge ───────────────────────────────────── */
-const GaugeChart = ({ value, label, color }) => {
+const GaugeChart = ({ value, label, color, formula, tooltip, calculation }) => {
     const pct = Math.min(100, Math.max(0, value));
     const cx = 100, cy = 90, r = 70;
     const trackColor = '#e9ecef';
@@ -62,25 +63,34 @@ const GaugeChart = ({ value, label, color }) => {
     const largeArc = pct > 50 ? 1 : 0;
 
     return (
-        <div className="text-center">
-            <svg width="200" height="120" viewBox="0 0 200 120">
-                <path
-                    d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endFull.x} ${endFull.y}`}
-                    fill="none" stroke={trackColor} strokeWidth="14" strokeLinecap="round"
-                />
-                {pct > 0.5 && (
+        <div className="text-center position-relative">
+            <div title={calculation || tooltip}>
+                <svg width="200" height="120" viewBox="0 0 200 120" style={{ cursor: 'help' }}>
                     <path
-                        d={`M ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY}`}
-                        fill="none" stroke={fillColor} strokeWidth="14" strokeLinecap="round"
+                        d={`M ${startX} ${startY} A ${r} ${r} 0 0 1 ${endFull.x} ${endFull.y}`}
+                        fill="none" stroke={trackColor} strokeWidth="14" strokeLinecap="round"
                     />
-                )}
-                <text x={cx} y={cy - 12} textAnchor="middle" fontSize="24" fontWeight="bold" fill="#1f2937">
-                    {pct.toFixed(1)}%
-                </text>
-                <text x={cx} y={cy + 8} textAnchor="middle" fontSize="12" fill="#6b7280">
-                    {label}
-                </text>
-            </svg>
+                    {pct > 0.5 && (
+                        <path
+                            d={`M ${startX} ${startY} A ${r} ${r} 0 ${largeArc} 1 ${endX} ${endY}`}
+                            fill="none" stroke={fillColor} strokeWidth="14" strokeLinecap="round"
+                        />
+                    )}
+                    <text x={cx} y={cy - 12} textAnchor="middle" fontSize="24" fontWeight="bold" fill="#1f2937">
+                        {pct.toFixed(1)}%
+                    </text>
+                    <text x={cx} y={cy + 8} textAnchor="middle" fontSize="12" fill="#6b7280">
+                        {label}
+                    </text>
+                </svg>
+            </div>
+            {formula && (
+                <div className="mt-2">
+                    <small className="text-muted font-monospace" style={{ fontSize: '10px' }} title={calculation || tooltip}>
+                        {formula}
+                    </small>
+                </div>
+            )}
         </div>
     );
 };
@@ -174,10 +184,22 @@ const Overview = () => {
         let totalProduced = 0;
         reports.forEach(r => { totalProduced += r.total_bottles_produced || 0; });
 
+        let mechDowntime = 0, plannedDowntime = 0;
+        stoppages.forEach(s => {
+            (s.incidents || []).forEach(inc => {
+                const cat = (inc.downtime_category_name || '').toLowerCase();
+                const dur = inc.incident_duration || 0;
+                if (cat.includes('mechanical')) mechDowntime += dur;
+                else if (cat.includes('planned')) plannedDowntime += dur;
+            });
+        });
+
         const stats = {
             activeLines: selectedPet ? 1 : pets.length,
             shiftsStarted: startedShifts,
             totalDowntime: Math.round(totalDowntime),
+            mechDowntime: Math.round(mechDowntime),
+            plannedDowntime: Math.round(plannedDowntime),
             stoppagesToday,
             recentReports: Math.min(reports.length, 10),
             totalProduced,
@@ -240,43 +262,74 @@ const Overview = () => {
             quality: clamp(quality),
             performance: clamp(performance),
             oee: clamp(a01 * q01 * p01 * 100),
+            rawValues: {
+                plannedMins: totalPlannedMins,
+                downtimeMins: totalDowntimeMins,
+                actual: totalActual,
+                target: totalTarget,
+                speedCapacity: totalSpeedCapacity,
+            }
         };
 
         const oeeByLine = Object.values(lineOeeMap)
             .map(computeLineOee)
             .sort((a, b) => b.oee - a.oee);
 
-        /* Downtime breakdown by category (from stoppage_logs → incidents) */
-        const downtimeMap = {};
-        reports.forEach(r => {
-            (r.stoppage_logs || []).forEach(log => {
-                (log.incidents || []).forEach(inc => {
-                    const cat = inc.downtime_category_name || 'Other';
-                    const dur = inc.incident_duration || 0;
-                    downtimeMap[cat] = (downtimeMap[cat] || 0) + dur;
-                });
-            });
-        });
-        
+        /* If a specific PET is selected, use its OEE for the gauges */
+        let displayOee = oee;
+        if (selectedPet && oeeByLine.length > 0) {
+            const selectedLineOee = oeeByLine.find(l => l.name === selectedPet);
+            if (selectedLineOee) {
+                const lineData = lineOeeMap[selectedPet];
+                displayOee = {
+                    availability: selectedLineOee.availability,
+                    quality: selectedLineOee.quality,
+                    performance: selectedLineOee.performance,
+                    oee: selectedLineOee.oee,
+                    rawValues: {
+                        plannedMins: lineData.plannedMins,
+                        downtimeMins: lineData.downtimeMins,
+                        actual: lineData.actual,
+                        target: lineData.target,
+                        speedCapacity: lineData.speedline > 0 ? lineData.speedline * (lineData.plannedMins - lineData.downtimeMins) / 60 : 0,
+                    }
+                };
+            }
+        }
+
+        /* Downtime breakdown by category (from stoppages → incidents) */
+        const groupedDowntime = groupDowntimeAndSum(stoppages);
+
         const categoryColors = {
+            'Mechanical Downtime': '#ef4444',
             'Mechanical': '#ef4444',
+            'Planned Downtime': '#3b82f6',
             'Planned': '#3b82f6',
             'Electrical': '#f59e0b',
             'Quality': '#8b5cf6',
             'Material': '#10b981',
-            'Other': '#6b7280'
+            'Other': '#6b7280',
+            'Uncategorized': '#9ca3af',
+            'No Incidents Logged': '#d1d5db',
         };
-        
-        const downtimeCategories = Object.entries(downtimeMap)
-            .map(([name, value]) => ({
-                name: name,
-                value: Math.round(Number(value) || 0),
-                color: categoryColors[name] || categoryColors['Other']
-            }))
-            .filter(d => d.value > 0)
-            .sort((a, b) => b.value - a.value);
 
-        return { stats, oee, oeeByLine, downtimeCategories };
+        const categorisedMins = groupedDowntime.reduce((s, d) => s + (parseFloat(d.totalDowntimeMinutes) || 0), 0);
+        const noIncidentMins = Math.round(stats.totalDowntime) - Math.round(categorisedMins);
+
+        const downtimeCategories = [
+            ...groupedDowntime.map(item => ({
+                name: item.category,
+                value: Math.round(Number(item.totalDowntimeMinutes) || 0),
+                color: categoryColors[item.category] || categoryColors['Other'],
+            })),
+            ...(noIncidentMins > 0 ? [{
+                name: 'No Incidents Logged',
+                value: noIncidentMins,
+                color: categoryColors['No Incidents Logged'],
+            }] : []),
+        ].filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+
+        return { stats, oee: displayOee, oeeByLine, downtimeCategories };
     }, [rawReports, rawPets, rawStoppages, rawShifts, selectedPet, selectedDate]);
 
     const statCards = [
@@ -288,7 +341,7 @@ const Overview = () => {
         },
         {
             label: 'Total Downtime', value: formatDuration(stats.totalDowntime),
-            subtext: `${stats.stoppagesToday} stoppages${selectedDate ? '' : ' recorded today'}`,
+            subtext: `Mech: ${formatDuration(stats.mechDowntime)} · Planned: ${formatDuration(stats.plannedDowntime)} · Other: ${formatDuration(stats.totalDowntime - stats.mechDowntime - stats.plannedDowntime)}`,
             icon: 'ti-clock-pause', color: 'danger', elemnt: 'elemnt-04',
         },
         {
@@ -407,32 +460,85 @@ const Overview = () => {
                             ) : (
                                 <div className="row g-3">
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart value={oee.availability} label="Availability" color={gaugeColor(oee.availability)} />
+                                        <GaugeChart 
+                                            value={oee.availability} 
+                                            label="Availability" 
+                                            color={gaugeColor(oee.availability)}
+                                            formula="(Planned - Downtime) / Planned × 100"
+                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.downtimeMins || 0).toFixed(0)}) / ${Number(oee.rawValues.plannedMins || 0).toFixed(0)} × 100 = ${oee.availability.toFixed(1)}%` : ''}
+                                        />
                                     </div>
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart value={oee.quality} label="Quality" color={gaugeColor(oee.quality)} />
+                                        <GaugeChart 
+                                            value={oee.quality} 
+                                            label="Quality" 
+                                            color={gaugeColor(oee.quality)}
+                                            formula="(Total - Waste) / Total × 100"
+                                            calculation={oee.rawValues ? `${Number(oee.rawValues.actual || 0).toLocaleString()} / ${Number(oee.rawValues.target || 0).toLocaleString()} × 100 = ${oee.quality.toFixed(1)}%` : ''}
+                                        />
                                     </div>
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart value={oee.performance} label="Performance" color={gaugeColor(oee.performance)} />
+                                        <GaugeChart 
+                                            value={oee.performance} 
+                                            label="Performance" 
+                                            color={gaugeColor(oee.performance)}
+                                            formula="Actual / (Speed × Hours) × 100"
+                                            calculation={oee.rawValues ? ((oee.rawValues.speedCapacity || 0) > 0 
+                                                ? `${Number(oee.rawValues.actual || 0).toLocaleString()} / ${Number(oee.rawValues.speedCapacity || 0).toFixed(0)} × 100 = ${oee.performance.toFixed(1)}%`
+                                                : `${Number(oee.rawValues.actual || 0).toLocaleString()} / ${Number(oee.rawValues.target || 0).toLocaleString()} × 100 = ${oee.performance.toFixed(1)}%`) : ''
+                                            }
+                                        />
                                     </div>
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart value={oee.oee} label="OEE" color={gaugeColor(oee.oee)} />
+                                        <GaugeChart 
+                                            value={oee.oee} 
+                                            label="OEE" 
+                                            color={gaugeColor(oee.oee)}
+                                            formula="A × Q × P"
+                                            calculation={`${(oee.availability/100).toFixed(3)} × ${(oee.quality/100).toFixed(3)} × ${(oee.performance/100).toFixed(3)} = ${oee.oee.toFixed(1)}%`}
+                                        />
                                     </div>
                                 </div>
                             )}
-                            {/* Legend */}
+                            {/* Legend & Formula Breakdown */}
                             {!loading && (
-                                <div className="d-flex align-items-center justify-content-center gap-4 mt-3 pt-3 border-top">
-                                    <span className="d-flex align-items-center gap-1 fs-13">
-                                        <i className="ti ti-circle-filled" style={{ color: '#22c55e', fontSize: 8 }}></i> ≥85% World Class
-                                    </span>
-                                    <span className="d-flex align-items-center gap-1 fs-13">
-                                        <i className="ti ti-circle-filled" style={{ color: '#f59e0b', fontSize: 8 }}></i> 60–84% Acceptable
-                                    </span>
-                                    <span className="d-flex align-items-center gap-1 fs-13">
-                                        <i className="ti ti-circle-filled" style={{ color: '#ef4444', fontSize: 8 }}></i> &lt;60% Needs Improvement
-                                    </span>
-                                </div>
+                                <>
+                                    <div className="d-flex align-items-center justify-content-center gap-4 mt-3 pt-3 border-top">
+                                        <span className="d-flex align-items-center gap-1 fs-13">
+                                            <i className="ti ti-circle-filled" style={{ color: '#22c55e', fontSize: 8 }}></i> ≥85% World Class
+                                        </span>
+                                        <span className="d-flex align-items-center gap-1 fs-13">
+                                            <i className="ti ti-circle-filled" style={{ color: '#f59e0b', fontSize: 8 }}></i> 60–84% Acceptable
+                                        </span>
+                                        <span className="d-flex align-items-center gap-1 fs-13">
+                                            <i className="ti ti-circle-filled" style={{ color: '#ef4444', fontSize: 8 }}></i> &lt;60% Needs Improvement
+                                        </span>
+                                    </div>
+                                    
+                                    {/* Calculation Breakdown */}
+                                    <div className="alert alert-light border mt-3 mb-0">
+                                        <div className="d-flex align-items-center gap-2 mb-2">
+                                            <i className="ti ti-math-function text-primary"></i>
+                                            <small className="fw-semibold">OEE Calculation Breakdown</small>
+                                        </div>
+                                        <div className="row g-2 small text-muted">
+                                            <div className="col-md-3">
+                                                <div className="font-monospace">A = {oee.availability.toFixed(1)}%</div>
+                                            </div>
+                                            <div className="col-md-3">
+                                                <div className="font-monospace">Q = {oee.quality.toFixed(1)}%</div>
+                                            </div>
+                                            <div className="col-md-3">
+                                                <div className="font-monospace">P = {oee.performance.toFixed(1)}%</div>
+                                            </div>
+                                            <div className="col-md-3">
+                                                <div className="font-monospace fw-bold text-dark">
+                                                    OEE = {((oee.availability/100) * (oee.quality/100) * (oee.performance/100) * 100).toFixed(1)}%
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -445,7 +551,10 @@ const Overview = () => {
                 <div className="col-5 col-md-5 d-flex">
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between">
-                            <h6 className="mb-0">Downtime Breakdown (Minutes)</h6>
+                            <div>
+                                <h6 className="mb-0">Downtime Breakdown (Minutes)</h6>
+                                <small className="text-muted">Impacts Availability = (Planned - Downtime) / Planned × 100</small>
+                            </div>
                             <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
                                 <i className="ti ti-external-link me-1"></i>Details
                             </button>
@@ -489,7 +598,7 @@ const Overview = () => {
                                                         <div className="d-flex align-items-center justify-content-between mb-2">
                                                             <div className="d-flex align-items-center gap-2">
                                                                 <span className="avatar avatar-sm" style={{ backgroundColor: cat.color }}>
-                                                                    <i className="ti ti-alert-triangle text-white"></i>
+                                                                    <i className={`ti ${cat.name === 'No Incidents Logged' ? 'ti-question-mark' : 'ti-alert-triangle'} text-white`}></i>
                                                                 </span>
                                                                 <span className="fw-semibold">{cat.name}</span>
                                                             </div>
@@ -536,10 +645,18 @@ const Overview = () => {
                                         <tr>
                                             <th className="ps-3">Line</th>
                                             <th className="text-center">Reports</th>
-                                            <th className="text-center">Availability</th>
-                                            <th className="text-center">Quality</th>
-                                            <th className="text-center">Performance</th>
-                                            <th className="text-center">OEE</th>
+                                            <th className="text-center" title="(Planned - Downtime) / Planned × 100">
+                                                Availability <i className="ti ti-info-circle fs-12 text-muted"></i>
+                                            </th>
+                                            <th className="text-center" title="(Total - Waste) / Total × 100">
+                                                Quality <i className="ti ti-info-circle fs-12 text-muted"></i>
+                                            </th>
+                                            <th className="text-center" title="Actual / (Speed × Hours) × 100">
+                                                Performance <i className="ti ti-info-circle fs-12 text-muted"></i>
+                                            </th>
+                                            <th className="text-center" title="A × Q × P">
+                                                OEE <i className="ti ti-info-circle fs-12 text-muted"></i>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
