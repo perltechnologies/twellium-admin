@@ -164,7 +164,7 @@ const Overview = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [selectedPet, setSelectedPet] = useState('');   // '' = All Lines
-    const [selectedDate, setSelectedDate] = useState(''); // '' = All Dates (YYYY-MM-DD)
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
 
     /* raw data from API */
     const [rawReports, setRawReports] = useState([]);
@@ -196,21 +196,8 @@ const Overview = () => {
 
     /* PETs available for the selected date (derived from reports) */
     const availablePets = useMemo(() => {
-        let filtered = rawReports;
-        if (selectedDate) {
-            filtered = filtered.filter(r => (r.production_date || '').slice(0, 10) === selectedDate);
-        }
-        const petNames = [...new Set(filtered.map(r => r.pet_name).filter(Boolean))];
-        return rawPets.filter(p => petNames.includes(p.pet_name || p.name));
-    }, [rawReports, rawPets, selectedDate]);
-
-    /* Reset PET selection when date changes and current PET has no data for that date */
-    useEffect(() => {
-        if (selectedPet && availablePets.length > 0) {
-            const stillAvailable = availablePets.some(p => (p.pet_name || p.name) === selectedPet);
-            if (!stillAvailable) setSelectedPet('');
-        }
-    }, [availablePets, selectedPet]);
+        return rawPets;
+    }, [rawPets]);
 
     /* ── Derived data (recomputed when filter or raw data changes) ── */
     const { stats, oee, oeeByLine, downtimeCategories } = useMemo(() => {
@@ -219,8 +206,15 @@ const Overview = () => {
 
         /* Filter reports by date first, then by PET */
         let reports = selectedDate
-            ? rawReports.filter(r => (r.production_date || '').slice(0, 10) === selectedDate)
+            ? rawReports.filter(r => {
+                const reportDate = (r.production_date || '').slice(0, 10);
+                console.log('Report date:', reportDate, 'Selected:', selectedDate, 'Match:', reportDate === selectedDate);
+                return reportDate === selectedDate;
+            })
             : rawReports;
+        
+        console.log('Filtered reports:', reports.length, 'Total reports:', rawReports.length, 'Selected date:', selectedDate);
+        
         if (selectedPet) {
             reports = reports.filter(r => (r.pet_name || '') === selectedPet);
         }
@@ -486,7 +480,7 @@ const Overview = () => {
                     value={selectedPet}
                     onChange={(e) => setSelectedPet(e.target.value)}
                 >
-                    <option value="">All PET Lines{selectedDate ? ` (${availablePets.length})` : ''}</option>
+                    <option value="">All PET Lines</option>
                     {availablePets.map(p => (
                         <option key={p.id} value={p.pet_name || p.name}>
                             {p.pet_name || p.name}
