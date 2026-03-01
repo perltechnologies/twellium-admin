@@ -82,7 +82,8 @@ const GaugeChart = ({ value, label, color, formula, tooltip, calculation, rawVal
     ];
 
     return (
-        <div className="d-flex flex-column align-items-center">
+        <div className="d-flex flex-column align-items-center p-3 border rounded-3 shadow-sm" style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)' }}>
+            <h6 className="mb-3 text-center fw-semibold">{label}</h6>
             <div title={calculation || tooltip} style={{ cursor: 'help' }}>
                 <svg width={size} height={size * 0.75} viewBox={`0 0 ${size} ${size * 0.75}`}>
                     <defs>

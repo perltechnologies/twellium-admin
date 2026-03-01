@@ -11,8 +11,10 @@ const GaugeChart = ({ value, label, color, max = 100 }) => {
     const endAngle = 0;
 
     return (
-        <ResponsiveContainer width="100%" height={150}>
-            <PieChart>
+        <div className="d-flex flex-column align-items-center p-3 border rounded-3 shadow-sm" style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)' }}>
+            <h6 className="mb-2 text-center fw-semibold">{label}</h6>
+            <ResponsiveContainer width="100%" height={150}>
+                <PieChart>
                 <defs>
                     <linearGradient id="gaugeGradient" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%" stopColor={color} stopOpacity={0.8} />
@@ -52,11 +54,9 @@ const GaugeChart = ({ value, label, color, max = 100 }) => {
                 <text x="50%" y="70%" textAnchor="middle" dominantBaseline="middle" fontSize="24px" fontWeight="bold">
                     {value.toFixed(2)}%
                 </text>
-                <text x="50%" y="85%" textAnchor="middle" dominantBaseline="middle" fontSize="14px" fill="#666">
-                    {label}
-                </text>
             </PieChart>
         </ResponsiveContainer>
+        </div>
     );
 };
 
