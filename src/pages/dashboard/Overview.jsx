@@ -31,7 +31,7 @@ const computeLineOee = (l) => {
     const TDT = l.downtimeMins / 60;
     const MDT = (l.mechDowntime || 0) / 60;
     const PDT = (l.plannedDowntime || 0) / 60;
-    const TP  = l.fillerReading || 0;
+    const TP  = l.totalProduced || 0;
     const FR  = l.fillerRejects || 0;
 
     const aDen = PT - MDT;
@@ -164,7 +164,7 @@ const Overview = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [selectedPet, setSelectedPet] = useState('');   // '' = All Lines
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
+    const [selectedDate, setSelectedDate] = useState(''); // '' = all time
 
     /* raw data from API */
     const [rawReports, setRawReports] = useState([]);
@@ -192,7 +192,12 @@ const Overview = () => {
         }
     }, []);
 
+    /* Re-fetch whenever selectedDate changes, and poll every 60 s for real-time updates */
     useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => {
+        const interval = setInterval(loadData, 60_000);
+        return () => clearInterval(interval);
+    }, [loadData]);
 
     /* PETs available for the selected date (derived from reports) */
     const availablePets = useMemo(() => {
@@ -206,14 +211,8 @@ const Overview = () => {
 
         /* Filter reports by date first, then by PET */
         let reports = selectedDate
-            ? rawReports.filter(r => {
-                const reportDate = (r.production_date || '').slice(0, 10);
-                console.log('Report date:', reportDate, 'Selected:', selectedDate, 'Match:', reportDate === selectedDate);
-                return reportDate === selectedDate;
-            })
+            ? rawReports.filter(r => (r.production_date || '').slice(0, 10) === selectedDate)
             : rawReports;
-        
-        console.log('Filtered reports:', reports.length, 'Total reports:', rawReports.length, 'Selected date:', selectedDate);
         
         if (selectedPet) {
             reports = reports.filter(r => (r.pet_name || '') === selectedPet);
@@ -252,20 +251,24 @@ const Overview = () => {
             });
         });
 
+        const activeLines = selectedPet
+            ? 1
+            : new Set(reports.map(r => r.pet_name).filter(Boolean)).size;
+
         const stats = {
-            activeLines: selectedPet ? 1 : pets.length,
+            activeLines,
             shiftsStarted: startedShifts,
             totalDowntime: Math.round(totalDowntime),
             mechDowntime: Math.round(mechDowntime),
             plannedDowntime: Math.round(plannedDowntime),
             stoppagesToday,
-            recentReports: Math.min(reports.length, 10),
+            recentReports: reports.length,
             totalProduced,
         };
 
         /* OEE */
         let totalPlannedMins = 0;
-        let totalFillerReading = 0, totalFillerRejects = 0;
+        let totalProduction = 0, totalFillerRejects = 0;
         const lineOeeMap = {};
 
         // Planned time from reports start/end times; filler data from meter_readings
@@ -281,20 +284,20 @@ const Overview = () => {
                 plannedMins = parseFloat(r.total_production_time_hours) * 60;
             }
             totalPlannedMins += plannedMins;
+            totalProduction += parseFloat(r.total_bottles_produced || 0);
 
             (r.meter_readings || []).forEach(m => {
-                totalFillerReading += parseFloat(m.filler_reading || 0);
                 totalFillerRejects += parseFloat(m.filler_rejects || 0);
             });
 
             const lineName = r.pet_name || 'Unknown';
             if (!lineOeeMap[lineName]) {
-                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, fillerReading: 0, fillerRejects: 0, reports: 0 };
+                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, totalProduced: 0, fillerRejects: 0, reports: 0 };
             }
             lineOeeMap[lineName].plannedMins += plannedMins;
             lineOeeMap[lineName].reports += 1;
+            lineOeeMap[lineName].totalProduced += parseFloat(r.total_bottles_produced || 0);
             (r.meter_readings || []).forEach(m => {
-                lineOeeMap[lineName].fillerReading += parseFloat(m.filler_reading || 0);
                 lineOeeMap[lineName].fillerRejects += parseFloat(m.filler_rejects || 0);
             });
         });
@@ -303,7 +306,7 @@ const Overview = () => {
         stoppages.forEach(s => {
             const lineName = s.pet_name || s.line_name || 'Unknown';
             if (!lineOeeMap[lineName]) {
-                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, fillerReading: 0, fillerRejects: 0, reports: 0 };
+                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, totalProduced: 0, fillerRejects: 0, reports: 0 };
             }
             lineOeeMap[lineName].downtimeMins += (s.downtime_minutes || 0);
             (s.incidents || []).forEach(inc => {
@@ -329,7 +332,7 @@ const Overview = () => {
         const availability = aDen > 0 ? ((PT - TDT) / aDen) * 100 : 0;
         const pDen = PT - PDT;
         const performance  = pDen > 0 ? ((PT - TDT) / pDen) * 100 : 0;
-        const quality      = totalFillerReading > 0 ? ((totalFillerReading - totalFillerRejects) / totalFillerReading) * 100 : 0;
+        const quality      = totalProduction > 0 ? ((totalProduction - totalFillerRejects) / totalProduction) * 100 : 0;
 
         const a01 = Math.min(1, Math.max(0, availability / 100));
         const q01 = Math.min(1, Math.max(0, quality / 100));
@@ -345,7 +348,7 @@ const Overview = () => {
                 totalDowntimeMins,
                 mechDowntimeMins: totalMechMins,
                 plannedDowntimeMins: totalPlannedDtMins,
-                fillerReading: totalFillerReading,
+                totalProduction,
                 fillerRejects: totalFillerRejects,
             }
         };
@@ -370,7 +373,7 @@ const Overview = () => {
                         totalDowntimeMins: ld.downtimeMins,
                         mechDowntimeMins: ld.mechDowntime,
                         plannedDowntimeMins: ld.plannedDowntime,
-                        fillerReading: ld.fillerReading,
+                        totalProduction: ld.totalProduced,
                         fillerRejects: ld.fillerRejects,
                     }
                 };
@@ -416,17 +419,19 @@ const Overview = () => {
         {
             label: selectedPet || 'Active PET Lines',
             value: selectedPet ? stats.recentReports : stats.activeLines,
-            subtext: selectedPet ? `${stats.shiftsStarted} shifts currently started` : `${stats.shiftsStarted} shifts currently started`,
+            subtext: selectedPet
+                ? `${stats.shiftsStarted} shifts currently started`
+                : `${stats.shiftsStarted} shifts started${selectedDate ? ' on selected date' : ''}`,
             icon: 'ti-building-factory-2', color: 'success', elemnt: 'elemnt-02',
         },
         {
             label: 'Total Downtime', value: formatDuration(stats.totalDowntime),
-            subtext: 'All production stoppages',
+            subtext: selectedPet ? `Stoppages on ${selectedPet}` : 'All lines combined',
             icon: 'ti-clock-pause', color: 'danger', elemnt: 'elemnt-04',
         },
         {
-            label: 'Recent Reports', value: stats.recentReports,
-            subtext: 'Latest submissions',
+            label: 'Reports', value: stats.recentReports,
+            subtext: selectedPet ? `Reports for ${selectedPet}` : 'All PET lines',
             icon: 'ti-file-report', color: 'primary', elemnt: 'elemnt-01',
         },
         {
@@ -558,10 +563,10 @@ const Overview = () => {
                                             label="Quality" 
                                             color={gaugeColor(oee.quality)}
                                             formula="(Total Production - Filler Reject) / Total Production × 100"
-                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.fillerReading || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.fillerReading || 0).toLocaleString()} × 100 = ${oee.quality.toFixed(1)}%` : ''}
+                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.totalProduction || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.totalProduction || 0).toLocaleString()} × 100 = ${oee.quality.toFixed(1)}%` : ''}
                                             rawValues={oee.rawValues ? {
-                                                display: `(${Number(oee.rawValues.fillerReading || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.fillerReading || 0).toLocaleString()} × 100`,
-                                                reason: oee.quality === 0 ? (oee.rawValues.fillerReading === 0 ? 'Filler Reading = 0' : 'Quality = 0%') : null
+                                                display: `(${Number(oee.rawValues.totalProduction || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.totalProduction || 0).toLocaleString()} × 100`,
+                                                reason: oee.quality === 0 ? (oee.rawValues.totalProduction === 0 ? 'Total Production = 0' : 'Quality = 0%') : null
                                             } : null}
                                         />
                                     </div>

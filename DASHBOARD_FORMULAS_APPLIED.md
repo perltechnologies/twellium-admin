@@ -93,3 +93,6 @@ Availability × Quality × Performance
 - Create interactive formula calculator
 - Add formula explanations to production reports
 - Include formula references in exported reports
+
+
+quality=((Total Production−Filler Reject)/(Total Production))×100
