@@ -7,6 +7,7 @@ import {
 } from 'recharts';
 
 import GaugeChart from '../../components/charts/GaugeChart';
+import DowntimeBreakdownChart from '../../components/charts/DowntimeBreakdownChart';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -39,8 +40,16 @@ const STATUS_COLORS = {
 const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 const DOWNTIME_COLORS = {
-    Mechanical: '#ef4444',
-    Planned: '#3b82f6',
+    'Mechanical Downtime': '#ef4444',
+    'Mechanical': '#ef4444',
+    'Planned Downtime': '#3b82f6',
+    'Planned': '#3b82f6',
+    'Electrical': '#f59e0b',
+    'Quality': '#8b5cf6',
+    'Material': '#10b981',
+    'Other': '#6b7280',
+    'Uncategorized': '#9ca3af',
+    'No Incidents Logged': '#d1d5db',
 };
 
 const formatNum = (n) => {
@@ -152,25 +161,38 @@ const Overview = () => {
                 pvData.slice(0, 4).map(l => ({ name: l.name, value: l.actual }))
             );
 
-            /* downtime breakdown from stoppage_logs → incidents (Mechanical & Planned only) */
-            let mechTotal = 0, plannedTotal = 0;
-            const lineDowntimeMap = {};
-            reports.forEach(report => {
-                const lineName = report.pet_name || 'Unknown';
-                if (!lineDowntimeMap[lineName]) lineDowntimeMap[lineName] = { name: lineName, Mechanical: 0, Planned: 0 };
-                (report.stoppage_logs || []).forEach(log => {
-                    (log.incidents || []).forEach(inc => {
-                        const cat = (inc.downtime_category_name || '').toLowerCase();
-                        const dur = inc.incident_duration || 0;
-                        if (cat.includes('mechanical')) { mechTotal += dur; lineDowntimeMap[lineName].Mechanical += dur; }
-                        else if (cat.includes('planned')) { plannedTotal += dur; lineDowntimeMap[lineName].Planned += dur; }
-                    });
+            /* downtime breakdown from stoppages → incidents (all categories) */
+            const categoryMap = {};
+            stoppages.forEach(s => {
+                (s.incidents || []).forEach(inc => {
+                    const cat = inc.downtime_category_name || 'Uncategorized';
+                    const dur = parseFloat(inc.incident_duration || 0);
+                    categoryMap[cat] = (categoryMap[cat] || 0) + dur;
                 });
             });
-            setDowntimeTypes(
-                [{ name: 'Mechanical', value: mechTotal }, { name: 'Planned', value: plannedTotal }]
-                .filter(d => d.value > 0)
-            );
+
+            const categorisedMins = Object.values(categoryMap).reduce((s, v) => s + v, 0);
+            const noIncidentMins = Math.round(totalDowntime) - Math.round(categorisedMins);
+
+            const allCategories = [
+                ...Object.entries(categoryMap).map(([name, value]) => ({ name, value: Math.round(value) })),
+                ...(noIncidentMins > 0 ? [{ name: 'No Incidents Logged', value: noIncidentMins }] : [])
+            ].filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+
+            setDowntimeTypes(allCategories);
+
+            /* downtime by line for bar chart */
+            const lineDowntimeMap = {};
+            stoppages.forEach(s => {
+                const lineName = s.pet_name || s.line_name || 'Unknown';
+                if (!lineDowntimeMap[lineName]) lineDowntimeMap[lineName] = { name: lineName, Mechanical: 0, Planned: 0 };
+                (s.incidents || []).forEach(inc => {
+                    const cat = (inc.downtime_category_name || '').toLowerCase();
+                    const dur = parseFloat(inc.incident_duration || 0);
+                    if (cat.includes('mechanical')) lineDowntimeMap[lineName].Mechanical += dur;
+                    else if (cat.includes('planned')) lineDowntimeMap[lineName].Planned += dur;
+                });
+            });
             setDowntimeByLine(
                 Object.values(lineDowntimeMap)
                     .filter(l => l.Mechanical + l.Planned > 0)
@@ -188,6 +210,13 @@ const Overview = () => {
     useEffect(() => { loadData(); }, [loadData]);
 
     const efficiency = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
+
+    // Transform downtimeTypes for DowntimeBreakdownChart component
+    const downtimeCategories = downtimeTypes.map(d => ({
+        name: d.name,
+        value: Math.round(d.value),
+        color: DOWNTIME_COLORS[d.name] || '#6b7280'
+    }));
 
     const statCards = [
         { label: 'Production Reports', value: stats.totalReports, icon: 'ti-file-report', color: 'primary', elemnt: 'elemnt-01', delta: null },
@@ -382,64 +411,14 @@ const Overview = () => {
 
             {/* Downtime Breakdown Row */}
             <div className="row">
-                {/* Downtime by Type – donut */}
+                {/* Downtime Breakdown Chart */}
                 <div className="col-xxl-4 col-lg-6 d-flex">
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">Downtime by Type</h6>
-                            <button onClick={() => navigate('/dashboard/downtime')} className="btn btn-primary btn-xs">Details</button>
-                        </div>
-                        <div className="card-body">
-                            {loading ? (
-                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : downtimeTypes.length > 0 ? (
-                                <>
-                                    <ResponsiveContainer width="100%" height={200}>
-                                        <PieChart>
-                                            <Pie data={downtimeTypes} cx="50%" cy="50%" innerRadius={50} outerRadius={80}
-                                                paddingAngle={3} dataKey="value">
-                                                {downtimeTypes.map((entry) => (
-                                                    <Cell key={entry.name} fill={DOWNTIME_COLORS[entry.name]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip formatter={(v, name) => [formatDuration(v), name]} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                    {downtimeTypes.map((d) => {
-                                        const total = downtimeTypes.reduce((s, t) => s + t.value, 0);
-                                        const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
-                                        return (
-                                            <div key={d.name} className="mb-3">
-                                                <div className="d-flex align-items-center justify-content-between mb-2">
-                                                    <p className="f-14 fw-medium text-dark mb-0">
-                                                        <i className="ti ti-circle-filled me-1" style={{ color: DOWNTIME_COLORS[d.name], fontSize: 8 }}></i>
-                                                        {d.name}
-                                                    </p>
-                                                    <p className="f-14 fw-medium text-dark mb-0">{formatDuration(d.value)} ({pct}%)</p>
-                                                </div>
-                                                <div className="progress" style={{ height: '8px', backgroundColor: '#e9ecef' }}>
-                                                    <div 
-                                                        className="progress-bar" 
-                                                        role="progressbar" 
-                                                        style={{ 
-                                                            width: `${pct}%`, 
-                                                            backgroundColor: DOWNTIME_COLORS[d.name],
-                                                            transition: 'width 0.6s ease'
-                                                        }}
-                                                        aria-valuenow={pct} 
-                                                        aria-valuemin="0" 
-                                                        aria-valuemax="100"
-                                                    ></div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </>
-                            ) : (
-                                <p className="text-center text-muted py-5 mb-0">No downtime data</p>
-                            )}
-                        </div>
-                    </div>
+                    <DowntimeBreakdownChart 
+                        downtimeCategories={downtimeCategories}
+                        loading={loading}
+                        showDetailsButton={true}
+                        detailsRoute="/dashboard/downtime"
+                    />
                 </div>
 
                 {/* Downtime by Line – grouped bar */}
@@ -456,12 +435,12 @@ const Overview = () => {
                                 </p>
                             </div>
                         </div>
-                        <div className="card-body pb-0">
+                        <div className="card-body p-0 d-flex" style={{ minHeight: '400px' }}>
                             {loading ? (
-                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
+                                <div className="text-center py-5 w-100 align-self-center"><span className="spinner-border spinner-border-sm"></span></div>
                             ) : downtimeByLine.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={260}>
-                                    <BarChart data={downtimeByLine} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={downtimeByLine} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
                                         <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                                         <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
@@ -475,7 +454,7 @@ const Overview = () => {
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <p className="text-center text-muted py-5 mb-0">No downtime data</p>
+                                <p className="text-center text-muted py-5 mb-0 w-100 align-self-center">No downtime data</p>
                             )}
                         </div>
                     </div>
