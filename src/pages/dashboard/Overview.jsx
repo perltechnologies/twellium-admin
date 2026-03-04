@@ -4,6 +4,7 @@ import { productionApi } from '../../api/production';
 import { groupDowntimeAndSum } from '../../utils/downtime';
 import DowntimeBreakdownList from '../../components/charts/DowntimeBreakdownList';
 import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsChart';
+import { useAutoRefresh } from '../../utils/useAutoRefresh';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -194,12 +195,11 @@ const Overview = () => {
         }
     }, []);
 
-    /* Re-fetch whenever selectedDate changes, and poll every 60 s for real-time updates */
+    /* Re-fetch whenever selectedDate changes */
     useEffect(() => { loadData(); }, [loadData]);
-    useEffect(() => {
-        const interval = setInterval(loadData, 60_000);
-        return () => clearInterval(interval);
-    }, [loadData]);
+    
+    /* Auto-refresh based on user settings */
+    useAutoRefresh(loadData, [loadData]);
 
     /* PETs available for the selected date (derived from reports) */
     const availablePets = useMemo(() => {

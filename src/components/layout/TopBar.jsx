@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {useAuth} from "../../context/AuthContext";
 import {useTheme} from "../../context/ThemeContext";
+import RefreshSettings from '../ui/RefreshSettings';
+
 const TopBar = () => {
     const { user, logout } = useAuth();
     const { theme, toggleTheme } = useTheme();
@@ -80,6 +82,11 @@ const TopBar = () => {
                         <button className="topbar-link btn" type="button" onClick={toggleTheme}>
                             <i className={`ti ${theme === 'dark' ? 'ti-sun' : 'ti-moon'} fs-16`}></i>
                         </button>
+                    </div>
+
+                    {/* Auto-Refresh Settings */}
+                    <div className="header-item d-none d-sm-flex me-2">
+                        <RefreshSettings />
                     </div>
 
                     {/* Pages Dropdown */}

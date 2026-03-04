@@ -59,11 +59,19 @@ const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
             height: 800,
             toolbar: { show: false }
         },
+        grid: {
+            yaxis: { lines: { show: true } },
+            xaxis: { lines: { show: false } }
+        },
         plotOptions: {
             bar: {
                 horizontal: true,
                 barHeight: '85%',
-                borderRadius: 4
+                borderRadius: 4,
+                colors: {
+                    backgroundBarColors: ['#f8f9fa', '#ffffff'],
+                    backgroundBarOpacity: 1,
+                }
             }
         },
         dataLabels: {
@@ -78,7 +86,25 @@ const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
         yaxis: {
             labels: { 
                 style: { fontSize: '10px' },
-                maxWidth: 200
+                maxWidth: 200,
+                formatter: (val) => {
+                    if (!val || typeof val !== 'string') return val;
+                    const words = val.split(' ');
+                    if (words.length <= 1) return val;
+                    const chunkSize = Math.ceil(val.length / 4);
+                    const lines = [];
+                    let current = '';
+                    for (const word of words) {
+                        if (current.length + word.length + 1 > chunkSize && lines.length < 3) {
+                            lines.push(current.trim());
+                            current = word;
+                        } else {
+                            current += (current ? ' ' : '') + word;
+                        }
+                    }
+                    if (current) lines.push(current.trim());
+                    return lines;
+                }
             }
         },
         fill: { opacity: 1 },
