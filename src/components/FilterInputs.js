@@ -5,6 +5,7 @@ import { productionApi } from '../api/production';
 const FilterInputs = ({ showPageSize = false }) => {
   const { filters, updateFilters } = useFilters();
   const [pets, setPets] = useState([]);
+  const [useRange, setUseRange] = useState(false);
 
   useEffect(() => {
     productionApi.getPets({ page_size: 1000 })
@@ -12,18 +13,57 @@ const FilterInputs = ({ showPageSize = false }) => {
       .catch(err => console.error('Failed to load pets:', err));
   }, []);
 
+  const handleRangeToggle = (checked) => {
+    setUseRange(checked);
+    if (checked) {
+      updateFilters({ log_date: null });
+    } else {
+      updateFilters({ start_date: null, end_date: null });
+    }
+  };
+
   return (
-    <div className="row mb-3">
-      <div className={showPageSize ? "col-md-4" : "col-md-6"}>
-        <label className="form-label">Date</label>
-        <input
-          type="date"
-          className="form-control"
-          value={filters.log_date}
-          onChange={(e) => updateFilters({ log_date: e.target.value })}
-        />
+    <div className="row mb-3 align-items-end">
+      <div className={showPageSize ? "col-md-3" : "col-md-4"}>
+        <div className="d-flex align-items-center gap-2 mb-2">
+          <label className="form-label mb-0">Date</label>
+          <div className="form-check form-switch">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              checked={useRange}
+              onChange={(e) => handleRangeToggle(e.target.checked)}
+            />
+            <label className="form-check-label small">Range</label>
+          </div>
+        </div>
+        {!useRange ? (
+          <input
+            type="date"
+            className="form-control"
+            value={filters.log_date || ''}
+            onChange={(e) => updateFilters({ log_date: e.target.value })}
+          />
+        ) : (
+          <div className="d-flex gap-2">
+            <input
+              type="date"
+              className="form-control"
+              placeholder="Start"
+              value={filters.start_date || ''}
+              onChange={(e) => updateFilters({ start_date: e.target.value })}
+            />
+            <input
+              type="date"
+              className="form-control"
+              placeholder="End"
+              value={filters.end_date || ''}
+              onChange={(e) => updateFilters({ end_date: e.target.value })}
+            />
+          </div>
+        )}
       </div>
-      <div className={showPageSize ? "col-md-4" : "col-md-6"}>
+      <div className={showPageSize ? "col-md-3" : "col-md-4"}>
         <label className="form-label">PET</label>
         <select
           className="form-select"
@@ -37,7 +77,7 @@ const FilterInputs = ({ showPageSize = false }) => {
         </select>
       </div>
       {showPageSize && (
-        <div className="col-md-4">
+        <div className="col-md-3">
           <label className="form-label">Page Size</label>
           <select
             className="form-select"
