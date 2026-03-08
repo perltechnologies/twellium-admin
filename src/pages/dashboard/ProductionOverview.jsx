@@ -8,6 +8,8 @@ import {
 
 import GaugeChart from '../../components/charts/GaugeChart';
 import DowntimeBreakdownChart from '../../components/charts/DowntimeBreakdownChart';
+import FilterInputs from '../../components/FilterInputs';
+import { useApiWithFilters } from '../../utils/useApiWithFilters';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -80,6 +82,7 @@ const formatDate = (d) => {
 /* ── component ───────────────────────────────────── */
 const Overview = () => {
     const navigate = useNavigate();
+    const { getParams, filters } = useApiWithFilters();
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ totalReports: 0, activeLines: 0, totalStoppages: 0, totalDowntime: 0, totalProduced: 0 });
     const [recentReports, setRecentReports] = useState([]);
@@ -94,10 +97,11 @@ const Overview = () => {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
+            const params = getParams();
             const [reportsRes, petsRes, stoppagesRes] = await Promise.all([
-                productionApi.getReports({ page_size: 200 }),
-                productionApi.getPets({ page_size: 100 }),
-                productionApi.getStoppages({ page_size: 500 }),
+                productionApi.getReports(params),
+                productionApi.getPets(params),
+                productionApi.getStoppages(params),
             ]);
 
             const reports = extractList(reportsRes);
@@ -205,7 +209,7 @@ const Overview = () => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [filters]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -229,7 +233,7 @@ const Overview = () => {
     return (
         <>
             {/* Page Header */}
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap">
+            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
                 <div>
                     <h4 className="mb-1">Dashboard</h4>
                 </div>
@@ -239,6 +243,9 @@ const Overview = () => {
                     </button>
                 </div>
             </div>
+
+            {/* Filters */}
+            <FilterInputs />
 
             {/* Welcome Banner */}
             <div className="welcome-wrap mb-4">

@@ -4,7 +4,8 @@ import { productionApi } from '../../api/production';
 import { groupDowntimeAndSum } from '../../utils/downtime';
 import DowntimeBreakdownList from '../../components/charts/DowntimeBreakdownList';
 import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsChart';
-import { useAutoRefresh } from '../../utils/useAutoRefresh';
+import FilterInputs from '../../components/FilterInputs';
+import { useApiWithFilters } from '../../utils/useApiWithFilters';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -165,11 +166,11 @@ const GaugeChart = ({ value, label, color, formula, tooltip, calculation, rawVal
 /* ── component ───────────────────────────────────── */
 const Overview = () => {
     const navigate = useNavigate();
+    const { getParams, filters } = useApiWithFilters();
     const [loading, setLoading] = useState(true);
-    const [selectedPet, setSelectedPet] = useState('');   // '' = All Lines
-    const [selectedDate, setSelectedDate] = useState(''); // '' = all time
+    const [selectedPet, setSelectedPet] = useState('');
+    const [selectedDate, setSelectedDate] = useState('');
 
-    /* raw data from API */
     const [rawReports, setRawReports] = useState([]);
     const [rawPets, setRawPets] = useState([]);
     const [rawStoppages, setRawStoppages] = useState([]);
@@ -178,10 +179,11 @@ const Overview = () => {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
+            const params = getParams();
             const [reportsRes, petsRes, stoppagesRes, shiftsRes] = await Promise.all([
-                productionApi.getReports({ page_size: 500 }),
-                productionApi.getPets({ page_size: 100 }),
-                productionApi.getStoppages({ page_size: 1000 }),
+                productionApi.getReports(params),
+                productionApi.getPets(params),
+                productionApi.getStoppages(params),
                 productionApi.getShifts(),
             ]);
             setRawReports(extractList(reportsRes));
@@ -193,13 +195,10 @@ const Overview = () => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [filters]);
 
     /* Re-fetch whenever selectedDate changes */
     useEffect(() => { loadData(); }, [loadData]);
-    
-    /* Auto-refresh based on user settings */
-    useAutoRefresh(loadData, [loadData]);
 
     /* PETs available for the selected date (derived from reports) */
     const availablePets = useMemo(() => {
@@ -460,49 +459,8 @@ const Overview = () => {
                 </div>
             </div>
 
-            {/* Filters Row */}
-            <div className="d-flex align-items-center gap-2 mb-4 flex-wrap">
-                <div className="d-flex align-items-center gap-2">
-                    <i className="ti ti-filter fs-16 text-muted"></i>
-                    <input
-                        type="date"
-                        className="form-control form-control-sm shadow"
-                        style={{ width: 160 }}
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                    />
-                    {selectedDate && (
-                        <button
-                            className="btn btn-outline-secondary btn-sm shadow px-2"
-                            title="Clear date"
-                            onClick={() => setSelectedDate('')}
-                        >
-                            <i className="ti ti-x fs-14"></i>
-                        </button>
-                    )}
-                </div>
-                <select
-                    className="form-select form-select-sm shadow"
-                    style={{ width: 200 }}
-                    value={selectedPet}
-                    onChange={(e) => setSelectedPet(e.target.value)}
-                >
-                    <option value="">All PET Lines</option>
-                    {availablePets.map(p => (
-                        <option key={p.id} value={p.pet_name || p.name}>
-                            {p.pet_name || p.name}
-                        </option>
-                    ))}
-                </select>
-                {(selectedDate || selectedPet) && (
-                    <button
-                        className="btn btn-soft-danger btn-sm"
-                        onClick={() => { setSelectedDate(''); setSelectedPet(''); }}
-                    >
-                        <i className="ti ti-filter-off me-1"></i>Clear Filters
-                    </button>
-                )}
-            </div>
+            {/* Filters */}
+            <FilterInputs />
 
             {/* Stat Cards */}
             <div className="row row-gap-3 mb-4">
