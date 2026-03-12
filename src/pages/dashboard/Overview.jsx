@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
 import { groupDowntimeAndSum } from '../../utils/downtime';
 import DowntimeBreakdownList from '../../components/charts/DowntimeBreakdownList';
@@ -29,31 +30,6 @@ const formatDuration = (mins) => {
 };
 
 const clamp = (v) => Math.min(100, Math.max(0, v));
-
-const computeLineOee = (l) => {
-    const PT  = l.plannedMins / 60;
-    const TDT = l.downtimeMins / 60;
-    const MDT = (l.mechDowntime || 0) / 60;
-    const PDT = (l.plannedDowntime || 0) / 60;
-    const TP  = l.totalProduced || 0;
-    const FR  = l.fillerRejects || 0;
-
-    const aDen = PT - MDT;
-    const a = aDen > 0 ? ((PT - TDT) / aDen) * 100 : 0;
-    const pDen = PT - PDT;
-    const p = pDen > 0 ? ((PT - TDT) / pDen) * 100 : 0;
-    const q = TP > 0 ? ((TP - FR) / TP) * 100 : 0;
-
-    const oeeVal = (Math.min(1, a / 100) * Math.min(1, q / 100) * Math.min(1, p / 100)) * 100;
-    return {
-        name: l.name,
-        availability: clamp(a),
-        quality: clamp(q),
-        performance: clamp(p),
-        oee: clamp(oeeVal),
-        reports: l.reports,
-    };
-};
 
 /* ── SVG Gauge ───────────────────────────────────── */
 const GaugeChart = ({ value, label, color, formula, tooltip, calculation, rawValues }) => {
@@ -180,13 +156,14 @@ const Overview = () => {
         setLoading(true);
         try {
             const params = getParams();
-            const [reportsRes, petsRes, stoppagesRes, shiftsRes] = await Promise.all([
-                productionApi.getReports(params),
+            const stoppageParams = getParams({}, true);
+            const [oeeSummaryRes, petsRes, stoppagesRes, shiftsRes] = await Promise.all([
+                productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
-                productionApi.getStoppages(params),
+                productionApi.getStoppages(stoppageParams),
                 productionApi.getShifts(),
             ]);
-            setRawReports(extractList(reportsRes));
+            setRawReports(extractList(oeeSummaryRes));
             setRawPets(extractList(petsRes));
             setRawStoppages(extractList(stoppagesRes));
             setRawShifts(extractList(shiftsRes));
@@ -207,211 +184,148 @@ const Overview = () => {
 
     /* ── Derived data (recomputed when filter or raw data changes) ── */
     const { stats, oee, oeeByLine, downtimeCategories } = useMemo(() => {
-        const pets = rawPets;
-        const shifts = rawShifts;
-
-        /* Filter reports by date first, then by PET */
-        let reports = selectedDate
-            ? rawReports.filter(r => (r.production_date || '').slice(0, 10) === selectedDate)
-            : rawReports;
-        
+        let reports = rawReports;
         if (selectedPet) {
-            reports = reports.filter(r => (r.pet_name || '') === selectedPet);
+            reports = reports.filter(r => r.pet_name === selectedPet);
         }
 
         let stoppages = rawStoppages;
-        if (selectedDate) {
-            stoppages = stoppages.filter(s => {
-                const d = (s.created_at || s.start_time || '').slice(0, 10);
-                return d === selectedDate;
-            });
-        }
         if (selectedPet) {
             stoppages = stoppages.filter(s => (s.pet_name || s.line_name || '') === selectedPet);
         }
 
-        /* Stats */
-        const refDate = selectedDate || new Date().toISOString().slice(0, 10);
-        const startedShifts = reports.filter(r => r.status === 'STARTED').length;
-        const stoppagesToday = stoppages.filter(s => {
-            const d = (s.created_at || s.start_time || '').slice(0, 10);
-            return d === refDate;
-        }).length;
-        let totalDowntime = 0;
-        stoppages.forEach(s => { totalDowntime += s.downtime_minutes || s.duration || 0; });
-        let totalProduced = 0;
-        reports.forEach(r => { totalProduced += r.total_bottles_produced || 0; });
+        console.log('DEBUG - Reports:', reports);
+        console.log('DEBUG - Stoppages:', stoppages);
 
-        let mechDowntime = 0, plannedDowntime = 0;
-        stoppages.forEach(s => {
-            (s.incidents || []).forEach(inc => {
-                const cat = (inc.downtime_category_name || '').toLowerCase();
-                const dur = inc.incident_duration || 0;
-                if (cat.includes('mechanical')) mechDowntime += dur;
-                else if (cat.includes('planned')) plannedDowntime += dur;
-            });
-        });
+        /* Stats from reports (source of truth for downtime) */
+        const totalDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
+        const mechDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
+        const plannedDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
+        
+        console.log('DEBUG - Downtime:', { totalDowntime, mechDowntime, plannedDowntime });
 
-        const activeLines = selectedPet
-            ? 1
-            : new Set(reports.map(r => r.pet_name).filter(Boolean)).size;
+        const totalProduced = reports.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
+        const activeLines = selectedPet ? 1 : new Set(reports.map(r => r.pet_name).filter(Boolean)).size;
 
         const stats = {
             activeLines,
-            shiftsStarted: startedShifts,
+            shiftsStarted: reports.length,
             totalDowntime: Math.round(totalDowntime),
             mechDowntime: Math.round(mechDowntime),
             plannedDowntime: Math.round(plannedDowntime),
-            stoppagesToday,
+            stoppagesToday: stoppages.length,
             recentReports: reports.length,
             totalProduced,
         };
 
-        /* OEE */
-        let totalPlannedMins = 0;
-        let totalProduction = 0, totalFillerRejects = 0;
-        const lineOeeMap = {};
+        /* Global OEE from API */
+        const totalPlannedMins = reports.reduce((s, r) => s + (r.metrics?.details?.planned_time_mins || 0), 0);
+        const totalRejects = reports.reduce((s, r) => s + (r.metrics?.details?.rejects_pcs || 0), 0);
 
-        // Planned time from reports start/end times; filler data from meter_readings
-        reports.forEach(r => {
-            let plannedMins = 0;
-            if (r.start_time && r.end_time) {
-                const [sh, sm] = r.start_time.split(':').map(Number);
-                const [eh, em] = r.end_time.split(':').map(Number);
-                let startM = sh * 60 + sm, endM = eh * 60 + em;
-                if (endM <= startM) endM += 24 * 60;
-                plannedMins = endM - startM;
-            } else if (r.total_production_time_hours) {
-                plannedMins = parseFloat(r.total_production_time_hours) * 60;
-            }
-            totalPlannedMins += plannedMins;
-            totalProduction += parseFloat(r.total_bottles_produced || 0);
-
-            (r.meter_readings || []).forEach(m => {
-                totalFillerRejects += parseFloat(m.filler_rejects || 0);
-            });
-
-            const lineName = r.pet_name || 'Unknown';
-            if (!lineOeeMap[lineName]) {
-                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, totalProduced: 0, fillerRejects: 0, reports: 0 };
-            }
-            lineOeeMap[lineName].plannedMins += plannedMins;
-            lineOeeMap[lineName].reports += 1;
-            lineOeeMap[lineName].totalProduced += parseFloat(r.total_bottles_produced || 0);
-            (r.meter_readings || []).forEach(m => {
-                lineOeeMap[lineName].fillerRejects += parseFloat(m.filler_rejects || 0);
-            });
-        });
-
-        // Total/Mechanical/Planned downtime per line from stoppages
-        stoppages.forEach(s => {
-            const lineName = s.pet_name || s.line_name || 'Unknown';
-            if (!lineOeeMap[lineName]) {
-                lineOeeMap[lineName] = { name: lineName, plannedMins: 0, downtimeMins: 0, mechDowntime: 0, plannedDowntime: 0, totalProduced: 0, fillerRejects: 0, reports: 0 };
-            }
-            lineOeeMap[lineName].downtimeMins += (s.downtime_minutes || 0);
-            (s.incidents || []).forEach(inc => {
-                const dur = parseFloat(inc.incident_duration || 0);
-                const cat = (inc.downtime_category_name || '').toLowerCase();
-                if (cat.includes('mechanical')) lineOeeMap[lineName].mechDowntime += dur;
-                if (cat.includes('planned'))    lineOeeMap[lineName].plannedDowntime += dur;
-            });
-        });
-
-        // Global OEE using confirmed formula variables
-        const totalDowntimeMins   = stats.totalDowntime;
-        // Sum from lineOeeMap to avoid string-concatenation bug on incident_duration (API returns string)
-        const totalMechMins      = Object.values(lineOeeMap).reduce((s, l) => s + l.mechDowntime, 0);
-        const totalPlannedDtMins = Object.values(lineOeeMap).reduce((s, l) => s + l.plannedDowntime, 0);
-
-        const PT  = totalPlannedMins / 60;
-        const TDT = totalDowntimeMins / 60;
-        const MDT = totalMechMins / 60;
-        const PDT = totalPlannedDtMins / 60;
-
-        const aDen = PT - MDT;
-        const availability = aDen > 0 ? ((PT - TDT) / aDen) * 100 : 0;
-        const pDen = PT - PDT;
-        const performance  = pDen > 0 ? ((PT - TDT) / pDen) * 100 : 0;
-        const quality      = totalProduction > 0 ? ((totalProduction - totalFillerRejects) / totalProduction) * 100 : 0;
-
-        const a01 = Math.min(1, Math.max(0, availability / 100));
-        const q01 = Math.min(1, Math.max(0, quality / 100));
-        const p01 = Math.min(1, Math.max(0, performance / 100));
+        const availability = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.availability || 0), 0) / reports.length : 0;
+        const performance = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.performance || 0), 0) / reports.length : 0;
+        const quality = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.quality || 0), 0) / reports.length : 0;
+        const oeeValue = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.oee || 0), 0) / reports.length : 0;
 
         const oee = {
             availability: clamp(availability),
             quality: clamp(quality),
             performance: clamp(performance),
-            oee: clamp(a01 * q01 * p01 * 100),
+            oee: clamp(oeeValue),
             rawValues: {
                 plannedMins: totalPlannedMins,
-                totalDowntimeMins,
-                mechDowntimeMins: totalMechMins,
-                plannedDowntimeMins: totalPlannedDtMins,
-                totalProduction,
-                fillerRejects: totalFillerRejects,
+                totalDowntimeMins: totalDowntime,
+                mechDowntimeMins: mechDowntime,
+                plannedDowntimeMins: plannedDowntime,
+                totalProduction: totalProduced,
+                fillerRejects: totalRejects,
             }
         };
 
-        const oeeByLine = Object.values(lineOeeMap)
-            .map(computeLineOee)
-            .sort((a, b) => b.oee - a.oee);
+        /* OEE by Line from API */
+        const lineMap = {};
+        reports.forEach(r => {
+            const name = r.pet_name;
+            if (!lineMap[name]) {
+                lineMap[name] = { name, reports: 0, availability: 0, quality: 0, performance: 0, oee: 0, production: 0 };
+            }
+            lineMap[name].reports += 1;
+            lineMap[name].availability += r.metrics?.availability || 0;
+            lineMap[name].quality += r.metrics?.quality || 0;
+            lineMap[name].performance += r.metrics?.performance || 0;
+            lineMap[name].oee += r.metrics?.oee || 0;
+            lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
+        });
 
-        /* If a specific PET is selected, use its OEE for the gauges */
+        const oeeByLine = Object.values(lineMap).map(l => ({
+            name: l.name,
+            reports: l.reports,
+            availability: clamp(l.availability / l.reports),
+            quality: clamp(l.quality / l.reports),
+            performance: clamp(l.performance / l.reports),
+            oee: clamp(l.oee / l.reports),
+            production: l.production,
+        })).sort((a, b) => b.oee - a.oee);
+
+        /* If a specific PET is selected, use its OEE */
         let displayOee = oee;
         if (selectedPet && oeeByLine.length > 0) {
-            const selectedLineOee = oeeByLine.find(l => l.name === selectedPet);
-            if (selectedLineOee) {
-                const ld = lineOeeMap[selectedPet];
-                displayOee = {
-                    availability: selectedLineOee.availability,
-                    quality: selectedLineOee.quality,
-                    performance: selectedLineOee.performance,
-                    oee: selectedLineOee.oee,
-                    rawValues: {
-                        plannedMins: ld.plannedMins,
-                        totalDowntimeMins: ld.downtimeMins,
-                        mechDowntimeMins: ld.mechDowntime,
-                        plannedDowntimeMins: ld.plannedDowntime,
-                        totalProduction: ld.totalProduced,
-                        fillerRejects: ld.fillerRejects,
-                    }
-                };
-            }
+            const selectedLineOee = oeeByLine[0];
+            const selectedReports = reports.filter(r => r.pet_name === selectedPet);
+            const linePlannedMins = selectedReports.reduce((s, r) => s + (r.metrics?.details?.planned_time_mins || 0), 0);
+            const lineDowntime = selectedReports.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
+            const lineMechDowntime = selectedReports.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
+            const linePlannedDowntime = selectedReports.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
+            const lineProduced = selectedReports.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
+            const lineRejects = selectedReports.reduce((s, r) => s + (r.metrics?.details?.rejects_pcs || 0), 0);
+
+            displayOee = {
+                availability: selectedLineOee.availability,
+                quality: selectedLineOee.quality,
+                performance: selectedLineOee.performance,
+                oee: selectedLineOee.oee,
+                rawValues: {
+                    plannedMins: linePlannedMins,
+                    totalDowntimeMins: lineDowntime,
+                    mechDowntimeMins: lineMechDowntime,
+                    plannedDowntimeMins: linePlannedDowntime,
+                    totalProduction: lineProduced,
+                    fillerRejects: lineRejects,
+                }
+            };
         }
 
-        /* Downtime breakdown by category (from stoppages → incidents) */
-        const groupedDowntime = groupDowntimeAndSum(stoppages);
+        /* Downtime breakdown from stoppages incidents */
+        const incidentMap = {};
+        stoppages.forEach(stoppage => {
+            (stoppage.incidents || []).forEach(incident => {
+                const category = incident.downtime_category_name || 'Uncategorized';
+                const duration = parseFloat(incident.incident_duration || 0);
+                
+                if (!incidentMap[category]) {
+                    incidentMap[category] = 0;
+                }
+                incidentMap[category] += duration;
+            });
+        });
 
         const categoryColors = {
             'Mechanical Downtime': '#ef4444',
-            'Mechanical': '#ef4444',
             'Planned Downtime': '#3b82f6',
-            'Planned': '#3b82f6',
             'Electrical': '#f59e0b',
             'Quality': '#8b5cf6',
             'Material': '#10b981',
             'Other': '#6b7280',
-            'Uncategorized': '#9ca3af',
-            'No Incidents Logged': '#d1d5db',
         };
 
-        const categorisedMins = groupedDowntime.reduce((s, d) => s + (parseFloat(d.totalDowntimeMinutes) || 0), 0);
-        const noIncidentMins = Math.round(stats.totalDowntime) - Math.round(categorisedMins);
-
-        const downtimeCategories = [
-            ...groupedDowntime.map(item => ({
-                name: item.category,
-                value: Math.round(Number(item.totalDowntimeMinutes) || 0),
-                color: categoryColors[item.category] || categoryColors['Other'],
-            })),
-            ...(noIncidentMins > 0 ? [{
-                name: 'No Incidents Logged',
-                value: noIncidentMins,
-                color: categoryColors['No Incidents Logged'],
-            }] : []),
-        ].filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+        const downtimeCategories = Object.entries(incidentMap)
+            .map(([name, value]) => ({
+                name,
+                value: Math.round(value),
+                color: categoryColors[name] || categoryColors['Other']
+            }))
+            .filter(d => d.value > 0)
+            .sort((a, b) => b.value - a.value);
 
         return { stats, oee: displayOee, oeeByLine, downtimeCategories };
     }, [rawReports, rawPets, rawStoppages, rawShifts, selectedPet, selectedDate]);
@@ -461,6 +375,16 @@ const Overview = () => {
 
             {/* Filters */}
             <FilterInputs />
+
+            {/* No Data Alert */}
+            {!loading && rawReports.length === 0 && (
+                <div className="alert alert-warning d-flex align-items-center mb-4">
+                    <i className="ti ti-alert-circle fs-4 me-2"></i>
+                    <div>
+                        <strong>No data available</strong> for the selected date{selectedPet ? ' and PET' : ''}. Please adjust your filters.
+                    </div>
+                </div>
+            )}
 
             {/* Stat Cards */}
             <div className="row row-gap-3 mb-4">
@@ -561,6 +485,40 @@ const Overview = () => {
                                         />
                                     </div>
                                 </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Production Output by PET */}
+            <div className="row row-gap-3 mb-4">
+                <div className="col-12">
+                    <div className="card">
+                        <div className="card-header">
+                            <h6 className="mb-0">Production Output by PET</h6>
+                            <small className="text-muted">Total production contribution per line</small>
+                        </div>
+                        <div className="card-body">
+                            {loading ? (
+                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
+                            ) : oeeByLine.length === 0 ? (
+                                <div className="text-center text-muted py-4">No production data available</div>
+                            ) : (
+                                <ReactApexChart
+                                    options={{
+                                        chart: { type: 'line', height: 350, toolbar: { show: false } },
+                                        stroke: { curve: 'smooth', width: 3 },
+                                        xaxis: { categories: oeeByLine.map(l => l.name) },
+                                        yaxis: { title: { text: 'Production Output (pcs)' } },
+                                        markers: { size: 5 },
+                                        colors: ['#3b82f6'],
+                                        tooltip: { y: { formatter: (val) => formatNum(val) } }
+                                    }}
+                                    series={[{ name: 'Production Output', data: oeeByLine.map(l => l.production || 0) }]}
+                                    type="line"
+                                    height={350}
+                                />
                             )}
                         </div>
                     </div>

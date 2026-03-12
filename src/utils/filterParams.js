@@ -1,17 +1,27 @@
-export const buildFilterParams = (filters = {}) => {
+export const buildFilterParams = (filters = {}, forStoppages = false) => {
   const params = {};
   
   if (filters.page_size) params.page_size = filters.page_size;
   
-  // Use single date or date range, but not both
-  if (filters.start_date && filters.end_date) {
-    params.start_date = filters.start_date;
-    params.end_date = filters.end_date;
-  } else if (filters.log_date) {
-    params.log_date = filters.log_date;
+  if (forStoppages) {
+    // Stoppages API uses log_date
+    if (filters.log_date) {
+      params.log_date = filters.log_date;
+    } else if (filters.start_date && filters.end_date) {
+      params.start_date = filters.start_date;
+      params.end_date = filters.end_date;
+    }
+  } else {
+    // Reports API uses production_date
+    if (filters.start_date && filters.end_date) {
+      params.production_date_after = filters.start_date;
+      params.production_date_before = filters.end_date;
+    } else if (filters.log_date) {
+      params.production_date = filters.log_date;
+    }
   }
   
-  if (filters.pet) params.pet = filters.pet;
+  if (filters.pet) params.pet_id = filters.pet;
   
   return params;
 };

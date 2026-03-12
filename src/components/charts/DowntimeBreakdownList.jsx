@@ -18,6 +18,8 @@ const DowntimeBreakdownList = ({
 }) => {
     const navigate = useNavigate();
     const totalDowntime = downtimeCategories.reduce((sum, d) => sum + d.value, 0);
+    
+    console.log('DEBUG - DowntimeBreakdownList:', { downtimeCategories, totalDowntime });
 
     return (
         <div className="card flex-fill">

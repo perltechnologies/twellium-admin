@@ -4,8 +4,8 @@ import { buildFilterParams } from './filterParams';
 export const useApiWithFilters = () => {
   const { filters } = useFilters();
   
-  const getParams = (additionalParams = {}) => {
-    return { ...buildFilterParams(filters), ...additionalParams };
+  const getParams = (additionalParams = {}, forStoppages = false) => {
+    return { ...buildFilterParams(filters, forStoppages), ...additionalParams };
   };
 
   return { getParams, filters };
