@@ -735,32 +735,11 @@ const Overview = () => {
                     <ChartErrorBoundary fallbackMessage="Failed to render production output chart">
                     {isLoading ? <SkeletonChart height={350} title /> : (
                     <div className="card">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <div>
-                                <h6 className="mb-0">Production Output by PET</h6>
-                                <small className="text-muted">Production trends over time</small>
-                            </div>
-                            <div className="d-flex align-items-center gap-2 flex-wrap">
-                                <div className="btn-group btn-group-sm">
-                                    <button 
-                                        className={`btn ${filters.log_date || (!filters.start_date && !filters.end_date) ? 'btn-primary' : 'btn-outline-primary'}`}
-                                        onClick={() => {
-                                            const today = new Date().toISOString().split('T')[0];
-                                            updateFilters({ log_date: today, start_date: null, end_date: null });
-                                        }}
-                                    >
-                                        Week
-                                    </button>
-                                    <button 
-                                        className={`btn ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
-                                        onClick={() => {
-                                            const endDate = new Date().toISOString().split('T')[0];
-                                            const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
-                                            updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
-                                        }}
-                                    >
-                                        Month
-                                    </button>
+                        <div className="card-header">
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                <div>
+                                    <h6 className="mb-0">Production Output by PET</h6>
+                                    <small className="text-muted">Production trends over time</small>
                                 </div>
                                 <div className="d-flex gap-2 flex-wrap">
                                     {availablePets.sort((a, b) => {
@@ -785,6 +764,27 @@ const Overview = () => {
                                         </button>
                                     ))}
                                 </div>
+                            </div>
+                            <div className="btn-group btn-group-sm">
+                                <button 
+                                    className={`btn ${filters.log_date || (!filters.start_date && !filters.end_date) ? 'btn-primary' : 'btn-outline-primary'}`}
+                                    onClick={() => {
+                                        const today = new Date().toISOString().split('T')[0];
+                                        updateFilters({ log_date: today, start_date: null, end_date: null });
+                                    }}
+                                >
+                                    Week
+                                </button>
+                                <button 
+                                    className={`btn ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                                    onClick={() => {
+                                        const endDate = new Date().toISOString().split('T')[0];
+                                        const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                                        updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                                    }}
+                                >
+                                    Month
+                                </button>
                             </div>
                         </div>
                         <div className="card-body">
