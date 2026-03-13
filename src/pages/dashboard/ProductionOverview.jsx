@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production';
 import {
@@ -10,6 +10,10 @@ import GaugeChart from '../../components/charts/GaugeChart';
 import DowntimeBreakdownChart from '../../components/charts/DowntimeBreakdownChart';
 import FilterInputs from '../../components/FilterInputs';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
+import ChartErrorBoundary from '../../components/ui/ChartErrorBoundary';
+import {
+    SkeletonStatCards, SkeletonChart, SkeletonDonut, SkeletonTable
+} from '../../components/ui/Skeletons';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -83,7 +87,14 @@ const formatDate = (d) => {
 const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
-    const [loading, setLoading] = useState(true);
+
+    /* Stale-while-revalidate: separate initial vs refresh state */
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState(null);
+    const hasFetched = useRef(false);
+    const abortRef = useRef(null);
+
     const [stats, setStats] = useState({ totalReports: 0, activeLines: 0, totalStoppages: 0, totalDowntime: 0, totalProduced: 0 });
     const [recentReports, setRecentReports] = useState([]);
     const [recentStoppages, setRecentStoppages] = useState([]);
@@ -95,7 +106,18 @@ const Overview = () => {
     const [downtimeByLine, setDowntimeByLine] = useState([]);
 
     const loadData = useCallback(async () => {
-        setLoading(true);
+        /* Cancel any in-flight request */
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        if (hasFetched.current) {
+            setRefreshing(true);
+        } else {
+            setInitialLoading(true);
+        }
+        setError(null);
+
         try {
             const params = getParams();
             const [reportsRes, petsRes, stoppagesRes] = await Promise.all([
@@ -103,6 +125,8 @@ const Overview = () => {
                 productionApi.getPets(params),
                 productionApi.getStoppages(params),
             ]);
+
+            if (controller.signal.aborted) return;
 
             const reports = extractList(reportsRes);
             const pets = extractList(petsRes);
@@ -204,14 +228,22 @@ const Overview = () => {
                     .slice(0, 6)
             );
 
-        } catch (error) {
-            console.error('Failed to load dashboard data:', error);
+            hasFetched.current = true;
+        } catch (err) {
+            if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
+            setError('Failed to load production data. Please try again.');
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) {
+                setInitialLoading(false);
+                setRefreshing(false);
+            }
         }
     }, [filters]);
 
-    useEffect(() => { loadData(); }, [loadData]);
+    useEffect(() => {
+        loadData();
+        return () => { if (abortRef.current) abortRef.current.abort(); };
+    }, [loadData]);
 
     const efficiency = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
 
@@ -229,17 +261,22 @@ const Overview = () => {
         { label: 'Total Downtime', value: `${stats.totalDowntime} min`, icon: 'ti-clock-pause', color: 'danger', elemnt: 'elemnt-04', delta: null },
     ];
 
+    const isLoading = initialLoading;
+
     /* ── render ── */
     return (
         <>
             {/* Page Header */}
             <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
-                <div>
+                <div className="d-flex align-items-center gap-2">
                     <h4 className="mb-1">Dashboard</h4>
+                    {refreshing && (
+                        <span className="spinner-border spinner-border-sm text-primary" role="status" />
+                    )}
                 </div>
                 <div className="gap-2 d-flex align-items-center flex-wrap">
-                    <button className="btn btn-icon btn-outline-light shadow" title="Refresh" onClick={loadData}>
-                        <i className={`ti ti-refresh${loading ? ' spin' : ''}`}></i>
+                    <button className="btn btn-icon btn-outline-light shadow" title="Refresh" onClick={loadData} disabled={refreshing}>
+                        <i className={`ti ti-refresh${refreshing ? ' spin' : ''}`}></i>
                     </button>
                 </div>
             </div>
@@ -247,13 +284,24 @@ const Overview = () => {
             {/* Filters */}
             <FilterInputs />
 
+            {/* Error State */}
+            {error && (
+                <div className="alert alert-danger d-flex align-items-center mb-4">
+                    <i className="ti ti-alert-circle fs-4 me-2"></i>
+                    <div className="flex-grow-1">{error}</div>
+                    <button className="btn btn-outline-danger btn-sm ms-2" onClick={loadData}>
+                        <i className="ti ti-refresh me-1"></i>Retry
+                    </button>
+                </div>
+            )}
+
             {/* Welcome Banner */}
             <div className="welcome-wrap mb-4">
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 bg-dark rounded p-4">
                     <div>
                         <h2 className="mb-1 text-white fs-24">Production Overview</h2>
                         <p className="text-light fs-14 mb-0">
-                            {loading ? 'Loading…' : `${formatNum(stats.totalProduced)} bottles produced across ${stats.activeLines} active lines`}
+                            {isLoading ? 'Loading…' : `${formatNum(stats.totalProduced)} bottles produced across ${stats.activeLines} active lines`}
                         </p>
                     </div>
                     <div className="d-flex align-items-center flex-wrap gap-2">
@@ -264,6 +312,7 @@ const Overview = () => {
             </div>
 
             {/* Stat Cards */}
+            {isLoading ? <SkeletonStatCards count={4} /> : (
             <div className="row row-gap-3 mb-4">
                 {statCards.map((card) => (
                     <div key={card.label} className="col-xl-3 col-sm-6 d-flex">
@@ -273,7 +322,7 @@ const Overview = () => {
                                     <div className="d-flex align-items-start justify-content-between">
                                         <div>
                                             <p className="fs-14 mb-1">{card.label}</p>
-                                            <h2 className="mb-1 fs-16">{loading ? '…' : card.value}</h2>
+                                            <h2 className="mb-1 fs-16">{card.value}</h2>
                                         </div>
                                     </div>
                                     <div className="d-flex align-items-center justify-content-between">
@@ -288,19 +337,20 @@ const Overview = () => {
                     </div>
                 ))}
             </div>
+            )}
 
             {/* Charts Row */}
             <div className="row">
                 {/* Reports by Status – donut */}
                 <div className="col-xxl-3 col-lg-6 d-flex">
+                    {isLoading ? <SkeletonDonut /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render status chart">
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">Reports by Status</h6>
                         </div>
                         <div className="card-body">
-                            {loading ? (
-                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : statusBreakdown.length > 0 ? (
+                            {statusBreakdown.length > 0 ? (
                                 <>
                                     <ResponsiveContainer width="100%" height={180}>
                                         <PieChart>
@@ -328,10 +378,14 @@ const Overview = () => {
                             )}
                         </div>
                     </div>
+                    </ChartErrorBoundary>
+                    )}
                 </div>
 
                 {/* Plan vs Actual – bar chart */}
                 <div className="col-lg-6 d-flex">
+                    {isLoading ? <SkeletonChart height={220} title /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render plan vs actual chart">
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">Plan vs Actual Output</h6>
@@ -370,18 +424,20 @@ const Overview = () => {
                             )}
                         </div>
                     </div>
+                    </ChartErrorBoundary>
+                    )}
                 </div>
 
                 {/* Top Lines – donut */}
                 <div className="col-xxl-3 col-xl-12 d-flex">
+                    {isLoading ? <SkeletonDonut /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render top lines chart">
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">Top PET Lines</h6>
                         </div>
                         <div className="card-body">
-                            {loading ? (
-                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : topLines.length > 0 ? (
+                            {topLines.length > 0 ? (
                                 <>
                                     <ResponsiveContainer width="100%" height={180}>
                                         <PieChart>
@@ -413,6 +469,8 @@ const Overview = () => {
                             )}
                         </div>
                     </div>
+                    </ChartErrorBoundary>
+                    )}
                 </div>
             </div>
 
@@ -420,16 +478,22 @@ const Overview = () => {
             <div className="row">
                 {/* Downtime Breakdown Chart */}
                 <div className="col-xxl-4 col-lg-6 d-flex">
-                    <DowntimeBreakdownChart 
-                        downtimeCategories={downtimeCategories}
-                        loading={loading}
-                        showDetailsButton={true}
-                        detailsRoute="/dashboard/downtime"
-                    />
+                    {isLoading ? <SkeletonDonut /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render downtime breakdown">
+                        <DowntimeBreakdownChart 
+                            downtimeCategories={downtimeCategories}
+                            loading={false}
+                            showDetailsButton={true}
+                            detailsRoute="/dashboard/downtime"
+                        />
+                    </ChartErrorBoundary>
+                    )}
                 </div>
 
                 {/* Downtime by Line – grouped bar */}
                 <div className="col-xxl-8 col-lg-6 d-flex">
+                    {isLoading ? <SkeletonChart height={400} title /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render downtime by line chart">
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">Mechanical vs Planned by Line</h6>
@@ -443,9 +507,7 @@ const Overview = () => {
                             </div>
                         </div>
                         <div className="card-body p-0 d-flex" style={{ minHeight: '400px' }}>
-                            {loading ? (
-                                <div className="text-center py-5 w-100 align-self-center"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : downtimeByLine.length > 0 ? (
+                            {downtimeByLine.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={downtimeByLine} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
@@ -465,6 +527,8 @@ const Overview = () => {
                             )}
                         </div>
                     </div>
+                    </ChartErrorBoundary>
+                    )}
                 </div>
             </div>
 
@@ -472,15 +536,14 @@ const Overview = () => {
             <div className="row">
                 {/* Recent Reports */}
                 <div className="col-xxl-4 col-xl-12 d-flex">
+                    {isLoading ? <SkeletonTable rows={5} cols={3} /> : (
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h5 className="mb-0 fs-16 fw-bold">Recent Reports</h5>
                             <button onClick={() => navigate('/dashboard/production')} className="btn btn-primary btn-xs">View All</button>
                         </div>
                         <div className="card-body pb-2">
-                            {loading ? (
-                                <div className="text-center py-4"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : recentReports.length === 0 ? (
+                            {recentReports.length === 0 ? (
                                 <p className="text-center text-muted py-4 mb-0">No recent reports</p>
                             ) : (
                                 recentReports.map((r, idx) => (
@@ -504,19 +567,19 @@ const Overview = () => {
                             )}
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Recent Stoppages */}
                 <div className="col-xxl-4 col-xl-12 d-flex">
+                    {isLoading ? <SkeletonTable rows={5} cols={3} /> : (
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h5 className="mb-0 fs-16 fw-bold">Recent Stoppages</h5>
                             <button onClick={() => navigate('/dashboard/stoppages')} className="btn btn-primary btn-xs">View All</button>
                         </div>
                         <div className="card-body pb-2">
-                            {loading ? (
-                                <div className="text-center py-4"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : recentStoppages.length === 0 ? (
+                            {recentStoppages.length === 0 ? (
                                 <p className="text-center text-muted py-4 mb-0">No stoppages recorded</p>
                             ) : (
                                 recentStoppages.map((s, idx) => (
@@ -545,18 +608,19 @@ const Overview = () => {
                             )}
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Production Summary */}
                 <div className="col-xxl-4 col-xl-12 d-flex">
+                    {isLoading ? <SkeletonTable rows={5} cols={2} /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render production summary">
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h5 className="mb-0 fs-16 fw-bold">Production Summary</h5>
                         </div>
                         <div className="card-body pb-2">
-                            {loading ? (
-                                <div className="text-center py-4"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : (
+                            {(
                                 <>
                                     <div className="d-sm-flex justify-content-between flex-wrap mb-4">
                                         <div className="d-flex align-items-center">
@@ -630,6 +694,8 @@ const Overview = () => {
                             )}
                         </div>
                     </div>
+                    </ChartErrorBoundary>
+                    )}
                 </div>
             </div>
         </>

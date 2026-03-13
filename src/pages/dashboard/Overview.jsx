@@ -1,12 +1,18 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
-import { groupDowntimeAndSum } from '../../utils/downtime';
 import DowntimeBreakdownList from '../../components/charts/DowntimeBreakdownList';
 import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsChart';
+import ProductionSummary from '../../components/production/ProductionSummary';
 import FilterInputs from '../../components/FilterInputs';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
+import ChartErrorBoundary, { SectionError } from '../../components/ui/ChartErrorBoundary';
+import {
+    SkeletonStatCards, SkeletonGauges, SkeletonChart,
+    SkeletonTable, SkeletonDowntimeList
+} from '../../components/ui/Skeletons';
+
+const ReactApexChart = lazy(() => import('react-apexcharts'));
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -143,39 +149,72 @@ const GaugeChart = ({ value, label, color, formula, tooltip, calculation, rawVal
 const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
-    const [loading, setLoading] = useState(true);
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
+
+    /* Stale-while-revalidate: separate initial vs refresh state */
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState(null);
+    const hasFetched = useRef(false);
+    const abortRef = useRef(null);
 
     const [rawReports, setRawReports] = useState([]);
     const [rawPets, setRawPets] = useState([]);
     const [rawStoppages, setRawStoppages] = useState([]);
     const [rawShifts, setRawShifts] = useState([]);
+    const [allReports, setAllReports] = useState([]);
 
     const loadData = useCallback(async () => {
-        setLoading(true);
+        /* Cancel any in-flight request */
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        /* First load → full skeleton. Subsequent → subtle refresh indicator */
+        if (hasFetched.current) {
+            setRefreshing(true);
+        } else {
+            setInitialLoading(true);
+        }
+        setError(null);
+
         try {
             const params = getParams();
             const stoppageParams = getParams({}, true);
-            const [oeeSummaryRes, petsRes, stoppagesRes, shiftsRes] = await Promise.all([
+            const allReportsParams = { page_size: 1000 };
+            const [oeeSummaryRes, petsRes, stoppagesRes, shiftsRes, allReportsRes] = await Promise.all([
                 productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
                 productionApi.getStoppages(stoppageParams),
                 productionApi.getShifts(),
+                productionApi.getOeeSummary(allReportsParams),
             ]);
+
+            if (controller.signal.aborted) return;
+
             setRawReports(extractList(oeeSummaryRes));
             setRawPets(extractList(petsRes));
             setRawStoppages(extractList(stoppagesRes));
             setRawShifts(extractList(shiftsRes));
-        } catch (error) {
-            console.error('Failed to load dashboard data:', error);
+            setAllReports(extractList(allReportsRes));
+            hasFetched.current = true;
+        } catch (err) {
+            if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
+            setError('Failed to load dashboard data. Please try again.');
         } finally {
-            setLoading(false);
+            if (!controller.signal.aborted) {
+                setInitialLoading(false);
+                setRefreshing(false);
+            }
         }
     }, [filters]);
 
-    /* Re-fetch whenever selectedDate changes */
-    useEffect(() => { loadData(); }, [loadData]);
+    /* Re-fetch whenever filters change */
+    useEffect(() => {
+        loadData();
+        return () => { if (abortRef.current) abortRef.current.abort(); };
+    }, [loadData]);
 
     /* PETs available for the selected date (derived from reports) */
     const availablePets = useMemo(() => {
@@ -194,15 +233,10 @@ const Overview = () => {
             stoppages = stoppages.filter(s => (s.pet_name || s.line_name || '') === selectedPet);
         }
 
-        console.log('DEBUG - Reports:', reports);
-        console.log('DEBUG - Stoppages:', stoppages);
-
         /* Stats from reports (source of truth for downtime) */
         const totalDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
         const mechDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
         const plannedDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
-        
-        console.log('DEBUG - Downtime:', { totalDowntime, mechDowntime, plannedDowntime });
 
         const totalProduced = reports.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
         const activeLines = selectedPet ? 1 : new Set(reports.map(r => r.pet_name).filter(Boolean)).size;
@@ -357,18 +391,24 @@ const Overview = () => {
     ];
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
+    const isLoading = initialLoading;
 
     return (
         <>
             {/* Page Header */}
             <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
-                <h4 className="mb-0">Dashboard</h4>
+                <div className="d-flex align-items-center gap-2">
+                    <h4 className="mb-0">Dashboard</h4>
+                    {refreshing && (
+                        <span className="spinner-border spinner-border-sm text-primary" role="status" />
+                    )}
+                </div>
                 <div className="d-flex align-items-center gap-2">
                     <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-outline-primary btn-sm shadow">
                         <i className="ti ti-chart-bar me-1"></i>Production Charts
                     </button>
-                    <button className="btn btn-icon btn-outline-light shadow" title="Refresh" onClick={loadData}>
-                        <i className={`ti ti-refresh${loading ? ' spin' : ''}`}></i>
+                    <button className="btn btn-icon btn-outline-light shadow" title="Refresh" onClick={loadData} disabled={refreshing}>
+                        <i className={`ti ti-refresh${refreshing ? ' spin' : ''}`}></i>
                     </button>
                 </div>
             </div>
@@ -376,8 +416,37 @@ const Overview = () => {
             {/* Filters */}
             <FilterInputs />
 
+            {/* Active Filters Alert */}
+            {(filters.log_date || filters.start_date || filters.pet) && (
+                <div className="alert alert-info d-flex align-items-center mb-4">
+                    <i className="ti ti-filter fs-4 me-2"></i>
+                    <div className="flex-grow-1">
+                        <strong>Active Filters:</strong>
+                        {filters.start_date && filters.end_date ? (
+                            <span className="ms-2">Date Range: {filters.start_date} to {filters.end_date}</span>
+                        ) : filters.log_date ? (
+                            <span className="ms-2">Date: {filters.log_date}</span>
+                        ) : null}
+                        {filters.pet && (
+                            <span className="ms-2">• PET: {availablePets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}</span>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Error State */}
+            {error && (
+                <div className="alert alert-danger d-flex align-items-center mb-4">
+                    <i className="ti ti-alert-circle fs-4 me-2"></i>
+                    <div className="flex-grow-1">{error}</div>
+                    <button className="btn btn-outline-danger btn-sm ms-2" onClick={loadData}>
+                        <i className="ti ti-refresh me-1"></i>Retry
+                    </button>
+                </div>
+            )}
+
             {/* No Data Alert */}
-            {!loading && rawReports.length === 0 && (
+            {!isLoading && !error && rawReports.length === 0 && (
                 <div className="alert alert-warning d-flex align-items-center mb-4">
                     <i className="ti ti-alert-circle fs-4 me-2"></i>
                     <div>
@@ -387,35 +456,39 @@ const Overview = () => {
             )}
 
             {/* Stat Cards */}
-            <div className="row row-gap-3 mb-4">
-                {statCards.map((card) => (
-                    <div key={card.label} className="col-xl-3 col-sm-6 d-flex">
-                        <div className="card flex-fill mb-0 position-relative overflow-hidden">
-                            <div className="card-body position-relative z-1">
-                                <div className="d-flex align-items-start justify-content-between">
+            {isLoading ? <SkeletonStatCards count={4} /> : (
+                <div className="row row-gap-3 mb-4">
+                    {statCards.map((card) => (
+                        <div key={card.label} className="col-xl-3 col-sm-6 d-flex">
+                            <div className="card flex-fill mb-0 position-relative overflow-hidden">
+                                <div className="card-body position-relative z-1">
                                     <div className="d-flex align-items-start justify-content-between">
-                                        <div>
-                                            <p className="fs-14 mb-1">{card.label}</p>
-                                            <h2 className="mb-1 fs-16">{loading ? '…' : card.value}</h2>
-                                            <p className="text-muted mb-0 fs-13">{loading ? '' : card.subtext}</p>
+                                        <div className="d-flex align-items-start justify-content-between">
+                                            <div>
+                                                <p className="fs-14 mb-1">{card.label}</p>
+                                                <h2 className="mb-1 fs-16">{card.value}</h2>
+                                                <p className="text-muted mb-0 fs-13">{card.subtext}</p>
+                                            </div>
+                                        </div>
+                                        <div className="d-flex align-items-center justify-content-between">
+                                            <span className={`avatar avatar-md rounded-circle bg-soft-${card.color} border border-${card.color}`}>
+                                                <i className={`ti ${card.icon} fs-16 text-${card.color}`}></i>
+                                            </span>
                                         </div>
                                     </div>
-                                    <div className="d-flex align-items-center justify-content-between">
-                                        <span className={`avatar avatar-md rounded-circle bg-soft-${card.color} border border-${card.color}`}>
-                                            <i className={`ti ${card.icon} fs-16 text-${card.color}`}></i>
-                                        </span>
-                                    </div>
                                 </div>
+                                <img src={`/assets/img/icons/${card.elemnt}.svg`} alt="" className="img-fluid position-absolute top-0 start-0" />
                             </div>
-                            <img src={`/assets/img/icons/${card.elemnt}.svg`} alt="" className="img-fluid position-absolute top-0 start-0" />
                         </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
 
             {/* OEE Gauges */}
+            {isLoading ? <SkeletonGauges count={4} /> : (
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
+                    <ChartErrorBoundary fallbackMessage="Failed to render OEE gauges">
                     <div className="card">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">Overall Equipment Effectiveness (OEE)</h6>
@@ -424,9 +497,6 @@ const Overview = () => {
                             </button>
                         </div>
                         <div className="card-body">
-                            {loading ? (
-                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : (
                                 <div className="row g-3">
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
                                         <GaugeChart 
@@ -485,59 +555,29 @@ const Overview = () => {
                                         />
                                     </div>
                                 </div>
-                            )}
                         </div>
                     </div>
+                    </ChartErrorBoundary>
                 </div>
             </div>
-
-            {/* Production Output by PET */}
-            <div className="row row-gap-3 mb-4">
-                <div className="col-12">
-                    <div className="card">
-                        <div className="card-header">
-                            <h6 className="mb-0">Production Output by PET</h6>
-                            <small className="text-muted">Total production contribution per line</small>
-                        </div>
-                        <div className="card-body">
-                            {loading ? (
-                                <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
-                            ) : oeeByLine.length === 0 ? (
-                                <div className="text-center text-muted py-4">No production data available</div>
-                            ) : (
-                                <ReactApexChart
-                                    options={{
-                                        chart: { type: 'line', height: 350, toolbar: { show: false } },
-                                        stroke: { curve: 'smooth', width: 3 },
-                                        xaxis: { categories: oeeByLine.map(l => l.name) },
-                                        yaxis: { title: { text: 'Production Output (pcs)' } },
-                                        markers: { size: 5 },
-                                        colors: ['#3b82f6'],
-                                        tooltip: { y: { formatter: (val) => formatNum(val) } }
-                                    }}
-                                    series={[{ name: 'Production Output', data: oeeByLine.map(l => l.production || 0) }]}
-                                    type="line"
-                                    height={350}
-                                />
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
+            )}
 
             {/* Downtime Breakdown + OEE by Line */}
             <div className="row row-gap-3 mb-4">
                 {/* Downtime Breakdown */}
                 <div className="col-5 col-md-5 d-flex">
-                    <DowntimeBreakdownList 
-                        downtimeCategories={downtimeCategories}
-                        loading={loading}
-                        showDetailsButton={true}
-                        detailsRoute="/dashboard/production/stoppages"
-                    />
+                    {isLoading ? <SkeletonDowntimeList /> : (
+                        <DowntimeBreakdownList 
+                            downtimeCategories={downtimeCategories}
+                            loading={false}
+                            showDetailsButton={true}
+                            detailsRoute="/dashboard/production/stoppages"
+                        />
+                    )}
                 </div>
                 {/* OEE by Line Table */}
                 <div className="col-xl-7 d-flex">
+                    {isLoading ? <SkeletonTable rows={4} cols={6} /> : (
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">OEE by Production Line</h6>
@@ -565,13 +605,7 @@ const Overview = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {loading ? (
-                                            <tr>
-                                                <td colSpan="6" className="text-center text-muted py-4">
-                                                    <span className="spinner-border spinner-border-sm me-2"></span> Loading…
-                                                </td>
-                                            </tr>
-                                        ) : oeeByLine.length === 0 ? (
+                                        {oeeByLine.length === 0 ? (
                                             <tr>
                                                 <td colSpan="6" className="text-center text-muted py-4">No data available</td>
                                             </tr>
@@ -608,13 +642,63 @@ const Overview = () => {
                             </div>
                         </div>
                     </div>
+                    )}
                 </div>
             </div>
 
             {/* Stoppage Incidents Chart */}
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
-                    <StoppageIncidentsChart stoppages={rawStoppages} loading={loading} />
+                    <ChartErrorBoundary fallbackMessage="Failed to render stoppage incidents chart">
+                        {isLoading ? <SkeletonChart height={400} title /> : (
+                            <StoppageIncidentsChart stoppages={rawStoppages} loading={false} />
+                        )}
+                    </ChartErrorBoundary>
+                </div>
+            </div>
+
+            {/* Production Output by PET */}
+            <div className="row row-gap-3 mb-4">
+                <div className="col-12">
+                    <ChartErrorBoundary fallbackMessage="Failed to render production output chart">
+                    {isLoading ? <SkeletonChart height={350} title /> : (
+                    <div className="card">
+                        <div className="card-header">
+                            <h6 className="mb-0">Production Output by PET</h6>
+                            <small className="text-muted">Total production contribution per line</small>
+                        </div>
+                        <div className="card-body">
+                            {oeeByLine.length === 0 ? (
+                                <div className="text-center text-muted py-4">No production data available</div>
+                            ) : (
+                                <Suspense fallback={<div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>}>
+                                    <ReactApexChart
+                                        options={{
+                                            chart: { type: 'line', height: 350, toolbar: { show: false } },
+                                            stroke: { curve: 'smooth', width: 3 },
+                                            xaxis: { categories: oeeByLine.map(l => l.name) },
+                                            yaxis: { title: { text: 'Production Output (pcs)' } },
+                                            markers: { size: 5 },
+                                            colors: ['#3b82f6'],
+                                            tooltip: { y: { formatter: (val) => formatNum(val) } }
+                                        }}
+                                        series={[{ name: 'Production Output', data: oeeByLine.map(l => l.production || 0) }]}
+                                        type="line"
+                                        height={350}
+                                    />
+                                </Suspense>
+                            )}
+                        </div>
+                    </div>
+                    )}
+                    </ChartErrorBoundary>
+                </div>
+            </div>
+
+            {/* Production Summary */}
+            <div className="row row-gap-3 mb-4">
+                <div className="col-12">
+                    <ProductionSummary reports={allReports} loading={isLoading} pets={availablePets} />
                 </div>
             </div>
         </>
