@@ -71,7 +71,21 @@ const FilterInputs = ({ showPageSize = false }) => {
           onChange={(e) => updateFilters({ pet: e.target.value || null })}
         >
           <option value="">All</option>
-          {pets.map(pet => (
+          {pets.sort((a, b) => {
+            const aName = (a.pet_name || '').toLowerCase();
+            const bName = (b.pet_name || '').toLowerCase();
+            
+            // Canline always last
+            const aIsCan = aName.includes('can');
+            const bIsCan = bName.includes('can');
+            if (aIsCan && !bIsCan) return 1;
+            if (!aIsCan && bIsCan) return -1;
+            
+            // Extract numbers and sort
+            const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+            return aNum - bNum;
+          }).map(pet => (
             <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
           ))}
         </select>

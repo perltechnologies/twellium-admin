@@ -148,7 +148,21 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </button>
                     </div>
                     <div className="d-flex gap-2 flex-wrap">
-                        {pets.map(pet => (
+                        {pets.sort((a, b) => {
+                            const aName = (a.pet_name || '').toLowerCase();
+                            const bName = (b.pet_name || '').toLowerCase();
+                            
+                            // Canline always last
+                            const aIsCan = aName.includes('can');
+                            const bIsCan = bName.includes('can');
+                            if (aIsCan && !bIsCan) return 1;
+                            if (!aIsCan && bIsCan) return -1;
+                            
+                            // Extract numbers and sort
+                            const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                            const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                            return aNum - bNum;
+                        }).map(pet => (
                             <button
                                 key={pet.id}
                                 className={`btn btn-sm ${selectedPets.includes(pet.id) ? 'btn-info' : 'btn-outline-secondary'}`}

@@ -193,10 +193,30 @@ const Overview = () => {
 
             if (controller.signal.aborted) return;
 
-            setRawReports(extractList(oeeSummaryRes));
+            const reports = extractList(oeeSummaryRes);
+            const allReportsData = extractList(allReportsRes);
+            
+            // Sort reports by PET name
+            const sortByPet = (arr) => arr.sort((a, b) => {
+                const aName = (a.pet_name || '').toLowerCase();
+                const bName = (b.pet_name || '').toLowerCase();
+                
+                // Canline always last
+                const aIsCan = aName.includes('can');
+                const bIsCan = bName.includes('can');
+                if (aIsCan && !bIsCan) return 1;
+                if (!aIsCan && bIsCan) return -1;
+                
+                // Extract numbers and sort
+                const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                return aNum - bNum;
+            });
+
+            setRawReports(sortByPet(reports));
             setRawPets(extractList(petsRes));
             setRawStoppages(extractList(stoppagesRes));
-            setAllReports(extractList(allReportsRes));
+            setAllReports(sortByPet(allReportsData));
             hasFetched.current = true;
         } catch (err) {
             if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
@@ -298,7 +318,24 @@ const Overview = () => {
             performance: clamp(l.performance / l.reports),
             oee: clamp(l.oee / l.reports),
             production: l.production,
-        })).sort((a, b) => b.oee - a.oee);
+        })).sort((a, b) => {
+            const aLower = (a.name || '').toLowerCase();
+            const bLower = (b.name || '').toLowerCase();
+            
+            // Canline always last
+            const aIsCanline = aLower.includes('can');
+            const bIsCanline = bLower.includes('can');
+            if (aIsCanline && !bIsCanline) return 1;
+            if (!aIsCanline && bIsCanline) return -1;
+            
+            // Extract numbers from PET names
+            const aMatch = a.name?.match(/(\d+)/);
+            const bMatch = b.name?.match(/(\d+)/);
+            const aNum = aMatch ? parseInt(aMatch[0]) : 999;
+            const bNum = bMatch ? parseInt(bMatch[0]) : 999;
+            
+            return aNum - bNum;
+        });
 
         /* If a specific PET is selected, use its OEE */
         let displayOee = oee;
