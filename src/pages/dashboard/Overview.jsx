@@ -6,6 +6,7 @@ import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsCha
 import ProductionSummary from '../../components/production/ProductionSummary';
 import FilterInputs from '../../components/FilterInputs';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
+import { useFilters } from '../../context/FilterContext';
 import ChartErrorBoundary, { SectionError } from '../../components/ui/ChartErrorBoundary';
 import {
     SkeletonStatCards, SkeletonGauges, SkeletonChart,
@@ -149,6 +150,7 @@ const GaugeChart = ({ value, label, color, formula, tooltip, calculation, rawVal
 const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
+    const { updateFilters } = useFilters();
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
 
@@ -162,7 +164,6 @@ const Overview = () => {
     const [rawReports, setRawReports] = useState([]);
     const [rawPets, setRawPets] = useState([]);
     const [rawStoppages, setRawStoppages] = useState([]);
-    const [rawShifts, setRawShifts] = useState([]);
     const [allReports, setAllReports] = useState([]);
 
     const loadData = useCallback(async () => {
@@ -183,11 +184,10 @@ const Overview = () => {
             const params = getParams();
             const stoppageParams = getParams({}, true);
             const allReportsParams = { page_size: 1000 };
-            const [oeeSummaryRes, petsRes, stoppagesRes, shiftsRes, allReportsRes] = await Promise.all([
+            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes] = await Promise.all([
                 productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
                 productionApi.getStoppages(stoppageParams),
-                productionApi.getShifts(),
                 productionApi.getOeeSummary(allReportsParams),
             ]);
 
@@ -196,7 +196,6 @@ const Overview = () => {
             setRawReports(extractList(oeeSummaryRes));
             setRawPets(extractList(petsRes));
             setRawStoppages(extractList(stoppagesRes));
-            setRawShifts(extractList(shiftsRes));
             setAllReports(extractList(allReportsRes));
             hasFetched.current = true;
         } catch (err) {
@@ -362,7 +361,7 @@ const Overview = () => {
             .sort((a, b) => b.value - a.value);
 
         return { stats, oee: displayOee, oeeByLine, downtimeCategories };
-    }, [rawReports, rawPets, rawStoppages, rawShifts, selectedPet, selectedDate]);
+    }, [rawReports, rawPets, rawStoppages, selectedPet, selectedDate]);
 
     const statCards = [
         {
@@ -391,7 +390,7 @@ const Overview = () => {
     ];
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
-    const isLoading = initialLoading;
+    const isLoading = initialLoading || refreshing;
 
     return (
         <>
@@ -404,6 +403,34 @@ const Overview = () => {
                     )}
                 </div>
                 <div className="d-flex align-items-center gap-2">
+                    <button 
+                        onClick={() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            updateFilters({ log_date: today, start_date: null, end_date: null });
+                        }}
+                        className={`btn btn-sm ${filters.log_date === new Date().toISOString().split('T')[0] && !filters.start_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                    >
+                        <i className="ti ti-calendar-today me-1"></i>Current
+                    </button>
+                    <button 
+                        onClick={() => {
+                            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                            updateFilters({ log_date: yesterday, start_date: null, end_date: null });
+                        }}
+                        className={`btn btn-sm ${filters.log_date === new Date(Date.now() - 86400000).toISOString().split('T')[0] && !filters.start_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                    >
+                        <i className="ti ti-calendar-minus me-1"></i>Previous Day
+                    </button>
+                    <button 
+                        onClick={() => {
+                            const endDate = new Date().toISOString().split('T')[0];
+                            const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                            updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                        }}
+                        className={`btn btn-sm ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                    >
+                        <i className="ti ti-calendar-week me-1"></i>Week
+                    </button>
                     <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-outline-primary btn-sm shadow">
                         <i className="ti ti-chart-bar me-1"></i>Production Charts
                     </button>
@@ -562,6 +589,13 @@ const Overview = () => {
             </div>
             )}
 
+            {/* Production Summary */}
+            <div className="row row-gap-3 mb-4">
+                <div className="col-12">
+                    <ProductionSummary reports={allReports} loading={isLoading} pets={availablePets} />
+                </div>
+            </div>
+
             {/* Downtime Breakdown + OEE by Line */}
             <div className="row row-gap-3 mb-4">
                 {/* Downtime Breakdown */}
@@ -692,13 +726,6 @@ const Overview = () => {
                     </div>
                     )}
                     </ChartErrorBoundary>
-                </div>
-            </div>
-
-            {/* Production Summary */}
-            <div className="row row-gap-3 mb-4">
-                <div className="col-12">
-                    <ProductionSummary reports={allReports} loading={isLoading} pets={availablePets} />
                 </div>
             </div>
         </>
