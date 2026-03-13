@@ -186,8 +186,8 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                                 chart: { 
                                     type: 'line', 
                                     height: 350, 
-                                    toolbar: { show: true },
-                                    zoom: { enabled: true }
+                                    toolbar: { show: false },
+                                    zoom: { enabled: false }
                                 },
                                 stroke: { curve: 'smooth', width: 3 },
                                 xaxis: { 
