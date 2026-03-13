@@ -43,30 +43,25 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                 grouped[date][petName].count += 1;
             });
         } else {
-            // Weekly for month
-            for (let i = 3; i >= 0; i--) {
-                const weekStart = new Date(now);
-                weekStart.setDate(now.getDate() - (i * 7 + 6));
-                const weekEnd = new Date(now);
-                weekEnd.setDate(now.getDate() - (i * 7));
-                dates.push(`Week ${4 - i}`);
-                
-                const weekKey = `Week ${4 - i}`;
-                grouped[weekKey] = {};
-
-                // Group reports in this week
-                filtered.forEach(r => {
-                    const reportDate = new Date(r.production_date);
-                    if (reportDate >= weekStart && reportDate <= weekEnd) {
-                        const petName = r.pet_name;
-                        if (!grouped[weekKey][petName]) {
-                            grouped[weekKey][petName] = { oee: 0, count: 0 };
-                        }
-                        grouped[weekKey][petName].oee += r.metrics?.oee || 0;
-                        grouped[weekKey][petName].count += 1;
-                    }
-                });
+            // Daily for month (last 30 days)
+            for (let i = 29; i >= 0; i--) {
+                const d = new Date(now);
+                d.setDate(now.getDate() - i);
+                dates.push(d.toISOString().split('T')[0]);
             }
+
+            // Group by date
+            filtered.forEach(r => {
+                const date = r.production_date;
+                if (!grouped[date]) grouped[date] = {};
+                
+                const petName = r.pet_name;
+                if (!grouped[date][petName]) {
+                    grouped[date][petName] = { oee: 0, count: 0 };
+                }
+                grouped[date][petName].oee += r.metrics?.oee || 0;
+                grouped[date][petName].count += 1;
+            });
         }
 
         const petNames = [...new Set(filtered.map(r => r.pet_name))];

@@ -1,17 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { productionApi } from '../../api/production';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { useFilters } from '../../context/FilterContext';
+import { SkeletonStatCards, SkeletonDonut } from '../../components/ui/Skeletons';
 
 const ProductionList = () => {
     const navigate = useNavigate();
+    const { filters: globalFilters, updateFilters } = useFilters();
     const [reports, setReports] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [filters, setFilters] = useState({
-        production_date: '',
+        production_date: globalFilters.log_date || '',
         status: '',
         search: '',
-        pet: '',
+        pet: globalFilters.pet || '',
         page: 1,
         page_size: 15
     });
@@ -32,17 +37,64 @@ const ProductionList = () => {
         approvalRate: 0
     });
 
+    const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+
+    const chartData = useMemo(() => {
+        const lineMap = {};
+        
+        // Initialize all pets with 0 values
+        pets.forEach(pet => {
+            lineMap[pet.pet_name] = { name: pet.pet_name, bottles: 0, planned: 0, actual: 0 };
+        });
+        
+        // Add actual data from reports
+        reports.forEach(r => {
+            const line = r.pet_name || 'Unknown';
+            if (!lineMap[line]) lineMap[line] = { name: line, bottles: 0, planned: 0, actual: 0 };
+            const actual = r.total_bottles_produced || 0;
+            const planned = r.target_output || r.planned_output || 0;
+            lineMap[line].bottles += actual;
+            lineMap[line].actual += actual;
+            lineMap[line].planned += planned;
+        });
+        
+        return Object.values(lineMap).sort((a, b) => {
+            const aName = (a.name || '').toLowerCase();
+            const bName = (b.name || '').toLowerCase();
+            
+            // Canline always last
+            const aIsCan = aName.includes('can');
+            const bIsCan = bName.includes('can');
+            if (aIsCan && !bIsCan) return 1;
+            if (!aIsCan && bIsCan) return -1;
+            
+            // Extract numbers and sort
+            const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
+            return aNum - bNum;
+        });
+    }, [reports, pets]);
+
     const fetchReports = async () => {
         setLoading(true);
+        setRefreshing(true);
         try {
             const params = {
-                production_date: filters.production_date,
                 status: filters.status,
                 search: filters.search,
                 pet: filters.pet,
                 page: filters.page,
                 page_size: filters.page_size
             };
+            
+            // Handle date filtering
+            if (globalFilters.start_date && globalFilters.end_date) {
+                params.production_date_after = globalFilters.start_date;
+                params.production_date_before = globalFilters.end_date;
+            } else if (filters.production_date) {
+                params.production_date = filters.production_date;
+            }
+            
             const res = await productionApi.getReports(params);
             const responseData = res.data;
             let listData = [];
@@ -78,40 +130,34 @@ const ProductionList = () => {
             const completed = listData.filter(r => r.status === 'COMPLETED' || r.status === 'APPROVED').length;
             const totalOutput = listData.reduce((sum, r) => sum + (r.total_bottles_produced || 0), 0);
             const approved = listData.filter(r => r.status === 'APPROVED').length;
+            const uniquePets = new Set(listData.map(r => r.pet_name).filter(Boolean));
             
             setStats({
                 totalReports: count,
                 completedReports: completed,
                 totalOutput: totalOutput,
                 avgOutput: listData.length > 0 ? Math.round(totalOutput / listData.length) : 0,
-                activeLines: 0,
+                activeLines: uniquePets.size,
                 totalStoppages: 0,
                 totalDowntime: 0,
                 approvalRate: listData.length > 0 ? Math.round((approved / listData.length) * 100) : 0
             });
 
-            // Fetch additional stats
-            const [petsRes, stoppagesRes] = await Promise.all([
-                productionApi.getPets({ page_size: 100 }),
-                productionApi.getStoppages({ page_size: 500 })
-            ]);
-
-            const petsData = Array.isArray(petsRes.data) ? petsRes.data : petsRes.data?.results || [];
-            const stoppages = Array.isArray(stoppagesRes.data) ? stoppagesRes.data : stoppagesRes.data?.results || [];
-            const totalDowntime = stoppages.reduce((sum, s) => sum + (s.downtime_minutes || s.duration || 0), 0);
-
-            setPets(petsData);
-            setStats(prev => ({
-                ...prev,
-                activeLines: petsData.length,
-                totalStoppages: stoppages.length,
-                totalDowntime: Math.round(totalDowntime)
-            }));
+            // Fetch pets for dropdown if not already loaded
+            if (pets.length === 0) {
+                productionApi.getPets({ page_size: 100 })
+                    .then(petsRes => {
+                        const petsData = Array.isArray(petsRes.data) ? petsRes.data : petsRes.data?.results || [];
+                        setPets(petsData);
+                    })
+                    .catch(err => console.error('Failed to load pets:', err));
+            }
 
         } catch (error) {
             console.error("Failed to fetch reports", error);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
@@ -121,7 +167,7 @@ const ProductionList = () => {
             fetchReports();
         }, 500);
         return () => clearTimeout(timeoutId);
-    }, [filters]);
+    }, [filters, globalFilters.start_date, globalFilters.end_date]);
 
     const handlePageChange = (newPage) => {
         setFilters(prev => ({ ...prev, page: newPage }));
@@ -181,10 +227,48 @@ const ProductionList = () => {
             <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2" style={{
                 animation: 'fadeInDown 0.5s ease-out'
             }}>
-                <h4 className="mb-0">Production Reports</h4>
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/production/new')}>
-                    <i className="ti ti-plus me-2"></i>Create New Report
-                </button>
+                <div className="d-flex align-items-center gap-2">
+                    <h4 className="mb-0">Production Reports</h4>
+                    {refreshing && (
+                        <span className="spinner-border spinner-border-sm text-primary" role="status" />
+                    )}
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                    <button 
+                        onClick={() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            setFilters(prev => ({ ...prev, production_date: today, page: 1 }));
+                            updateFilters({ log_date: today, start_date: null, end_date: null });
+                        }}
+                        className={`btn btn-sm ${filters.production_date === new Date().toISOString().split('T')[0] ? 'btn-primary' : 'btn-outline-primary'}`}
+                    >
+                        <i className="ti ti-calendar-today me-1"></i>Current
+                    </button>
+                    <button 
+                        onClick={() => {
+                            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                            setFilters(prev => ({ ...prev, production_date: yesterday, page: 1 }));
+                            updateFilters({ log_date: yesterday, start_date: null, end_date: null });
+                        }}
+                        className={`btn btn-sm ${filters.production_date === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? 'btn-primary' : 'btn-outline-primary'}`}
+                    >
+                        <i className="ti ti-calendar-minus me-1"></i>Previous Day
+                    </button>
+                    <button 
+                        onClick={() => {
+                            const endDate = new Date().toISOString().split('T')[0];
+                            const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                            setFilters(prev => ({ ...prev, production_date: '', page: 1 }));
+                            updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                        }}
+                        className={`btn btn-sm ${globalFilters.start_date && globalFilters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                    >
+                        <i className="ti ti-calendar-week me-1"></i>Week
+                    </button>
+                    <button className="btn btn-primary" onClick={() => navigate('/dashboard/production/new')}>
+                        <i className="ti ti-plus me-2"></i>Create New Report
+                    </button>
+                </div>
             </div>
 
             {/* Top Filters - Date and PET */}
@@ -192,13 +276,52 @@ const ProductionList = () => {
                 <div className="card-body">
                     <div className="row g-3 align-items-end">
                         <div className="col-md-3">
-                            <label className="form-label fw-medium">Production Date</label>
-                            <input
-                                type="date"
-                                className="form-control"
-                                value={filters.production_date}
-                                onChange={(e) => setFilters(prev => ({ ...prev, production_date: e.target.value, page: 1 }))}
-                            />
+                            <div className="d-flex align-items-center gap-2 mb-2">
+                                <label className="form-label fw-medium mb-0">Production Date</label>
+                                <div className="form-check form-switch">
+                                    <input
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        checked={globalFilters.start_date && globalFilters.end_date}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                const endDate = new Date().toISOString().split('T')[0];
+                                                const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                                                updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                                                setFilters(prev => ({ ...prev, production_date: '' }));
+                                            } else {
+                                                updateFilters({ start_date: null, end_date: null });
+                                            }
+                                        }}
+                                    />
+                                    <label className="form-check-label small">Range</label>
+                                </div>
+                            </div>
+                            {!(globalFilters.start_date && globalFilters.end_date) ? (
+                                <input
+                                    type="date"
+                                    className="form-control"
+                                    value={filters.production_date}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, production_date: e.target.value, page: 1 }))}
+                                />
+                            ) : (
+                                <div className="d-flex gap-2">
+                                    <input
+                                        type="date"
+                                        className="form-control"
+                                        placeholder="Start"
+                                        value={globalFilters.start_date || ''}
+                                        onChange={(e) => updateFilters({ start_date: e.target.value })}
+                                    />
+                                    <input
+                                        type="date"
+                                        className="form-control"
+                                        placeholder="End"
+                                        value={globalFilters.end_date || ''}
+                                        onChange={(e) => updateFilters({ end_date: e.target.value })}
+                                    />
+                                </div>
+                            )}
                         </div>
                         <div className="col-md-3">
                             <label className="form-label fw-medium">PET Line</label>
@@ -208,7 +331,21 @@ const ProductionList = () => {
                                 onChange={(e) => setFilters(prev => ({ ...prev, pet: e.target.value, page: 1 }))}
                             >
                                 <option value="">All Lines</option>
-                                {pets.map(pet => (
+                                {pets.sort((a, b) => {
+                                    const aName = (a.pet_name || '').toLowerCase();
+                                    const bName = (b.pet_name || '').toLowerCase();
+                                    
+                                    // Canline always last
+                                    const aIsCan = aName.includes('can');
+                                    const bIsCan = bName.includes('can');
+                                    if (aIsCan && !bIsCan) return 1;
+                                    if (!aIsCan && bIsCan) return -1;
+                                    
+                                    // Extract numbers and sort
+                                    const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                    const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                    return aNum - bNum;
+                                }).map(pet => (
                                     <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
                                 ))}
                             </select>
@@ -231,6 +368,7 @@ const ProductionList = () => {
             </div>
 
             {/* Stats Cards - Row 1 */}
+            {loading ? <SkeletonStatCards count={4} /> : (
             <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.1s both' }}>
                 <div className="col-xl-3 col-sm-6">
                     <div className="card mb-0">
@@ -293,8 +431,10 @@ const ProductionList = () => {
                     </div>
                 </div>
             </div>
+            )}
 
             {/* Stats Cards - Row 2 */}
+            {loading ? <SkeletonStatCards count={4} /> : (
             <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.15s both' }}>
                 <div className="col-xl-3 col-sm-6">
                     <div className="card mb-0">
@@ -357,6 +497,112 @@ const ProductionList = () => {
                     </div>
                 </div>
             </div>
+            )}
+
+            {/* Pie Charts Row */}
+            {loading ? (
+                <div className="row mb-4">
+                    <div className="col-lg-6"><SkeletonDonut /></div>
+                    <div className="col-lg-6"><SkeletonDonut /></div>
+                </div>
+            ) : (
+            <div className="row mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.25s both' }}>
+                <div className="col-lg-6">
+                    <div className="card">
+                        <div className="card-header">
+                            <h6 className="mb-0">Bottles by PET</h6>
+                            <small className="text-muted">Production distribution across lines</small>
+                        </div>
+                        <div className="card-body">
+                            {loading || chartData.length === 0 ? (
+                                <p className="text-center text-muted py-5 mb-0">No data</p>
+                            ) : (
+                                <>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <PieChart>
+                                            <Pie data={chartData} cx="50%" cy="50%" outerRadius={90}
+                                                paddingAngle={2} dataKey="bottles" 
+                                                label={(entry) => entry.bottles > 0 ? `${entry.name}: ${(entry.bottles || 0).toLocaleString()}` : entry.name}>
+                                                {chartData.map((entry, idx) => (
+                                                    <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(v) => [v.toLocaleString() + ' bottles', 'Production']} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="mt-3">
+                                        {chartData.map((l, idx) => {
+                                            const total = chartData.reduce((s, t) => s + t.bottles, 0);
+                                            const pct = total > 0 ? ((l.bottles / total) * 100).toFixed(1) : 0;
+                                            return (
+                                                <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
+                                                    <p className="f-14 fw-medium text-dark mb-0">
+                                                        <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
+                                                        {l.name}
+                                                    </p>
+                                                    <p className="f-14 fw-medium text-dark mb-0">{pct}% ({l.bottles.toLocaleString()})</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <div className="col-lg-6">
+                    <div className="card">
+                        <div className="card-header">
+                            <h6 className="mb-0">PET Contribution to Production</h6>
+                            <small className="text-muted">Production share by line</small>
+                        </div>
+                        <div className="card-body">
+                            {loading || chartData.length === 0 ? (
+                                <p className="text-center text-muted py-5 mb-0">No data</p>
+                            ) : (
+                                <>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <PieChart>
+                                            <Pie 
+                                                data={chartData.map(l => {
+                                                    const totalProduction = chartData.reduce((sum, p) => sum + p.bottles, 0);
+                                                    return {
+                                                        name: l.name,
+                                                        value: totalProduction > 0 ? ((l.bottles / totalProduction) * 100) : 0
+                                                    };
+                                                })} 
+                                                cx="50%" cy="50%" outerRadius={90}
+                                                paddingAngle={2} dataKey="value" 
+                                                label={(entry) => entry.value > 0 ? `${entry.name}: ${entry.value.toFixed(1)}%` : entry.name}>
+                                                {chartData.map((entry, idx) => (
+                                                    <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(v) => [v.toFixed(1) + '%', 'Production Share']} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="mt-3">
+                                        {chartData.map((l, idx) => {
+                                            const totalProduction = chartData.reduce((sum, p) => sum + p.bottles, 0);
+                                            const share = totalProduction > 0 ? ((l.bottles / totalProduction) * 100).toFixed(1) : 0;
+                                            return (
+                                                <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
+                                                    <p className="f-14 fw-medium text-dark mb-0">
+                                                        <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
+                                                        {l.name}
+                                                    </p>
+                                                    <p className="f-14 fw-medium text-dark mb-0">{share}%</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            )}
 
             {/* Additional Filters */}
             <div className="card mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.2s both' }}>

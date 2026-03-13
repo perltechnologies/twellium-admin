@@ -153,6 +153,7 @@ const Overview = () => {
     const { updateFilters } = useFilters();
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
+    const [selectedOutputPets, setSelectedOutputPets] = useState([]);
 
     /* Stale-while-revalidate: separate initial vs refresh state */
     const [initialLoading, setInitialLoading] = useState(true);
@@ -734,31 +735,161 @@ const Overview = () => {
                     <ChartErrorBoundary fallbackMessage="Failed to render production output chart">
                     {isLoading ? <SkeletonChart height={350} title /> : (
                     <div className="card">
-                        <div className="card-header">
-                            <h6 className="mb-0">Production Output by PET</h6>
-                            <small className="text-muted">Total production contribution per line</small>
+                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                            <div>
+                                <h6 className="mb-0">Production Output by PET</h6>
+                                <small className="text-muted">Production trends over time</small>
+                            </div>
+                            <div className="d-flex align-items-center gap-2 flex-wrap">
+                                <div className="btn-group btn-group-sm">
+                                    <button 
+                                        className={`btn ${filters.log_date || (!filters.start_date && !filters.end_date) ? 'btn-primary' : 'btn-outline-primary'}`}
+                                        onClick={() => {
+                                            const today = new Date().toISOString().split('T')[0];
+                                            updateFilters({ log_date: today, start_date: null, end_date: null });
+                                        }}
+                                    >
+                                        Week
+                                    </button>
+                                    <button 
+                                        className={`btn ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                                        onClick={() => {
+                                            const endDate = new Date().toISOString().split('T')[0];
+                                            const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                                            updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                                        }}
+                                    >
+                                        Month
+                                    </button>
+                                </div>
+                                <div className="d-flex gap-2 flex-wrap">
+                                    {availablePets.sort((a, b) => {
+                                        const aName = (a.pet_name || '').toLowerCase();
+                                        const bName = (b.pet_name || '').toLowerCase();
+                                        const aIsCan = aName.includes('can');
+                                        const bIsCan = bName.includes('can');
+                                        if (aIsCan && !bIsCan) return 1;
+                                        if (!aIsCan && bIsCan) return -1;
+                                        const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                        const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                        return aNum - bNum;
+                                    }).map(pet => (
+                                        <button
+                                            key={pet.id}
+                                            className={`btn btn-sm ${selectedOutputPets.includes(pet.id) ? 'btn-info' : 'btn-outline-secondary'}`}
+                                            onClick={() => setSelectedOutputPets(prev => 
+                                                prev.includes(pet.id) ? prev.filter(id => id !== pet.id) : [...prev, pet.id]
+                                            )}
+                                        >
+                                            {pet.pet_name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                         <div className="card-body">
-                            {oeeByLine.length === 0 ? (
-                                <div className="text-center text-muted py-4">No production data available</div>
-                            ) : (
-                                <Suspense fallback={<div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>}>
-                                    <ReactApexChart
-                                        options={{
-                                            chart: { type: 'line', height: 350, toolbar: { show: false } },
-                                            stroke: { curve: 'smooth', width: 3 },
-                                            xaxis: { categories: oeeByLine.map(l => l.name) },
-                                            yaxis: { title: { text: 'Production Output (pcs)' } },
-                                            markers: { size: 5 },
-                                            colors: ['#3b82f6'],
-                                            tooltip: { y: { formatter: (val) => formatNum(val) } }
-                                        }}
-                                        series={[{ name: 'Production Output', data: oeeByLine.map(l => l.production || 0) }]}
-                                        type="line"
-                                        height={350}
-                                    />
-                                </Suspense>
-                            )}
+                            {(() => {
+                                // Filter reports by selected PETs
+                                const filteredReports = selectedOutputPets.length > 0 
+                                    ? allReports.filter(r => selectedOutputPets.includes(r.pet_id))
+                                    : allReports;
+
+                                // Generate date range
+                                const now = new Date();
+                                let dates = [];
+                                const isWeekView = filters.log_date || (!filters.start_date && !filters.end_date);
+                                
+                                if (isWeekView) {
+                                    // Last 7 days
+                                    for (let i = 6; i >= 0; i--) {
+                                        const d = new Date(now);
+                                        d.setDate(now.getDate() - i);
+                                        dates.push(d.toISOString().split('T')[0]);
+                                    }
+                                } else {
+                                    // Last 30 days
+                                    for (let i = 29; i >= 0; i--) {
+                                        const d = new Date(now);
+                                        d.setDate(now.getDate() - i);
+                                        dates.push(d.toISOString().split('T')[0]);
+                                    }
+                                }
+
+                                // Group reports by date and PET
+                                const grouped = {};
+                                filteredReports.forEach(r => {
+                                    const date = r.production_date;
+                                    if (!grouped[date]) grouped[date] = {};
+                                    const petName = r.pet_name;
+                                    if (!grouped[date][petName]) {
+                                        grouped[date][petName] = 0;
+                                    }
+                                    grouped[date][petName] += r.metrics?.details?.total_output_pcs || 0;
+                                });
+
+                                // Create series for each PET
+                                const petNames = [...new Set(filteredReports.map(r => r.pet_name))].sort((a, b) => {
+                                    const aName = (a || '').toLowerCase();
+                                    const bName = (b || '').toLowerCase();
+                                    const aIsCan = aName.includes('can');
+                                    const bIsCan = bName.includes('can');
+                                    if (aIsCan && !bIsCan) return 1;
+                                    if (!aIsCan && bIsCan) return -1;
+                                    const aNum = parseInt(a?.match(/(\d+)/)?.[0] || '999');
+                                    const bNum = parseInt(b?.match(/(\d+)/)?.[0] || '999');
+                                    return aNum - bNum;
+                                });
+
+                                const series = petNames.map(pet => ({
+                                    name: pet,
+                                    data: dates.map(date => grouped[date]?.[pet] || 0)
+                                }));
+
+                                return series.length === 0 ? (
+                                    <div className="text-center text-muted py-4">No production data available</div>
+                                ) : (
+                                    <Suspense fallback={<div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>}>
+                                        <ReactApexChart
+                                            options={{
+                                                chart: { 
+                                                    type: 'line', 
+                                                    height: 350, 
+                                                    toolbar: { show: false },
+                                                    zoom: { enabled: false }
+                                                },
+                                                stroke: { curve: 'smooth', width: 3 },
+                                                xaxis: { 
+                                                    categories: dates,
+                                                    labels: { 
+                                                        rotate: -45,
+                                                        formatter: (val) => {
+                                                            const d = new Date(val);
+                                                            return `${d.getMonth() + 1}/${d.getDate()}`;
+                                                        }
+                                                    }
+                                                },
+                                                yaxis: { 
+                                                    title: { text: 'Production Output (pcs)' },
+                                                    labels: { formatter: (val) => formatNum(val) }
+                                                },
+                                                markers: { size: 5, hover: { size: 7 } },
+                                                legend: { position: 'top', horizontalAlign: 'right' },
+                                                colors: ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
+                                                tooltip: { 
+                                                    shared: true,
+                                                    intersect: false,
+                                                    y: { formatter: (val) => formatNum(val) + ' bottles' } 
+                                                },
+                                                grid: { borderColor: '#e7e7e7' },
+                                                dataLabels: { enabled: false }
+                                            }}
+                                            series={series}
+                                            type="line"
+                                            height={350}
+                                        />
+                                    </Suspense>
+                                );
+                            })()}
                         </div>
                     </div>
                     )}

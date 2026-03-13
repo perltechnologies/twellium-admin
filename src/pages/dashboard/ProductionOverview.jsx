@@ -8,6 +8,7 @@ import {
 
 import GaugeChart from '../../components/charts/GaugeChart';
 import DowntimeBreakdownChart from '../../components/charts/DowntimeBreakdownChart';
+import ProductionSummary from '../../components/production/ProductionSummary';
 import FilterInputs from '../../components/FilterInputs';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
 import ChartErrorBoundary from '../../components/ui/ChartErrorBoundary';
@@ -98,6 +99,8 @@ const Overview = () => {
     const [stats, setStats] = useState({ totalReports: 0, activeLines: 0, totalStoppages: 0, totalDowntime: 0, totalProduced: 0 });
     const [recentReports, setRecentReports] = useState([]);
     const [recentStoppages, setRecentStoppages] = useState([]);
+    const [reports, setReports] = useState([]);
+    const [pets, setPets] = useState([]);
     const [planVsActual, setPlanVsActual] = useState([]);
     const [statusBreakdown, setStatusBreakdown] = useState([]);
     const [topLines, setTopLines] = useState([]);
@@ -120,16 +123,14 @@ const Overview = () => {
 
         try {
             const params = getParams();
-            const [reportsRes, petsRes, stoppagesRes] = await Promise.all([
+            const [reportsRes, stoppagesRes] = await Promise.all([
                 productionApi.getReports(params),
-                productionApi.getPets(params),
                 productionApi.getStoppages(params),
             ]);
 
             if (controller.signal.aborted) return;
 
             const reports = extractList(reportsRes);
-            const pets = extractList(petsRes);
             const stoppages = extractList(stoppagesRes);
 
             /* totals */
@@ -137,13 +138,20 @@ const Overview = () => {
             stoppages.forEach(s => { totalDowntime += s.downtime_minutes || s.duration || 0; });
             let totalProduced = 0;
             reports.forEach(r => { totalProduced += r.total_bottles_produced || 0; });
+            
+            // Get unique PET lines from reports
+            const uniquePets = new Set(reports.map(r => r.pet_name).filter(Boolean));
+            
             setStats({
                 totalReports: reports.length,
-                activeLines: pets.length,
+                activeLines: uniquePets.size,
                 totalStoppages: stoppages.length,
                 totalDowntime: Math.round(totalDowntime),
                 totalProduced,
             });
+
+            /* Store all reports for ProductionSummary */
+            setReports(reports);
 
             /* recent reports */
             const sorted = [...reports].sort((a, b) =>
@@ -245,6 +253,13 @@ const Overview = () => {
         return () => { if (abortRef.current) abortRef.current.abort(); };
     }, [loadData]);
 
+    /* Fetch pets for ProductionSummary */
+    useEffect(() => {
+        productionApi.getPets({ page_size: 1000 })
+            .then(res => setPets(res.data.data || []))
+            .catch(err => console.error('Failed to load pets:', err));
+    }, []);
+
     const efficiency = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
 
     // Transform downtimeTypes for DowntimeBreakdownChart component
@@ -337,6 +352,17 @@ const Overview = () => {
                     </div>
                 ))}
             </div>
+            )}
+
+            {/* Production Summary - Efficiency trends and multi-line comparison */}
+            {isLoading ? <SkeletonChart height={400} title /> : (
+                <ChartErrorBoundary fallbackMessage="Failed to render production summary">
+                    <ProductionSummary 
+                        reports={reports}
+                        loading={isLoading}
+                        pets={pets}
+                    />
+                </ChartErrorBoundary>
             )}
 
             {/* Charts Row */}
@@ -524,6 +550,110 @@ const Overview = () => {
                                 </ResponsiveContainer>
                             ) : (
                                 <p className="text-center text-muted py-5 mb-0 w-100 align-self-center">No downtime data</p>
+                            )}
+                        </div>
+                    </div>
+                    </ChartErrorBoundary>
+                    )}
+                </div>
+            </div>
+
+            {/* New Pie Charts Row */}
+            <div className="row">
+                {/* Bottles by PET */}
+                <div className="col-lg-6 d-flex">
+                    {isLoading ? <SkeletonDonut /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render bottles by PET chart">
+                    <div className="card flex-fill">
+                        <div className="card-header">
+                            <h6 className="mb-0">Bottles by PET</h6>
+                            <small className="text-muted">Production distribution across lines</small>
+                        </div>
+                        <div className="card-body">
+                            {planVsActual.length > 0 ? (
+                                <>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <PieChart>
+                                            <Pie data={planVsActual} cx="50%" cy="50%" outerRadius={90}
+                                                paddingAngle={2} dataKey="actual" label={(entry) => `${entry.name}: ${formatNum(entry.actual)}`}>
+                                                {planVsActual.map((entry, idx) => (
+                                                    <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(v) => [formatNum(v) + ' bottles', 'Production']} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="mt-3">
+                                        {planVsActual.map((l, idx) => {
+                                            const total = planVsActual.reduce((s, t) => s + t.actual, 0);
+                                            const pct = total > 0 ? ((l.actual / total) * 100).toFixed(1) : 0;
+                                            return (
+                                                <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
+                                                    <p className="f-14 fw-medium text-dark mb-0">
+                                                        <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
+                                                        {l.name}
+                                                    </p>
+                                                    <p className="f-14 fw-medium text-dark mb-0">{pct}% ({formatNum(l.actual)})</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-center text-muted py-5 mb-0">No data</p>
+                            )}
+                        </div>
+                    </div>
+                    </ChartErrorBoundary>
+                    )}
+                </div>
+
+                {/* PET Contribution to Efficiency */}
+                <div className="col-lg-6 d-flex">
+                    {isLoading ? <SkeletonDonut /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render efficiency contribution chart">
+                    <div className="card flex-fill">
+                        <div className="card-header">
+                            <h6 className="mb-0">PET Contribution to Efficiency</h6>
+                            <small className="text-muted">Efficiency percentage by line</small>
+                        </div>
+                        <div className="card-body">
+                            {planVsActual.length > 0 ? (
+                                <>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <PieChart>
+                                            <Pie 
+                                                data={planVsActual.map(l => ({
+                                                    name: l.name,
+                                                    value: l.planned > 0 ? ((l.actual / l.planned) * 100) : 0
+                                                }))} 
+                                                cx="50%" cy="50%" outerRadius={90}
+                                                paddingAngle={2} dataKey="value" 
+                                                label={(entry) => `${entry.name}: ${entry.value.toFixed(1)}%`}>
+                                                {planVsActual.map((entry, idx) => (
+                                                    <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(v) => [v.toFixed(1) + '%', 'Efficiency']} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="mt-3">
+                                        {planVsActual.map((l, idx) => {
+                                            const eff = l.planned > 0 ? ((l.actual / l.planned) * 100).toFixed(1) : 0;
+                                            return (
+                                                <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
+                                                    <p className="f-14 fw-medium text-dark mb-0">
+                                                        <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
+                                                        {l.name}
+                                                    </p>
+                                                    <p className="f-14 fw-medium text-dark mb-0">{eff}%</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-center text-muted py-5 mb-0">No data</p>
                             )}
                         </div>
                     </div>
