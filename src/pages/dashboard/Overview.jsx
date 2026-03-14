@@ -729,9 +729,7 @@ const Overview = () => {
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
                     <ChartErrorBoundary fallbackMessage="Failed to render stoppage incidents chart">
-                        {isLoading ? <SkeletonChart height={400} title /> : (
-                            <StoppageIncidentsChart stoppages={rawStoppages} loading={false} />
-                        )}
+                        <StoppageIncidentsChart />
                     </ChartErrorBoundary>
                 </div>
             </div>

@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactApexChart from 'react-apexcharts';
+import { productionApi } from '../../api/production';
 
 const formatDuration = (mins) => {
     if (!mins || mins <= 0) return '0m';
@@ -20,13 +21,71 @@ const CATEGORY_COLORS = {
     'Other': '#6b7280',
 };
 
-const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
+const StoppageIncidentsChart = () => {
     const navigate = useNavigate();
+    const [useRange, setUseRange] = useState(false);
+    const [singleDate, setSingleDate] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [selectedPet, setSelectedPet] = useState('');
+    const [stoppages, setStoppages] = useState([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        const fetchStoppages = async () => {
+            setLoading(true);
+            try {
+                const params = {};
+                if (useRange) {
+                    if (startDate) params.start_date = startDate;
+                    if (endDate) params.end_date = endDate;
+                } else if (singleDate) {
+                    params.log_date = singleDate;
+                }
+                
+                const res = await productionApi.getStoppages(params);
+                const data = res.data?.data || res.data?.results || res.data || [];
+                setStoppages(Array.isArray(data) ? data : []);
+            } catch (err) {
+                console.error('Failed to fetch stoppages:', err);
+                setStoppages([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchStoppages();
+    }, [useRange, singleDate, startDate, endDate]);
+
+    const availablePets = useMemo(() => {
+        const pets = [...new Set(stoppages.map(s => s.pet_name || s.line_name).filter(Boolean))];
+        return pets.sort((a, b) => {
+            const aLower = a.toLowerCase();
+            const bLower = b.toLowerCase();
+            const aIsCan = aLower.includes('can');
+            const bIsCan = bLower.includes('can');
+            if (aIsCan && !bIsCan) return 1;
+            if (!aIsCan && bIsCan) return -1;
+            const aNum = parseInt(a.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.match(/(\d+)/)?.[0] || '999');
+            return aNum - bNum;
+        });
+    }, [stoppages]);
+
+    const filteredStoppages = useMemo(() => {
+        let filtered = stoppages;
+        
+        if (selectedPet) {
+            filtered = filtered.filter(s => (s.pet_name || s.line_name) === selectedPet);
+        }
+        
+        return filtered;
+    }, [stoppages, selectedPet]);
 
     const chartData = useMemo(() => {
         const incidentMap = {};
 
-        stoppages.forEach(stoppage => {
+        filteredStoppages.forEach(stoppage => {
             (stoppage.incidents || []).forEach(incident => {
                 const subCategory = incident.sub_downtime_category_name || 'Uncategorized';
                 const description = incident.incident_description || 'No Description';
@@ -51,9 +110,9 @@ const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
         return Object.values(incidentMap)
             .sort((a, b) => b.totalDuration - a.totalDuration)
             .slice(0, 10);
-    }, [stoppages]);
+    }, [filteredStoppages]);
 
-    const chartOptions = {
+    const chartOptions = useMemo(() => ({
         chart: {
             type: 'bar',
             height: 800,
@@ -110,8 +169,10 @@ const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
         fill: { opacity: 1 },
         tooltip: {
             y: {
-                formatter: (val, { seriesIndex }) => 
-                    seriesIndex === 0 ? `${val} incidents` : `${formatDuration(val)}`
+                formatter: (val, opts) => {
+                    const seriesIndex = opts?.seriesIndex ?? 1;
+                    return seriesIndex === 0 ? `${val} incidents` : `${formatDuration(val)}`;
+                }
             }
         },
         legend: {
@@ -120,9 +181,9 @@ const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
             fontSize: '12px'
         },
         colors: ['#3b82f6', '#ef4444']
-    };
+    }), [chartData]);
 
-    const series = [
+    const series = useMemo(() => [
         {
             name: 'Incident Count',
             data: chartData.map(d => d.count)
@@ -131,21 +192,138 @@ const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
             name: 'Total Duration (min)',
             data: chartData.map(d => Math.round(d.totalDuration))
         }
-    ];
+    ], [chartData]);
 
     const totalIncidents = chartData.reduce((sum, d) => sum + d.count, 0);
     const totalDuration = chartData.reduce((sum, d) => sum + d.totalDuration, 0);
 
     return (
         <div className="card">
-            <div className="card-header d-flex align-items-center justify-content-between">
-                <div>
-                    <h6 className="mb-0">Stoppage Incidents by Category</h6>
-                    <small className="text-muted">Incident count and total duration by downtime category</small>
+            <div className="card-header">
+                <div className="d-flex align-items-center justify-content-between">
+                    <div>
+                        <h6 className="mb-0">Stoppage Incidents by Category</h6>
+                        <small className="text-muted">Incident count and total duration by downtime category</small>
+                    </div>
+                    <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
+                        <i className="ti ti-external-link me-1"></i>View All
+                    </button>
                 </div>
-                <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
-                    <i className="ti ti-external-link me-1"></i>View All
-                </button>
+                
+                <div className="row mt-3 align-items-end">
+                    <div className="col-md-4">
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                            <label className="form-label mb-0 small">Date</label>
+                            <div className="form-check form-switch">
+                                <input
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    checked={useRange}
+                                    onChange={(e) => {
+                                        setUseRange(e.target.checked);
+                                        if (e.target.checked) setSingleDate('');
+                                        else { setStartDate(''); setEndDate(''); }
+                                    }}
+                                />
+                                <label className="form-check-label small">Range</label>
+                            </div>
+                        </div>
+                        {!useRange ? (
+                            <input
+                                type="date"
+                                className="form-control form-control-sm"
+                                value={singleDate}
+                                onChange={(e) => setSingleDate(e.target.value)}
+                            />
+                        ) : (
+                            <div className="d-flex gap-2">
+                                <input
+                                    type="date"
+                                    className="form-control form-control-sm"
+                                    placeholder="Start"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                />
+                                <input
+                                    type="date"
+                                    className="form-control form-control-sm"
+                                    placeholder="End"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                />
+                            </div>
+                        )}
+                    </div>
+                    <div className="col-md-4">
+                        <label className="form-label small">PET</label>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedPet}
+                            onChange={(e) => setSelectedPet(e.target.value)}
+                        >
+                            <option value="">All</option>
+                            {availablePets.map(pet => (
+                                <option key={pet} value={pet}>{pet}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="col-md-4">
+                        <label className="form-label small">Quick Select</label>
+                        <div className="btn-group btn-group-sm w-100">
+                            <button 
+                                className="btn btn-outline-primary"
+                                onClick={() => {
+                                    const end = new Date().toISOString().split('T')[0];
+                                    const start = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                                    setUseRange(true);
+                                    setStartDate(start);
+                                    setEndDate(end);
+                                    setSingleDate('');
+                                }}
+                            >
+                                Week
+                            </button>
+                            <button 
+                                className="btn btn-outline-primary"
+                                onClick={() => {
+                                    const end = new Date().toISOString().split('T')[0];
+                                    const start = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                                    setUseRange(true);
+                                    setStartDate(start);
+                                    setEndDate(end);
+                                    setSingleDate('');
+                                }}
+                            >
+                                Month
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                {(singleDate || startDate || endDate || selectedPet) && (
+                    <div className="alert alert-info d-flex align-items-center mt-3 mb-0">
+                        <i className="ti ti-filter fs-5 me-2"></i>
+                        <div className="flex-grow-1">
+                            <strong>Active Filters:</strong>
+                            {singleDate && <span className="ms-2">Date: {singleDate}</span>}
+                            {startDate && <span className="ms-2">From: {startDate}</span>}
+                            {endDate && <span className="ms-2">To: {endDate}</span>}
+                            {selectedPet && <span className="ms-2">• PET: {selectedPet}</span>}
+                        </div>
+                        <button 
+                            className="btn btn-sm btn-outline-info"
+                            onClick={() => {
+                                setSingleDate('');
+                                setStartDate('');
+                                setEndDate('');
+                                setSelectedPet('');
+                                setUseRange(false);
+                            }}
+                        >
+                            Clear
+                        </button>
+                    </div>
+                )}
             </div>
             <div className="card-body">
                 {loading ? (
@@ -156,6 +334,7 @@ const StoppageIncidentsChart = ({ stoppages = [], loading = false }) => {
                     <div className="text-center text-muted py-5">
                         <i className="ti ti-alert-circle fs-1 mb-3 d-block"></i>
                         <p className="mb-0">No incident data available</p>
+                        <small className="d-block mt-2">Total stoppages: {stoppages.length} | Filtered: {filteredStoppages.length}</small>
                     </div>
                 ) : (
                     <>
