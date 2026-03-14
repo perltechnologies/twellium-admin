@@ -4,18 +4,27 @@ const ReactApexChart = lazy(() => import('react-apexcharts'));
 
 const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
     const [period, setPeriod] = useState('week');
-    const [selectedPets, setSelectedPets] = useState([]);
-
-    const togglePet = (petId) => {
-        setSelectedPets(prev => 
-            prev.includes(petId) ? prev.filter(id => id !== petId) : [...prev, petId]
-        );
-    };
+    const [useRange, setUseRange] = useState(false);
+    const [singleDate, setSingleDate] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [selectedPet, setSelectedPet] = useState('');
 
     const chartData = useMemo(() => {
-        const filtered = selectedPets.length > 0 
-            ? reports.filter(r => selectedPets.includes(r.pet_id))
-            : reports;
+        let filtered = reports;
+        
+        // Filter by date
+        if (useRange) {
+            if (startDate) filtered = filtered.filter(r => r.production_date >= startDate);
+            if (endDate) filtered = filtered.filter(r => r.production_date <= endDate);
+        } else if (singleDate) {
+            filtered = filtered.filter(r => r.production_date === singleDate);
+        }
+        
+        // Filter by PET
+        if (selectedPet) {
+            filtered = filtered.filter(r => r.pet_id === parseInt(selectedPet));
+        }
 
         // Generate date range
         const now = new Date();
@@ -75,12 +84,23 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         }));
 
         return { dates, series };
-    }, [reports, selectedPets, period]);
+    }, [reports, period, useRange, singleDate, startDate, endDate, selectedPet]);
 
     const summary = useMemo(() => {
-        const filtered = selectedPets.length > 0 
-            ? reports.filter(r => selectedPets.includes(r.pet_id))
-            : reports;
+        let filtered = reports;
+        
+        // Filter by date
+        if (useRange) {
+            if (startDate) filtered = filtered.filter(r => r.production_date >= startDate);
+            if (endDate) filtered = filtered.filter(r => r.production_date <= endDate);
+        } else if (singleDate) {
+            filtered = filtered.filter(r => r.production_date === singleDate);
+        }
+        
+        // Filter by PET
+        if (selectedPet) {
+            filtered = filtered.filter(r => r.pet_id === parseInt(selectedPet));
+        }
 
         const totalProduction = filtered.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
         const avgOee = filtered.length > 0 
@@ -89,7 +109,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
 
         return { totalProduction, avgOee, totalDowntime, reports: filtered.length };
-    }, [reports, selectedPets]);
+    }, [reports, useRange, singleDate, startDate, endDate, selectedPet]);
 
     return (
         <div className="card">
@@ -127,45 +147,91 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                 </div>
 
                 {/* Controls */}
-                <div className="d-flex justify-content-between align-items-center mb-3">
-                    <div className="btn-group btn-group-sm">
-                        <button 
-                            className={`btn ${period === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
-                            onClick={() => setPeriod('week')}
-                        >
-                            Week
-                        </button>
-                        <button 
-                            className={`btn ${period === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
-                            onClick={() => setPeriod('month')}
-                        >
-                            Month
-                        </button>
-                    </div>
-                    <div className="d-flex gap-2 flex-wrap">
-                        {pets.sort((a, b) => {
-                            const aName = (a.pet_name || '').toLowerCase();
-                            const bName = (b.pet_name || '').toLowerCase();
-                            
-                            // Canline always last
-                            const aIsCan = aName.includes('can');
-                            const bIsCan = bName.includes('can');
-                            if (aIsCan && !bIsCan) return 1;
-                            if (!aIsCan && bIsCan) return -1;
-                            
-                            // Extract numbers and sort
-                            const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
-                            const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
-                            return aNum - bNum;
-                        }).map(pet => (
-                            <button
-                                key={pet.id}
-                                className={`btn btn-sm ${selectedPets.includes(pet.id) ? 'btn-info' : 'btn-outline-secondary'}`}
-                                onClick={() => togglePet(pet.id)}
+                <div className="mb-3">
+                    <div className="row align-items-end">
+                        <div className="col-md-4">
+                            <div className="d-flex align-items-center gap-2 mb-2">
+                                <label className="form-label mb-0">Date</label>
+                                <div className="form-check form-switch">
+                                    <input
+                                        className="form-check-input"
+                                        type="checkbox"
+                                        checked={useRange}
+                                        onChange={(e) => {
+                                            setUseRange(e.target.checked);
+                                            if (e.target.checked) setSingleDate('');
+                                            else { setStartDate(''); setEndDate(''); }
+                                        }}
+                                    />
+                                    <label className="form-check-label small">Range</label>
+                                </div>
+                            </div>
+                            {!useRange ? (
+                                <input
+                                    type="date"
+                                    className="form-control"
+                                    value={singleDate}
+                                    onChange={(e) => setSingleDate(e.target.value)}
+                                />
+                            ) : (
+                                <div className="d-flex gap-2">
+                                    <input
+                                        type="date"
+                                        className="form-control"
+                                        placeholder="Start"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                    />
+                                    <input
+                                        type="date"
+                                        className="form-control"
+                                        placeholder="End"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        <div className="col-md-4">
+                            <label className="form-label">PET</label>
+                            <select
+                                className="form-select"
+                                value={selectedPet}
+                                onChange={(e) => setSelectedPet(e.target.value)}
                             >
-                                {pet.pet_name}
-                            </button>
-                        ))}
+                                <option value="">All</option>
+                                {pets.sort((a, b) => {
+                                    const aName = (a.pet_name || '').toLowerCase();
+                                    const bName = (b.pet_name || '').toLowerCase();
+                                    const aIsCan = aName.includes('can');
+                                    const bIsCan = bName.includes('can');
+                                    if (aIsCan && !bIsCan) return 1;
+                                    if (!aIsCan && bIsCan) return -1;
+                                    const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                    const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                    return aNum - bNum;
+                                }).map(pet => (
+                                    <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="col-md-4">
+                            <label className="form-label">Period</label>
+                            <div className="btn-group w-100">
+                                <button 
+                                    className={`btn ${period === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                    onClick={() => setPeriod('week')}
+                                >
+                                    Week
+                                </button>
+                                <button 
+                                    className={`btn ${period === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                    onClick={() => setPeriod('month')}
+                                >
+                                    Month
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

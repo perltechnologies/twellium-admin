@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production';
 import {
@@ -107,6 +107,13 @@ const Overview = () => {
     const [totals, setTotals] = useState({ planned: 0, actual: 0 });
     const [downtimeTypes, setDowntimeTypes] = useState([]);
     const [downtimeByLine, setDowntimeByLine] = useState([]);
+    
+    // Filters for Bottles by PET
+    const [petUseRange, setPetUseRange] = useState(false);
+    const [petSingleDate, setPetSingleDate] = useState('');
+    const [petStartDate, setPetStartDate] = useState('');
+    const [petEndDate, setPetEndDate] = useState('');
+    const [petSelected, setPetSelected] = useState('');
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -261,6 +268,34 @@ const Overview = () => {
     }, []);
 
     const efficiency = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
+
+    // Filtered planVsActual for Bottles by PET
+    const filteredPlanVsActual = useMemo(() => {
+        let filtered = reports;
+        
+        if (petUseRange) {
+            if (petStartDate) filtered = filtered.filter(r => r.production_date >= petStartDate);
+            if (petEndDate) filtered = filtered.filter(r => r.production_date <= petEndDate);
+        } else if (petSingleDate) {
+            filtered = filtered.filter(r => r.production_date === petSingleDate);
+        }
+        
+        if (petSelected) {
+            const selectedPetName = pets.find(p => p.id === parseInt(petSelected))?.pet_name;
+            if (selectedPetName) filtered = filtered.filter(r => r.pet_name === selectedPetName);
+        }
+        
+        const lineMap = {};
+        filtered.forEach(r => {
+            const line = r.pet_name || 'Unknown';
+            if (!lineMap[line]) lineMap[line] = { name: line, planned: 0, actual: 0 };
+            const actual = r.total_bottles_produced || 0;
+            const planned = r.target_output || r.planned_output || Math.round(actual * 1.05);
+            lineMap[line].actual += actual;
+            lineMap[line].planned += planned;
+        });
+        return Object.values(lineMap).sort((a, b) => b.actual - a.actual).slice(0, 6);
+    }, [reports, petUseRange, petSingleDate, petStartDate, petEndDate, petSelected, pets]);
 
     // Transform downtimeTypes for DowntimeBreakdownChart component
     const downtimeCategories = downtimeTypes.map(d => ({
@@ -566,17 +601,87 @@ const Overview = () => {
                     <ChartErrorBoundary fallbackMessage="Failed to render bottles by PET chart">
                     <div className="card flex-fill">
                         <div className="card-header">
-                            <h6 className="mb-0">Bottles by PET</h6>
+                            <h6 className="mb-0">Production Output by PET</h6>
                             <small className="text-muted">Production distribution across lines</small>
                         </div>
                         <div className="card-body">
-                            {planVsActual.length > 0 ? (
+                            {/* Filters */}
+                            <div className="row mb-3 align-items-end">
+                                <div className="col-md-6">
+                                    <div className="d-flex align-items-center gap-2 mb-2">
+                                        <label className="form-label mb-0 small">Date</label>
+                                        <div className="form-check form-switch">
+                                            <input
+                                                className="form-check-input"
+                                                type="checkbox"
+                                                checked={petUseRange}
+                                                onChange={(e) => {
+                                                    setPetUseRange(e.target.checked);
+                                                    if (e.target.checked) setPetSingleDate('');
+                                                    else { setPetStartDate(''); setPetEndDate(''); }
+                                                }}
+                                            />
+                                            <label className="form-check-label small">Range</label>
+                                        </div>
+                                    </div>
+                                    {!petUseRange ? (
+                                        <input
+                                            type="date"
+                                            className="form-control form-control-sm"
+                                            value={petSingleDate}
+                                            onChange={(e) => setPetSingleDate(e.target.value)}
+                                        />
+                                    ) : (
+                                        <div className="d-flex gap-2">
+                                            <input
+                                                type="date"
+                                                className="form-control form-control-sm"
+                                                placeholder="Start"
+                                                value={petStartDate}
+                                                onChange={(e) => setPetStartDate(e.target.value)}
+                                            />
+                                            <input
+                                                type="date"
+                                                className="form-control form-control-sm"
+                                                placeholder="End"
+                                                value={petEndDate}
+                                                onChange={(e) => setPetEndDate(e.target.value)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="col-md-6">
+                                    <label className="form-label small">PET</label>
+                                    <select
+                                        className="form-select form-select-sm"
+                                        value={petSelected}
+                                        onChange={(e) => setPetSelected(e.target.value)}
+                                    >
+                                        <option value="">All</option>
+                                        {pets.sort((a, b) => {
+                                            const aName = (a.pet_name || '').toLowerCase();
+                                            const bName = (b.pet_name || '').toLowerCase();
+                                            const aIsCan = aName.includes('can');
+                                            const bIsCan = bName.includes('can');
+                                            if (aIsCan && !bIsCan) return 1;
+                                            if (!aIsCan && bIsCan) return -1;
+                                            const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                            const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                            return aNum - bNum;
+                                        }).map(pet => (
+                                            <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            {filteredPlanVsActual.length > 0 ? (
                                 <>
                                     <ResponsiveContainer width="100%" height={250}>
                                         <PieChart>
-                                            <Pie data={planVsActual} cx="50%" cy="50%" outerRadius={90}
+                                            <Pie data={filteredPlanVsActual} cx="50%" cy="50%" outerRadius={90}
                                                 paddingAngle={2} dataKey="actual" label={(entry) => `${entry.name}: ${formatNum(entry.actual)}`}>
-                                                {planVsActual.map((entry, idx) => (
+                                                {filteredPlanVsActual.map((entry, idx) => (
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
                                             </Pie>
@@ -584,8 +689,8 @@ const Overview = () => {
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="mt-3">
-                                        {planVsActual.map((l, idx) => {
-                                            const total = planVsActual.reduce((s, t) => s + t.actual, 0);
+                                        {filteredPlanVsActual.map((l, idx) => {
+                                            const total = filteredPlanVsActual.reduce((s, t) => s + t.actual, 0);
                                             const pct = total > 0 ? ((l.actual / total) * 100).toFixed(1) : 0;
                                             return (
                                                 <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">

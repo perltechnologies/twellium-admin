@@ -154,6 +154,13 @@ const Overview = () => {
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedOutputPets, setSelectedOutputPets] = useState([]);
+    
+    // Filters for Production Output by PET
+    const [outputUseRange, setOutputUseRange] = useState(false);
+    const [outputSingleDate, setOutputSingleDate] = useState('');
+    const [outputStartDate, setOutputStartDate] = useState('');
+    const [outputEndDate, setOutputEndDate] = useState('');
+    const [outputPetSelected, setOutputPetSelected] = useState('');
 
     /* Stale-while-revalidate: separate initial vs refresh state */
     const [initialLoading, setInitialLoading] = useState(true);
@@ -736,63 +743,123 @@ const Overview = () => {
                     {isLoading ? <SkeletonChart height={350} title /> : (
                     <div className="card">
                         <div className="card-header">
-                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
                                 <div>
                                     <h6 className="mb-0">Production Output by PET</h6>
                                     <small className="text-muted">Production trends over time</small>
                                 </div>
-                                <div className="d-flex gap-2 flex-wrap">
-                                    {availablePets.sort((a, b) => {
-                                        const aName = (a.pet_name || '').toLowerCase();
-                                        const bName = (b.pet_name || '').toLowerCase();
-                                        const aIsCan = aName.includes('can');
-                                        const bIsCan = bName.includes('can');
-                                        if (aIsCan && !bIsCan) return 1;
-                                        if (!aIsCan && bIsCan) return -1;
-                                        const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
-                                        const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
-                                        return aNum - bNum;
-                                    }).map(pet => (
-                                        <button
-                                            key={pet.id}
-                                            className={`btn btn-sm ${selectedOutputPets.includes(pet.id) ? 'btn-info' : 'btn-outline-secondary'}`}
-                                            onClick={() => setSelectedOutputPets(prev => 
-                                                prev.includes(pet.id) ? prev.filter(id => id !== pet.id) : [...prev, pet.id]
-                                            )}
-                                        >
-                                            {pet.pet_name}
-                                        </button>
-                                    ))}
-                                </div>
                             </div>
-                            <div className="btn-group btn-group-sm">
-                                <button 
-                                    className={`btn ${filters.log_date || (!filters.start_date && !filters.end_date) ? 'btn-primary' : 'btn-outline-primary'}`}
-                                    onClick={() => {
-                                        const today = new Date().toISOString().split('T')[0];
-                                        updateFilters({ log_date: today, start_date: null, end_date: null });
-                                    }}
-                                >
-                                    Week
-                                </button>
-                                <button 
-                                    className={`btn ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
-                                    onClick={() => {
-                                        const endDate = new Date().toISOString().split('T')[0];
-                                        const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
-                                        updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
-                                    }}
-                                >
-                                    Month
-                                </button>
+                            
+                            {/* Filters */}
+                            <div className="row mb-3 align-items-end">
+                                <div className="col-md-4">
+                                    <div className="d-flex align-items-center gap-2 mb-2">
+                                        <label className="form-label mb-0 small">Date</label>
+                                        <div className="form-check form-switch">
+                                            <input
+                                                className="form-check-input"
+                                                type="checkbox"
+                                                checked={outputUseRange}
+                                                onChange={(e) => {
+                                                    setOutputUseRange(e.target.checked);
+                                                    if (e.target.checked) setOutputSingleDate('');
+                                                    else { setOutputStartDate(''); setOutputEndDate(''); }
+                                                }}
+                                            />
+                                            <label className="form-check-label small">Range</label>
+                                        </div>
+                                    </div>
+                                    {!outputUseRange ? (
+                                        <input
+                                            type="date"
+                                            className="form-control form-control-sm"
+                                            value={outputSingleDate}
+                                            onChange={(e) => setOutputSingleDate(e.target.value)}
+                                        />
+                                    ) : (
+                                        <div className="d-flex gap-2">
+                                            <input
+                                                type="date"
+                                                className="form-control form-control-sm"
+                                                placeholder="Start"
+                                                value={outputStartDate}
+                                                onChange={(e) => setOutputStartDate(e.target.value)}
+                                            />
+                                            <input
+                                                type="date"
+                                                className="form-control form-control-sm"
+                                                placeholder="End"
+                                                value={outputEndDate}
+                                                onChange={(e) => setOutputEndDate(e.target.value)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="col-md-4">
+                                    <label className="form-label small">PET</label>
+                                    <select
+                                        className="form-select form-select-sm"
+                                        value={outputPetSelected}
+                                        onChange={(e) => setOutputPetSelected(e.target.value)}
+                                    >
+                                        <option value="">All</option>
+                                        {availablePets.sort((a, b) => {
+                                            const aName = (a.pet_name || '').toLowerCase();
+                                            const bName = (b.pet_name || '').toLowerCase();
+                                            const aIsCan = aName.includes('can');
+                                            const bIsCan = bName.includes('can');
+                                            if (aIsCan && !bIsCan) return 1;
+                                            if (!aIsCan && bIsCan) return -1;
+                                            const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                            const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                            return aNum - bNum;
+                                        }).map(pet => (
+                                            <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="col-md-4">
+                                    <label className="form-label small">Period</label>
+                                    <div className="btn-group btn-group-sm w-100">
+                                        <button 
+                                            className={`btn ${filters.log_date || (!filters.start_date && !filters.end_date) ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            onClick={() => {
+                                                const today = new Date().toISOString().split('T')[0];
+                                                updateFilters({ log_date: today, start_date: null, end_date: null });
+                                            }}
+                                        >
+                                            Week
+                                        </button>
+                                        <button 
+                                            className={`btn ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            onClick={() => {
+                                                const endDate = new Date().toISOString().split('T')[0];
+                                                const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                                                updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                                            }}
+                                        >
+                                            Month
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div className="card-body">
                             {(() => {
-                                // Filter reports by selected PETs
-                                const filteredReports = selectedOutputPets.length > 0 
-                                    ? allReports.filter(r => selectedOutputPets.includes(r.pet_id))
-                                    : allReports;
+                                // Filter reports by date
+                                let filteredReports = allReports;
+                                
+                                if (outputUseRange) {
+                                    if (outputStartDate) filteredReports = filteredReports.filter(r => r.production_date >= outputStartDate);
+                                    if (outputEndDate) filteredReports = filteredReports.filter(r => r.production_date <= outputEndDate);
+                                } else if (outputSingleDate) {
+                                    filteredReports = filteredReports.filter(r => r.production_date === outputSingleDate);
+                                }
+                                
+                                // Filter by PET dropdown
+                                if (outputPetSelected) {
+                                    filteredReports = filteredReports.filter(r => r.pet_id === parseInt(outputPetSelected));
+                                }
 
                                 // Generate date range
                                 const now = new Date();
