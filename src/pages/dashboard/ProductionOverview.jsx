@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production';
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell,
 } from 'recharts';
 
@@ -13,7 +13,7 @@ import FilterInputs from '../../components/FilterInputs';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
 import ChartErrorBoundary from '../../components/ui/ChartErrorBoundary';
 import {
-    SkeletonStatCards, SkeletonChart, SkeletonDonut, SkeletonTable
+    SkeletonChart, SkeletonDonut, SkeletonTable
 } from '../../components/ui/Skeletons';
 
 /* ── helpers ─────────────────────────────────────── */
@@ -107,12 +107,9 @@ const Overview = () => {
     const [totals, setTotals] = useState({ planned: 0, actual: 0 });
     const [downtimeTypes, setDowntimeTypes] = useState([]);
     const [downtimeByLine, setDowntimeByLine] = useState([]);
-    
-    // Filters for Bottles by PET
-    const [petUseRange, setPetUseRange] = useState(false);
-    const [petSingleDate, setPetSingleDate] = useState('');
-    const [petStartDate, setPetStartDate] = useState('');
-    const [petEndDate, setPetEndDate] = useState('');
+    const [oeeSummary, setOeeSummary] = useState([]); // OEE data from API
+
+    // Filter for PET selection (uses global date filters)
     const [petSelected, setPetSelected] = useState('');
 
     const loadData = useCallback(async () => {
@@ -130,15 +127,41 @@ const Overview = () => {
 
         try {
             const params = getParams();
-            const [reportsRes, stoppagesRes] = await Promise.all([
+            
+            // Build OEE params - OEE API uses start_date/end_date or production_date
+            const oeeParams = { ...params };
+            // If using production_date_after/before, also add start_date/end_date for OEE API
+            if (params.production_date_after) {
+                oeeParams.start_date = params.production_date_after;
+            }
+            if (params.production_date_before) {
+                oeeParams.end_date = params.production_date_before;
+            }
+            if (params.production_date) {
+                oeeParams.start_date = params.production_date;
+                oeeParams.end_date = params.production_date;
+            }
+            
+            console.log('ProductionOverview - Fetching with params:', params);
+            console.log('ProductionOverview - OEE params:', oeeParams);
+
+            const [reportsRes, stoppagesRes, oeeRes] = await Promise.all([
                 productionApi.getReports(params),
                 productionApi.getStoppages(params),
+                productionApi.getOeeSummary(oeeParams),
             ]);
 
             if (controller.signal.aborted) return;
 
             const reports = extractList(reportsRes);
             const stoppages = extractList(stoppagesRes);
+            const oeeData = extractList(oeeRes);
+
+            console.log('OEE Summary Response:', oeeRes);
+            console.log('OEE Data (extracted):', oeeData);
+
+            /* Store OEE summary from API */
+            setOeeSummary(oeeData);
 
             /* totals */
             let totalDowntime = 0;
@@ -269,22 +292,16 @@ const Overview = () => {
 
     const efficiency = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
 
-    // Filtered planVsActual for Bottles by PET
+    // Filtered planVsActual for Bottles by PET - uses global date filters + optional PET filter
     const filteredPlanVsActual = useMemo(() => {
-        let filtered = reports;
-        
-        if (petUseRange) {
-            if (petStartDate) filtered = filtered.filter(r => r.production_date >= petStartDate);
-            if (petEndDate) filtered = filtered.filter(r => r.production_date <= petEndDate);
-        } else if (petSingleDate) {
-            filtered = filtered.filter(r => r.production_date === petSingleDate);
-        }
-        
+        let filtered = [...reports];
+
+        // Apply PET filter if selected
         if (petSelected) {
             const selectedPetName = pets.find(p => p.id === parseInt(petSelected))?.pet_name;
             if (selectedPetName) filtered = filtered.filter(r => r.pet_name === selectedPetName);
         }
-        
+
         const lineMap = {};
         filtered.forEach(r => {
             const line = r.pet_name || 'Unknown';
@@ -295,7 +312,25 @@ const Overview = () => {
             lineMap[line].planned += planned;
         });
         return Object.values(lineMap).sort((a, b) => b.actual - a.actual).slice(0, 6);
-    }, [reports, petUseRange, petSingleDate, petStartDate, petEndDate, petSelected, pets]);
+    }, [reports, petSelected, pets]);
+
+    // PET Contribution to Production & Quality - uses OEE summary API
+    const petProductionAndQuality = useMemo(() => {
+        console.log('petProductionAndQuality - oeeSummary:', oeeSummary);
+        const result = oeeSummary
+            .map(pet => ({
+                name: pet.pet_name,
+                production: pet.metrics?.details?.total_output_pcs || pet.total_production || pet.production || 0,
+                quality: pet.metrics?.quality ?? pet.quality ?? 0,
+                oee: pet.metrics?.oee ?? pet.oee ?? 0,
+                availability: pet.metrics?.availability ?? pet.availability ?? 0,
+                performance: pet.metrics?.performance ?? pet.performance ?? 0
+            }))
+            .sort((a, b) => b.production - a.production)
+            .slice(0, 6);
+        console.log('petProductionAndQuality - result:', result);
+        return result;
+    }, [oeeSummary]);
 
     // Transform downtimeTypes for DowntimeBreakdownChart component
     const downtimeCategories = downtimeTypes.map(d => ({
@@ -303,13 +338,6 @@ const Overview = () => {
         value: Math.round(d.value),
         color: DOWNTIME_COLORS[d.name] || '#6b7280'
     }));
-
-    const statCards = [
-        { label: 'Production Reports', value: stats.totalReports, icon: 'ti-file-report', color: 'primary', elemnt: 'elemnt-01', delta: null },
-        { label: 'Active PET Lines', value: stats.activeLines, icon: 'ti-building-factory-2', color: 'success', elemnt: 'elemnt-02', delta: null },
-        { label: 'Total Stoppages', value: stats.totalStoppages, icon: 'ti-alert-triangle', color: 'warning', elemnt: 'elemnt-03', delta: null },
-        { label: 'Total Downtime', value: `${stats.totalDowntime} min`, icon: 'ti-clock-pause', color: 'danger', elemnt: 'elemnt-04', delta: null },
-    ];
 
     const isLoading = initialLoading;
 
@@ -343,50 +371,6 @@ const Overview = () => {
                         <i className="ti ti-refresh me-1"></i>Retry
                     </button>
                 </div>
-            )}
-
-            {/* Welcome Banner */}
-            <div className="welcome-wrap mb-4">
-                <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 bg-dark rounded p-4">
-                    <div>
-                        <h2 className="mb-1 text-white fs-24">Production Overview</h2>
-                        <p className="text-light fs-14 mb-0">
-                            {isLoading ? 'Loading…' : `${formatNum(stats.totalProduced)} bottles produced across ${stats.activeLines} active lines`}
-                        </p>
-                    </div>
-                    <div className="d-flex align-items-center flex-wrap gap-2">
-                        <button onClick={() => navigate('/dashboard/production')} className="btn btn-danger btn-sm">Reports</button>
-                        <button onClick={() => navigate('/dashboard/stoppages')} className="btn btn-light btn-sm">Stoppages</button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Stat Cards */}
-            {isLoading ? <SkeletonStatCards count={4} /> : (
-            <div className="row row-gap-3 mb-4">
-                {statCards.map((card) => (
-                    <div key={card.label} className="col-xl-3 col-sm-6 d-flex">
-                        <div className="card flex-fill mb-0 position-relative overflow-hidden">
-                            <div className="card-body position-relative z-1">
-                                <div className="d-flex align-items-start justify-content-between">
-                                    <div className="d-flex align-items-start justify-content-between">
-                                        <div>
-                                            <p className="fs-14 mb-1">{card.label}</p>
-                                            <h2 className="mb-1 fs-16">{card.value}</h2>
-                                        </div>
-                                    </div>
-                                    <div className="d-flex align-items-center justify-content-between">
-                                        <span className={`avatar avatar-md rounded-circle bg-soft-${card.color} border border-${card.color}`}>
-                                            <i className={`ti ${card.icon} fs-16 text-${card.color}`}></i>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            <img src={`/assets/img/icons/${card.elemnt}.svg`} alt="" className="img-fluid position-absolute top-0 start-0" />
-                        </div>
-                    </div>
-                ))}
-            </div>
             )}
 
             {/* Production Summary - Efficiency trends and multi-line comparison */}
@@ -593,7 +577,7 @@ const Overview = () => {
                 </div>
             </div>
 
-            {/* New Pie Charts Row */}
+            {/* Pie Charts Row */}
             <div className="row">
                 {/* Bottles by PET */}
                 <div className="col-lg-6 d-flex">
@@ -605,59 +589,16 @@ const Overview = () => {
                             <small className="text-muted">Production distribution across lines</small>
                         </div>
                         <div className="card-body">
-                            {/* Filters */}
+                            {/* PET Filter */}
                             <div className="row mb-3 align-items-end">
                                 <div className="col-md-6">
-                                    <div className="d-flex align-items-center gap-2 mb-2">
-                                        <label className="form-label mb-0 small">Date</label>
-                                        <div className="form-check form-switch">
-                                            <input
-                                                className="form-check-input"
-                                                type="checkbox"
-                                                checked={petUseRange}
-                                                onChange={(e) => {
-                                                    setPetUseRange(e.target.checked);
-                                                    if (e.target.checked) setPetSingleDate('');
-                                                    else { setPetStartDate(''); setPetEndDate(''); }
-                                                }}
-                                            />
-                                            <label className="form-check-label small">Range</label>
-                                        </div>
-                                    </div>
-                                    {!petUseRange ? (
-                                        <input
-                                            type="date"
-                                            className="form-control form-control-sm"
-                                            value={petSingleDate}
-                                            onChange={(e) => setPetSingleDate(e.target.value)}
-                                        />
-                                    ) : (
-                                        <div className="d-flex gap-2">
-                                            <input
-                                                type="date"
-                                                className="form-control form-control-sm"
-                                                placeholder="Start"
-                                                value={petStartDate}
-                                                onChange={(e) => setPetStartDate(e.target.value)}
-                                            />
-                                            <input
-                                                type="date"
-                                                className="form-control form-control-sm"
-                                                placeholder="End"
-                                                value={petEndDate}
-                                                onChange={(e) => setPetEndDate(e.target.value)}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="col-md-6">
-                                    <label className="form-label small">PET</label>
+                                    <label className="form-label small">Filter by PET</label>
                                     <select
                                         className="form-select form-select-sm"
                                         value={petSelected}
                                         onChange={(e) => setPetSelected(e.target.value)}
                                     >
-                                        <option value="">All</option>
+                                        <option value="">All PETs</option>
                                         {pets.sort((a, b) => {
                                             const aName = (a.pet_name || '').toLowerCase();
                                             const bName = (b.pet_name || '').toLowerCase();
@@ -673,8 +614,14 @@ const Overview = () => {
                                         ))}
                                     </select>
                                 </div>
+                                <div className="col-md-6">
+                                    <small className="text-muted">
+                                        <i className="ti ti-calendar me-1"></i>
+                                        Using global date filter{filters.log_date || filters.start_date ? `: ${filters.log_date || filters.start_date}${filters.end_date ? ` - ${filters.end_date}` : ''}` : ' (all time)'}
+                                    </small>
+                                </div>
                             </div>
-                            
+
                             {filteredPlanVsActual.length > 0 ? (
                                 <>
                                     <ResponsiveContainer width="100%" height={250}>
@@ -705,7 +652,7 @@ const Overview = () => {
                                     </div>
                                 </>
                             ) : (
-                                <p className="text-center text-muted py-5 mb-0">No data</p>
+                                <p className="text-center text-muted py-5 mb-0">No data for selected filters</p>
                             )}
                         </div>
                     </div>
@@ -713,52 +660,58 @@ const Overview = () => {
                     )}
                 </div>
 
-                {/* PET Contribution to Efficiency */}
+                {/* PET Contribution to Production & Quality */}
                 <div className="col-lg-6 d-flex">
                     {isLoading ? <SkeletonDonut /> : (
-                    <ChartErrorBoundary fallbackMessage="Failed to render efficiency contribution chart">
+                    <ChartErrorBoundary fallbackMessage="Failed to render production & quality chart">
                     <div className="card flex-fill">
                         <div className="card-header">
-                            <h6 className="mb-0">PET Contribution to Efficiency</h6>
-                            <small className="text-muted">Efficiency percentage by line</small>
+                            <div>
+                                <h6 className="mb-0">PET Contribution to Production & Quality</h6>
+                                <small className="text-muted">Production volume vs quality performance</small>
+                            </div>
                         </div>
                         <div className="card-body">
-                            {planVsActual.length > 0 ? (
+                            {petProductionAndQuality.length > 0 ? (
                                 <>
                                     <ResponsiveContainer width="100%" height={250}>
                                         <PieChart>
-                                            <Pie 
-                                                data={planVsActual.map(l => ({
-                                                    name: l.name,
-                                                    value: l.planned > 0 ? ((l.actual / l.planned) * 100) : 0
-                                                }))} 
+                                            <Pie
+                                                data={petProductionAndQuality}
                                                 cx="50%" cy="50%" outerRadius={90}
-                                                paddingAngle={2} dataKey="value" 
-                                                label={(entry) => `${entry.name}: ${entry.value.toFixed(1)}%`}>
-                                                {planVsActual.map((entry, idx) => (
+                                                paddingAngle={2} dataKey="production"
+                                                label={(entry) => `${entry.name}: ${formatNum(entry.production)}`}>
+                                                {petProductionAndQuality.map((entry, idx) => (
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip formatter={(v) => [v.toFixed(1) + '%', 'Efficiency']} />
+                                            <Tooltip formatter={(v, name) => [`${formatNum(v)} bottles`, 'Production']} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="mt-3">
-                                        {planVsActual.map((l, idx) => {
-                                            const eff = l.planned > 0 ? ((l.actual / l.planned) * 100).toFixed(1) : 0;
+                                        {petProductionAndQuality.map((l, idx) => {
+                                            const total = petProductionAndQuality.reduce((s, t) => s + t.production, 0);
+                                            const pct = total > 0 ? ((l.production / total) * 100).toFixed(1) : 0;
+                                            const qualityBadge = l.quality >= 95 ? 'success' : l.quality >= 85 ? 'warning' : 'danger';
                                             return (
                                                 <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
                                                     <p className="f-14 fw-medium text-dark mb-0">
                                                         <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
                                                         {l.name}
                                                     </p>
-                                                    <p className="f-14 fw-medium text-dark mb-0">{eff}%</p>
+                                                    <div className="d-flex align-items-center gap-2">
+                                                        <p className="f-14 fw-medium text-dark mb-0">{pct}% ({formatNum(l.production)})</p>
+                                                        <span className={`badge bg-soft-${qualityBadge} text-${qualityBadge} fs-10`}>
+                                                            Q: {l.quality.toFixed(1)}%
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
                                     </div>
                                 </>
                             ) : (
-                                <p className="text-center text-muted py-5 mb-0">No data</p>
+                                <p className="text-center text-muted py-5 mb-0">No data for selected filters</p>
                             )}
                         </div>
                     </div>

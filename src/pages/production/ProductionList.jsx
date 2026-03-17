@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { productionApi } from '../../api/production';
@@ -36,10 +36,52 @@ const ProductionList = () => {
         totalDowntime: 0,
         approvalRate: 0
     });
+    const [chartFilter, setChartFilter] = useState('all');
+    const [chartDate, setChartDate] = useState('');
+    const [chartDateRange, setChartDateRange] = useState({ start: '', end: '' });
+    const [useDateRange, setUseDateRange] = useState(false);
+    
+    // Separate state for second chart
+    const [chart2Filter, setChart2Filter] = useState('all');
+    const [chart2Date, setChart2Date] = useState('');
+    const [chart2DateRange, setChart2DateRange] = useState({ start: '', end: '' });
+    const [useDateRange2, setUseDateRange2] = useState(false);
 
     const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
-    const chartData = useMemo(() => {
+    const getReportDate = useCallback((report) => {
+        const rawDate = report?.production_date || report?.log_date || '';
+        return String(rawDate).split('T')[0];
+    }, []);
+
+    const applyCardFilters = useCallback((sourceReports, { period, singleDate, useRange, startDate, endDate }) => {
+        let filteredReports = [...sourceReports];
+
+        if (useRange) {
+            if (startDate) filteredReports = filteredReports.filter(r => getReportDate(r) >= startDate);
+            if (endDate) filteredReports = filteredReports.filter(r => getReportDate(r) <= endDate);
+        } else if (singleDate) {
+            filteredReports = filteredReports.filter(r => getReportDate(r) === singleDate);
+        }
+
+        if (period !== 'all') {
+            const endDate = new Date();
+            const startDate = new Date();
+            if (period === 'week') startDate.setDate(endDate.getDate() - 6);
+            if (period === 'month') startDate.setMonth(endDate.getMonth() - 1);
+
+            const start = startDate.toISOString().split('T')[0];
+            const end = endDate.toISOString().split('T')[0];
+            filteredReports = filteredReports.filter(r => {
+                const date = getReportDate(r);
+                return date >= start && date <= end;
+            });
+        }
+
+        return filteredReports;
+    }, [getReportDate]);
+
+    const buildLineChartData = useCallback((sourceReports) => {
         const lineMap = {};
         
         // Initialize all pets with 0 values
@@ -48,7 +90,7 @@ const ProductionList = () => {
         });
         
         // Add actual data from reports
-        reports.forEach(r => {
+        sourceReports.forEach(r => {
             const line = r.pet_name || 'Unknown';
             if (!lineMap[line]) lineMap[line] = { name: line, bottles: 0, planned: 0, actual: 0 };
             const actual = r.total_bottles_produced || 0;
@@ -73,7 +115,29 @@ const ProductionList = () => {
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [reports, pets]);
+    }, [pets]);
+
+    const bottlesByPetChartData = useMemo(() => {
+        const filteredReports = applyCardFilters(reports, {
+            period: chartFilter,
+            singleDate: chartDate,
+            useRange: useDateRange,
+            startDate: chartDateRange.start,
+            endDate: chartDateRange.end
+        });
+        return buildLineChartData(filteredReports);
+    }, [reports, chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end, applyCardFilters, buildLineChartData]);
+
+    const productionShareChartData = useMemo(() => {
+        const filteredReports = applyCardFilters(reports, {
+            period: chart2Filter,
+            singleDate: chart2Date,
+            useRange: useDateRange2,
+            startDate: chart2DateRange.start,
+            endDate: chart2DateRange.end
+        });
+        return buildLineChartData(filteredReports);
+    }, [reports, chart2Filter, chart2Date, useDateRange2, chart2DateRange.start, chart2DateRange.end, applyCardFilters, buildLineChartData]);
 
     const fetchReports = async () => {
         setLoading(true);
@@ -367,24 +431,10 @@ const ProductionList = () => {
                 </div>
             </div>
 
-            {/* Stats Cards - Row 1 */}
+            {/* Stats Cards - Horizontal Layout */}
             {loading ? <SkeletonStatCards count={4} /> : (
             <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.1s both' }}>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <p className="fs-14 mb-1">Total Reports</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalReports}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-primary border border-primary">
-                                    <i className="ti ti-file-report fs-16 text-primary"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
                 <div className="col-xl-3 col-sm-6">
                     <div className="card mb-0">
                         <div className="card-body">
@@ -420,42 +470,6 @@ const ProductionList = () => {
                         <div className="card-body">
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
-                                    <p className="fs-14 mb-1">Avg Output</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.avgOutput.toLocaleString()}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-warning border border-warning">
-                                    <i className="ti ti-chart-line fs-16 text-warning"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            )}
-
-            {/* Stats Cards - Row 2 */}
-            {loading ? <SkeletonStatCards count={4} /> : (
-            <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.15s both' }}>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <p className="fs-14 mb-1">Active PET Lines</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.activeLines}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-success border border-success">
-                                    <i className="ti ti-building-factory-2 fs-16 text-success"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
                                     <p className="fs-14 mb-1">Total Stoppages</p>
                                     <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalStoppages}</h2>
                                 </div>
@@ -481,21 +495,6 @@ const ProductionList = () => {
                         </div>
                     </div>
                 </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <p className="fs-14 mb-1">Approval Rate</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.approvalRate}%`}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-purple border border-purple">
-                                    <i className="ti ti-thumb-up fs-16 text-purple"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
             )}
 
@@ -510,20 +509,100 @@ const ProductionList = () => {
                 <div className="col-lg-6">
                     <div className="card">
                         <div className="card-header">
-                            <h6 className="mb-0">Bottles by PET</h6>
-                            <small className="text-muted">Production distribution across lines</small>
+                            <div className="d-flex align-items-center justify-content-between mb-2">
+                                <div>
+                                    <h6 className="mb-0">Bottles by PET</h6>
+                                    <small className="text-muted">Production distribution across lines</small>
+                                </div>
+                            </div>
+                            <div className="d-flex align-items-center justify-content-between gap-3">
+                                {/* Date inputs on left */}
+                                <div className="flex-grow-1">
+                                    <div className="row g-2">
+                                        <div className="col-12">
+                                            <div className="d-flex align-items-center justify-content-between">
+                                                <div className="form-check form-switch">
+                                                    <input 
+                                                        className="form-check-input" 
+                                                        type="checkbox" 
+                                                        id="dateRangeToggle1"
+                                                        checked={useDateRange}
+                                                        onChange={(e) => setUseDateRange(e.target.checked)}
+                                                    />
+                                                    <label className="form-check-label" htmlFor="dateRangeToggle1">
+                                                        Date Range
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {!useDateRange ? (
+                                            <div className="col-12">
+                                                <input 
+                                                    type="date" 
+                                                    className="form-control form-control-sm"
+                                                    value={chartDate}
+                                                    onChange={(e) => setChartDate(e.target.value)}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="col-6">
+                                                    <input 
+                                                        type="date" 
+                                                        className="form-control form-control-sm"
+                                                        value={chartDateRange.start}
+                                                        onChange={(e) => setChartDateRange({...chartDateRange, start: e.target.value})}
+                                                    />
+                                                </div>
+                                                <div className="col-6">
+                                                    <input 
+                                                        type="date" 
+                                                        className="form-control form-control-sm"
+                                                        value={chartDateRange.end}
+                                                        onChange={(e) => setChartDateRange({...chartDateRange, end: e.target.value})}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                {/* Buttons on right */}
+                                <div className="btn-group btn-sm" role="group" style={{ whiteSpace: 'nowrap' }}>
+                                    <button 
+                                        type="button" 
+                                        className={`btn ${chartFilter === 'all' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChartFilter('all')}
+                                    >
+                                        All
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className={`btn ${chartFilter === 'week' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChartFilter('week')}
+                                    >
+                                        Week
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className={`btn ${chartFilter === 'month' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChartFilter('month')}
+                                    >
+                                        Month
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div className="card-body">
-                            {loading || chartData.length === 0 ? (
+                            {loading || bottlesByPetChartData.length === 0 ? (
                                 <p className="text-center text-muted py-5 mb-0">No data</p>
                             ) : (
                                 <>
                                     <ResponsiveContainer width="100%" height={250}>
                                         <PieChart>
-                                            <Pie data={chartData} cx="50%" cy="50%" outerRadius={90}
+                                            <Pie data={bottlesByPetChartData} cx="50%" cy="50%" outerRadius={90}
                                                 paddingAngle={2} dataKey="bottles" 
                                                 label={(entry) => entry.bottles > 0 ? `${entry.name}: ${(entry.bottles || 0).toLocaleString()}` : entry.name}>
-                                                {chartData.map((entry, idx) => (
+                                                {bottlesByPetChartData.map((entry, idx) => (
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
                                             </Pie>
@@ -531,8 +610,8 @@ const ProductionList = () => {
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="mt-3">
-                                        {chartData.map((l, idx) => {
-                                            const total = chartData.reduce((s, t) => s + t.bottles, 0);
+                                        {bottlesByPetChartData.map((l, idx) => {
+                                            const total = bottlesByPetChartData.reduce((s, t) => s + t.bottles, 0);
                                             const pct = total > 0 ? ((l.bottles / total) * 100).toFixed(1) : 0;
                                             return (
                                                 <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
@@ -553,19 +632,99 @@ const ProductionList = () => {
                 <div className="col-lg-6">
                     <div className="card">
                         <div className="card-header">
-                            <h6 className="mb-0">PET Contribution to Production</h6>
-                            <small className="text-muted">Production share by line</small>
+                            <div className="d-flex align-items-center justify-content-between mb-2">
+                                <div>
+                                    <h6 className="mb-0">PET Contribution to Production</h6>
+                                    <small className="text-muted">Production share by line</small>
+                                </div>
+                            </div>
+                            <div className="d-flex align-items-center justify-content-between gap-3">
+                                {/* Date inputs on left */}
+                                <div className="flex-grow-1">
+                                    <div className="row g-2">
+                                        <div className="col-12">
+                                            <div className="d-flex align-items-center justify-content-between">
+                                                <div className="form-check form-switch">
+                                                    <input 
+                                                        className="form-check-input" 
+                                                        type="checkbox" 
+                                                        id="dateRangeToggle2"
+                                                        checked={useDateRange2}
+                                                        onChange={(e) => setUseDateRange2(e.target.checked)}
+                                                    />
+                                                    <label className="form-check-label" htmlFor="dateRangeToggle2">
+                                                        Date Range
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {!useDateRange2 ? (
+                                            <div className="col-12">
+                                                <input 
+                                                    type="date" 
+                                                    className="form-control form-control-sm"
+                                                    value={chart2Date}
+                                                    onChange={(e) => setChart2Date(e.target.value)}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div className="col-6">
+                                                    <input 
+                                                        type="date" 
+                                                        className="form-control form-control-sm"
+                                                        value={chart2DateRange.start}
+                                                        onChange={(e) => setChart2DateRange({...chart2DateRange, start: e.target.value})}
+                                                    />
+                                                </div>
+                                                <div className="col-6">
+                                                    <input 
+                                                        type="date" 
+                                                        className="form-control form-control-sm"
+                                                        value={chart2DateRange.end}
+                                                        onChange={(e) => setChart2DateRange({...chart2DateRange, end: e.target.value})}
+                                                    />
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                                {/* Buttons on right */}
+                                <div className="btn-group btn-sm" role="group" style={{ whiteSpace: 'nowrap' }}>
+                                    <button 
+                                        type="button" 
+                                        className={`btn ${chart2Filter === 'all' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChart2Filter('all')}
+                                    >
+                                        All
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className={`btn ${chart2Filter === 'week' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChart2Filter('week')}
+                                    >
+                                        Week
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        className={`btn ${chart2Filter === 'month' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChart2Filter('month')}
+                                    >
+                                        Month
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div className="card-body">
-                            {loading || chartData.length === 0 ? (
+                            {loading || productionShareChartData.length === 0 ? (
                                 <p className="text-center text-muted py-5 mb-0">No data</p>
                             ) : (
                                 <>
                                     <ResponsiveContainer width="100%" height={250}>
                                         <PieChart>
                                             <Pie 
-                                                data={chartData.map(l => {
-                                                    const totalProduction = chartData.reduce((sum, p) => sum + p.bottles, 0);
+                                                data={productionShareChartData.map(l => {
+                                                    const totalProduction = productionShareChartData.reduce((sum, p) => sum + p.bottles, 0);
                                                     return {
                                                         name: l.name,
                                                         value: totalProduction > 0 ? ((l.bottles / totalProduction) * 100) : 0
@@ -574,7 +733,7 @@ const ProductionList = () => {
                                                 cx="50%" cy="50%" outerRadius={90}
                                                 paddingAngle={2} dataKey="value" 
                                                 label={(entry) => entry.value > 0 ? `${entry.name}: ${entry.value.toFixed(1)}%` : entry.name}>
-                                                {chartData.map((entry, idx) => (
+                                                {productionShareChartData.map((entry, idx) => (
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
                                             </Pie>
@@ -582,8 +741,8 @@ const ProductionList = () => {
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="mt-3">
-                                        {chartData.map((l, idx) => {
-                                            const totalProduction = chartData.reduce((sum, p) => sum + p.bottles, 0);
+                                        {productionShareChartData.map((l, idx) => {
+                                            const totalProduction = productionShareChartData.reduce((sum, p) => sum + p.bottles, 0);
                                             const share = totalProduction > 0 ? ((l.bottles / totalProduction) * 100).toFixed(1) : 0;
                                             return (
                                                 <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">

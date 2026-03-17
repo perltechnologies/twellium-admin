@@ -191,7 +191,12 @@ const Overview = () => {
         try {
             const params = getParams();
             const stoppageParams = getParams({}, true);
-            const allReportsParams = { page_size: 1000 };
+            
+            // Fetch last 30 days for chart data
+            const endDate = new Date().toISOString().split('T')[0];
+            const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+            const allReportsParams = { page_size: 1000, start_date: startDate, end_date: endDate };
+            
             const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes] = await Promise.all([
                 productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
@@ -408,32 +413,6 @@ const Overview = () => {
         return { stats, oee: displayOee, oeeByLine, downtimeCategories };
     }, [rawReports, rawPets, rawStoppages, selectedPet, selectedDate]);
 
-    const statCards = [
-        {
-            label: selectedPet || 'Active PET Lines',
-            value: selectedPet ? stats.recentReports : stats.activeLines,
-            subtext: selectedPet
-                ? `${stats.shiftsStarted} shifts currently started`
-                : `${stats.shiftsStarted} shifts started${selectedDate ? ' on selected date' : ''}`,
-            icon: 'ti-building-factory-2', color: 'success', elemnt: 'elemnt-02',
-        },
-        {
-            label: 'Total Downtime', value: formatDuration(stats.totalDowntime),
-            subtext: selectedPet ? `Stoppages on ${selectedPet}` : 'All lines combined',
-            icon: 'ti-clock-pause', color: 'danger', elemnt: 'elemnt-04',
-        },
-        {
-            label: 'Reports', value: stats.recentReports,
-            subtext: selectedPet ? `Reports for ${selectedPet}` : 'All PET lines',
-            icon: 'ti-file-report', color: 'primary', elemnt: 'elemnt-01',
-        },
-        {
-            label: 'Total Produced', value: formatNum(stats.totalProduced),
-            subtext: selectedPet ? `Bottles on ${selectedPet}` : 'Bottles across all lines',
-            icon: 'ti-bottle', color: 'warning', elemnt: 'elemnt-03',
-        },
-    ];
-
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;
 
@@ -524,35 +503,6 @@ const Overview = () => {
                     <div>
                         <strong>No data available</strong> for the selected date{selectedPet ? ' and PET' : ''}. Please adjust your filters.
                     </div>
-                </div>
-            )}
-
-            {/* Stat Cards */}
-            {isLoading ? <SkeletonStatCards count={4} /> : (
-                <div className="row row-gap-3 mb-4">
-                    {statCards.map((card) => (
-                        <div key={card.label} className="col-xl-3 col-sm-6 d-flex">
-                            <div className="card flex-fill mb-0 position-relative overflow-hidden">
-                                <div className="card-body position-relative z-1">
-                                    <div className="d-flex align-items-start justify-content-between">
-                                        <div className="d-flex align-items-start justify-content-between">
-                                            <div>
-                                                <p className="fs-14 mb-1">{card.label}</p>
-                                                <h2 className="mb-1 fs-16">{card.value}</h2>
-                                                <p className="text-muted mb-0 fs-13">{card.subtext}</p>
-                                            </div>
-                                        </div>
-                                        <div className="d-flex align-items-center justify-content-between">
-                                            <span className={`avatar avatar-md rounded-circle bg-soft-${card.color} border border-${card.color}`}>
-                                                <i className={`ti ${card.icon} fs-16 text-${card.color}`}></i>
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <img src={`/assets/img/icons/${card.elemnt}.svg`} alt="" className="img-fluid position-absolute top-0 start-0" />
-                            </div>
-                        </div>
-                    ))}
                 </div>
             )}
 
@@ -844,8 +794,8 @@ const Overview = () => {
                         </div>
                         <div className="card-body">
                             {(() => {
-                                // Filter reports by date
-                                let filteredReports = allReports;
+                                // Filter reports by local date filters
+                                let filteredReports = [...allReports];
                                 
                                 if (outputUseRange) {
                                     if (outputStartDate) filteredReports = filteredReports.filter(r => r.production_date >= outputStartDate);
@@ -856,24 +806,29 @@ const Overview = () => {
                                 
                                 // Filter by PET dropdown
                                 if (outputPetSelected) {
-                                    filteredReports = filteredReports.filter(r => r.pet_id === parseInt(outputPetSelected));
+                                    const selectedPetName = availablePets.find(p => p.id === parseInt(outputPetSelected))?.pet_name;
+                                    if (selectedPetName) {
+                                        filteredReports = filteredReports.filter(r => r.pet_name === selectedPetName);
+                                    }
                                 }
 
-                                // Generate date range
-                                const now = new Date();
+                                // Generate date range based on filtered data or defaults
                                 let dates = [];
-                                const isWeekView = filters.log_date || (!filters.start_date && !filters.end_date);
                                 
-                                if (isWeekView) {
-                                    // Last 7 days
-                                    for (let i = 6; i >= 0; i--) {
-                                        const d = new Date(now);
-                                        d.setDate(now.getDate() - i);
+                                if (outputUseRange && outputStartDate && outputEndDate) {
+                                    // Use specified range
+                                    const start = new Date(outputStartDate);
+                                    const end = new Date(outputEndDate);
+                                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                                         dates.push(d.toISOString().split('T')[0]);
                                     }
+                                } else if (outputSingleDate) {
+                                    // Single date
+                                    dates = [outputSingleDate];
                                 } else {
-                                    // Last 30 days
-                                    for (let i = 29; i >= 0; i--) {
+                                    // Default: last 7 days
+                                    const now = new Date();
+                                    for (let i = 6; i >= 0; i--) {
                                         const d = new Date(now);
                                         d.setDate(now.getDate() - i);
                                         dates.push(d.toISOString().split('T')[0]);
