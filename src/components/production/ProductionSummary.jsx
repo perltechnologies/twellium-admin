@@ -118,34 +118,6 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                 <small className="text-muted">Efficiency trends and multi-line comparison</small>
             </div>
             <div className="card-body">
-                {/* Summary Stats */}
-                <div className="row mb-4">
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Total Production</small>
-                            <h5 className="mb-0 text-primary">{summary.totalProduction.toLocaleString()}</h5>
-                        </div>
-                    </div>
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Avg OEE</small>
-                            <h5 className="mb-0 text-success">{summary.avgOee.toFixed(1)}%</h5>
-                        </div>
-                    </div>
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Total Downtime</small>
-                            <h5 className="mb-0 text-danger">{Math.round(summary.totalDowntime)}m</h5>
-                        </div>
-                    </div>
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Reports</small>
-                            <h5 className="mb-0">{summary.reports}</h5>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Controls */}
                 <div className="mb-3">
                     <div className="row align-items-end">
@@ -231,6 +203,34 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                                     Month
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Summary Stats */}
+                <div className="row mb-4">
+                    <div className="col-3">
+                        <div className="border rounded p-3 text-center">
+                            <small className="text-muted d-block">Total Production</small>
+                            <h5 className="mb-0 text-primary">{summary.totalProduction.toLocaleString()}</h5>
+                        </div>
+                    </div>
+                    <div className="col-3">
+                        <div className="border rounded p-3 text-center">
+                            <small className="text-muted d-block">Avg OEE</small>
+                            <h5 className="mb-0 text-success">{summary.avgOee.toFixed(1)}%</h5>
+                        </div>
+                    </div>
+                    <div className="col-3">
+                        <div className="border rounded p-3 text-center">
+                            <small className="text-muted d-block">Total Downtime</small>
+                            <h5 className="mb-0 text-danger">{Math.round(summary.totalDowntime)}m</h5>
+                        </div>
+                    </div>
+                    <div className="col-3">
+                        <div className="border rounded p-3 text-center">
+                            <small className="text-muted d-block">Reports</small>
+                            <h5 className="mb-0">{summary.reports}</h5>
                         </div>
                     </div>
                 </div>

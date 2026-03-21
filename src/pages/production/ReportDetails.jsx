@@ -1,22 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Activity, AlertTriangle, Layers, User, Calendar, Box, Package, FastForward } from 'lucide-react';
-import { Button, Card, DataTable } from '../../components/ui';
+import { Clock, Activity, AlertTriangle, Layers, User, Box, Package } from 'lucide-react';
+import { DataTable, Card } from '../../components/ui';
 import { productionApi } from '../../api/production';
-import { motion } from 'framer-motion';
 import {
-    PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Label, Legend,
+    PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList
 } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
 
 // OEE Chart Component
 const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, bgColor, borderColor }) => (
-    <Card className="p-6 flex flex-col min-h-[400px]">
-        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">{title}</h3>
-        <div className="flex-1 w-full min-h-[300px]">
+    <div className="card h-100">
+        <div className="card-header">
+            <h6 className="mb-0">{title}</h6>
+        </div>
+        <div className="card-body" style={{ minHeight: '300px' }}>
             {data.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={data} margin={{ top: 30, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
                         <XAxis
@@ -52,12 +53,10 @@ const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, 
                     </BarChart>
                 </ResponsiveContainer>
             ) : (
-                <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-lg">
-                    No Data
-                </div>
+                <div className="text-center text-muted py-5">No Data</div>
             )}
         </div>
-    </Card>
+    </div>
 );
 
 const statCardColorMap = {
@@ -72,56 +71,56 @@ const statCardColorMap = {
 const StatCard = ({ title, value, icon: Icon, cardColor }) => {
     const c = statCardColorMap[cardColor] || statCardColorMap.primary;
     return (
-        <Card className="relative overflow-hidden mb-0">
-            <div className="p-5 relative z-[1]">
-                <div className="flex items-start justify-between">
+        <div className="card position-relative overflow-hidden mb-0">
+            <div className="card-body p-4 position-relative" style={{ zIndex: 1 }}>
+                <div className="d-flex align-items-start justify-content-between">
                     <div>
-                        <p className="text-[0.875rem] text-[#707070] dark:text-[#828997] mb-1">{title}</p>
-                        <h2 className="text-[1rem] font-semibold text-[#1f2020] dark:text-[#d9dcff]">{value}</h2>
+                        <p className="text-muted small mb-1">{title}</p>
+                        <h5 className="mb-0 fw-semibold">{value}</h5>
                     </div>
                     <span
-                        className="inline-flex items-center justify-center h-10 w-10 rounded-full border"
-                        style={{ backgroundColor: c.bg, borderColor: c.border }}
+                        className="d-inline-flex align-items-center justify-content-center rounded-circle border"
+                        style={{ backgroundColor: c.bg, borderColor: c.border, width: '40px', height: '40px' }}
                     >
                         <Icon className="h-4 w-4" style={{ color: c.text }} />
                     </span>
                 </div>
             </div>
-            <img src={c.decorImg} alt="" className="absolute top-0 left-0 w-auto h-auto" />
-        </Card>
+            <img src={c.decorImg} alt="" className="position-absolute top-0 start-0" style={{ width: 'auto', height: 'auto' }} />
+        </div>
     );
 };
 
 const DetailRow = ({ label, value }) => (
-    <div className="flex flex-col py-2 border-b border-slate-100 dark:border-slate-800/50 last:border-0">
-        <span className="text-slate-500 text-xs uppercase tracking-wider">{label}</span>
-        <span className="text-slate-900 dark:text-slate-200 font-medium mt-1">{value !== null && value !== undefined ? value : '-'}</span>
+    <div className="py-2 border-bottom">
+        <small className="text-muted d-block text-uppercase">{label}</small>
+        <span className="fw-medium">{value !== null && value !== undefined ? value : '-'}</span>
     </div>
 );
 
 const SectionHeader = ({ title, icon: Icon }) => (
-    <div className="flex items-center gap-2 mb-4 text-blue-600 dark:text-blue-400">
-        <Icon className="h-4 w-4" />
-        <h3 className="text-sm font-bold uppercase tracking-wider">{title}</h3>
+    <div className="d-flex align-items-center gap-2 mb-3">
+        <Icon className="h-4 w-4 text-primary" />
+        <h6 className="mb-0 text-uppercase fw-bold small">{title}</h6>
     </div>
 );
 
 const MaterialsView = ({ materials }) => {
-    if (!materials || materials.length === 0) return <div className="text-slate-500 text-center py-8">No materials recorded</div>;
+    if (!materials || materials.length === 0) return <div className="text-muted text-center py-5">No materials recorded</div>;
 
     return (
-        <div className="space-y-8">
+        <div className="vstack gap-4">
             {materials.map((group, groupIdx) => (
-                <div key={groupIdx} className="space-y-4">
-                    <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+                <div key={groupIdx}>
+                    <div className="d-flex align-items-center gap-2 border-bottom pb-2 mb-3">
                         {group.material_type === 'Petline' ? (
-                            <Layers className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                            <Layers className="h-5 w-5 text-primary" />
                         ) : (
-                            <Box className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                            <Box className="h-5 w-5 text-warning" />
                         )}
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                        <h5 className="mb-0 fw-semibold">
                             {group.material_type} Materials
-                        </h3>
+                        </h5>
                     </div>
 
                     {group.material_type === 'Petline' && (
@@ -147,11 +146,11 @@ const PetlineMaterialsGroup = ({ items }) => {
     };
 
     return (
-        <div className="grid grid-cols-1 gap-6">
+        <div className="vstack gap-3">
             {/* Preforms Section */}
             {groups.preform.length > 0 && (
-                <div className="bg-slate-50 dark:bg-slate-950/30 rounded-lg p-4 border border-slate-200 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Preforms</h4>
+                <div className="bg-light rounded p-3 border">
+                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Preforms</h6>
                     <DataTable
                         columns={[
                             { header: 'Batch', accessor: 'batch_number' },
@@ -171,8 +170,8 @@ const PetlineMaterialsGroup = ({ items }) => {
 
             {/* Caps Section */}
             {groups.caps.length > 0 && (
-                <div className="bg-slate-50 dark:bg-slate-950/30 rounded-lg p-4 border border-slate-200 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Caps</h4>
+                <div className="bg-light rounded p-3 border">
+                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Caps</h6>
                     <DataTable
                         columns={[
                             { header: 'Batch', accessor: 'batch_number' },
@@ -192,8 +191,8 @@ const PetlineMaterialsGroup = ({ items }) => {
 
             {/* Labels Section */}
             {groups.labels.length > 0 && (
-                <div className="bg-slate-50 dark:bg-slate-950/30 rounded-lg p-4 border border-slate-200 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Labels / Sleeves</h4>
+                <div className="bg-light rounded p-3 border">
+                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Labels / Sleeves</h6>
                     <DataTable
                         columns={[
                             { header: 'Batch', accessor: 'batch_number' },
@@ -213,8 +212,8 @@ const PetlineMaterialsGroup = ({ items }) => {
 
             {/* Shrink Section */}
             {groups.shrink.length > 0 && (
-                <div className="bg-slate-50 dark:bg-slate-950/30 rounded-lg p-4 border border-slate-200 dark:border-slate-800/50">
-                    <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Shrink Wrap</h4>
+                <div className="bg-light rounded p-3 border">
+                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Shrink Wrap</h6>
                     <DataTable
                         columns={[
                             { header: 'Batch', accessor: 'batch_number' },
@@ -237,8 +236,8 @@ const PetlineMaterialsGroup = ({ items }) => {
 
 const CanlineMaterialsGroup = ({ items }) => {
     return (
-        <div className="bg-slate-50 dark:bg-slate-950/30 rounded-lg p-4 border border-slate-200 dark:border-slate-800/50">
-            <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Usage Records</h4>
+        <div className="bg-light rounded p-3 border">
+            <h6 className="text-muted text-uppercase small fw-bold mb-3">Usage Records</h6>
             <DataTable
                 columns={[
                     { header: 'Date', accessor: 'date_created', render: r => new Date(r.date_created).toLocaleString() },
@@ -255,83 +254,85 @@ const CanlineMaterialsGroup = ({ items }) => {
 };
 
 const StoppageLogsView = ({ logs }) => {
-    if (!logs || logs.length === 0) return <div className="text-slate-500 text-center py-8">No stoppage logs recorded</div>;
+    if (!logs || logs.length === 0) return <div className="text-muted text-center py-5">No stoppage logs recorded</div>;
 
     return (
-        <div className="space-y-4">
+        <div className="vstack gap-3">
             {logs.map((log) => (
-                <div key={log.id} className="bg-slate-50 dark:bg-slate-950/30 rounded-lg border border-slate-200 dark:border-slate-800/50 overflow-hidden">
+                <div key={log.id} className="card border">
                     {/* Header Summary */}
-                    <div className="p-4 grid grid-cols-2 md:grid-cols-5 gap-4 items-center bg-white dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800/50">
-                        <div>
-                            <span className="text-slate-500 text-xs uppercase block mb-1">Hour</span>
-                            <div className="flex items-center gap-2">
-                                <Clock className="h-3 w-3 text-slate-400" />
-                                <span className="text-slate-900 dark:text-slate-200 font-medium">Hour {log.hour_index}</span>
+                    <div className="card-header bg-light">
+                        <div className="row g-3">
+                            <div className="col-md">
+                                <small className="text-muted text-uppercase d-block mb-1">Hour</small>
+                                <div className="d-flex align-items-center gap-2">
+                                    <Clock className="h-3 w-3 text-muted" />
+                                    <span className="fw-medium">Hour {log.hour_index}</span>
+                                </div>
+                                <small className="text-muted ms-4">{log.log_time}</small>
                             </div>
-                            <span className="text-xs text-slate-500 ml-5">{log.log_time}</span>
-                        </div>
-                        <div>
-                            <span className="text-slate-500 text-xs uppercase block mb-1">Efficiency</span>
-                            <div className="flex items-center gap-2">
-                                <Activity className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">{log.efficiency}%</span>
+                            <div className="col-md">
+                                <small className="text-muted text-uppercase d-block mb-1">Efficiency</small>
+                                <div className="d-flex align-items-center gap-2">
+                                    <Activity className="h-3 w-3 text-success" />
+                                    <span className="fw-medium text-success">{log.efficiency}%</span>
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <span className="text-slate-500 text-xs uppercase block mb-1">Downtime</span>
-                            <div className="flex items-center gap-2">
-                                <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                                <span className="text-amber-600 dark:text-amber-400 font-medium">{log.downtime_minutes} min</span>
+                            <div className="col-md">
+                                <small className="text-muted text-uppercase d-block mb-1">Downtime</small>
+                                <div className="d-flex align-items-center gap-2">
+                                    <AlertTriangle className="h-3 w-3 text-warning" />
+                                    <span className="fw-medium text-warning">{log.downtime_minutes} min</span>
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <span className="text-slate-500 text-xs uppercase block mb-1">Output</span>
-                            <div className="flex items-center gap-2">
-                                <Layers className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                                <span className="text-blue-600 dark:text-blue-400 font-medium">{log.bottles_produced?.toLocaleString()}</span>
+                            <div className="col-md">
+                                <small className="text-muted text-uppercase d-block mb-1">Output</small>
+                                <div className="d-flex align-items-center gap-2">
+                                    <Layers className="h-3 w-3 text-primary" />
+                                    <span className="fw-medium text-primary">{log.bottles_produced?.toLocaleString()}</span>
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <span className="text-slate-500 text-xs uppercase block mb-1">Logged By</span>
-                            <div className="flex items-center gap-2">
-                                <User className="h-3 w-3 text-slate-400" />
-                                <span className="text-slate-700 dark:text-slate-300 text-sm truncate max-w-[100px]" title={log.created_by?.full_name}>
-                                    {log.created_by?.full_name || log.created_by?.username}
-                                </span>
+                            <div className="col-md">
+                                <small className="text-muted text-uppercase d-block mb-1">Logged By</small>
+                                <div className="d-flex align-items-center gap-2">
+                                    <User className="h-3 w-3 text-muted" />
+                                    <span className="small text-truncate" style={{ maxWidth: '100px' }} title={log.created_by?.full_name}>
+                                        {log.created_by?.full_name || log.created_by?.username}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     {/* Details & Incidents */}
-                    <div className="p-4 space-y-4">
+                    <div className="card-body">
                         {log.comments && (
-                            <div className="text-sm text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/20 p-3 rounded border border-slate-200 dark:border-slate-800/30">
-                                <span className="font-semibold text-slate-700 dark:text-slate-500 mr-2 uppercase text-xs">Comments:</span>
+                            <div className="alert alert-info small mb-3">
+                                <strong className="text-uppercase small me-2">Comments:</strong>
                                 {log.comments}
                             </div>
                         )}
 
                         {log.incidents && log.incidents.length > 0 ? (
-                            <div className="mt-2">
-                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
+                            <div>
+                                <h6 className="text-muted text-uppercase small fw-bold mb-2 d-flex align-items-center gap-2">
                                     <AlertTriangle className="h-3 w-3" />
                                     Incidents
-                                </h5>
-                                <div className="grid grid-cols-1 gap-2">
+                                </h6>
+                                <div className="vstack gap-2">
                                     {log.incidents.map((inc, i) => (
-                                        <div key={i} className="text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900/50 p-2 rounded border border-slate-200 dark:border-slate-800/50 flex items-start gap-2">
-                                            <span className="text-slate-400 dark:text-slate-600 mt-0.5">•</span>
-                                            <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                                {inc.incident_category_name || 'Uncategorized'}:
-                                            </span>
-                                            {inc.incident_description}
+                                        <div key={i} className="bg-white p-2 rounded border small d-flex align-items-start gap-2">
+                                            <span className="text-muted">•</span>
+                                            <div>
+                                                <strong>{inc.incident_category_name || 'Uncategorized'}:</strong>
+                                                {' '}{inc.incident_description}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         ) : (
-                            <p className="text-xs text-slate-500 dark:text-slate-600 italic">No incidents recorded for this period.</p>
+                            <p className="text-muted small fst-italic mb-0">No incidents recorded for this period.</p>
                         )}
                     </div>
                 </div>
@@ -344,61 +345,69 @@ const StoppageTimeline = ({ logs }) => {
     if (!logs || logs.length === 0) return null;
 
     return (
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-            <SectionHeader title="Stoppage Event Timeline" icon={Clock} />
-            <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-3 space-y-8 pl-8 py-2">
-                {logs.slice().sort((a, b) => (a.hour_index - b.hour_index)).map((log, idx) => (
-                    <div key={idx} className="relative">
-                        {/* Dot */}
-                        <div className="absolute -left-[41px] top-1 h-5 w-5 rounded-full border-4 border-white dark:border-slate-900 bg-blue-500" />
-
-                        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 border border-slate-200 dark:border-slate-800">
-                            <div className="flex justify-between items-start mb-2">
-                                <div>
-                                    <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                                        Hour {log.hour_index}
-                                        {log.minute_index != null && <span className="text-slate-400 font-normal">:{String(log.minute_index).padStart(2, '0')}</span>}
-                                    </h4>
-                                    <span className="text-xs text-slate-500">{log.downtime_minutes} min downtime</span>
-                                </div>
-                                <span className={`px-2 py-1 rounded text-xs font-bold ${parseFloat(log.efficiency) >= 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    {log.efficiency}% Eff
-                                </span>
-                            </div>
-
-                            {/* Incidents */}
-                            {log.incidents && log.incidents.length > 0 ? (
-                                <div className="space-y-2 mt-3">
-                                    {log.incidents.map((inc, i) => (
-                                        <div key={i} className="flex gap-3 items-start justify-between text-sm p-2 bg-white dark:bg-slate-950/30 rounded border border-slate-100 dark:border-slate-800/50">
-                                            <div className="flex gap-3 items-start">
-                                                <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                                                <div>
-                                                    <p className="font-medium text-slate-800 dark:text-slate-200">
-                                                        {inc.downtime_category_name || 'Uncategorized'}
-                                                        {inc.sub_downtime_category_name && <span className="text-slate-400 font-normal"> / {inc.sub_downtime_category_name}</span>}
-                                                    </p>
-                                                    <p className="text-slate-600 dark:text-slate-400 text-xs mt-0.5">{inc.incident_description}</p>
-                                                </div>
-                                            </div>
-                                            {inc.incident_duration && (
-                                                <div className="flex flex-col items-end flex-shrink-0 ml-4">
-                                                    <span className="text-slate-900 dark:text-slate-100 font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded text-xs border border-amber-100 dark:border-amber-500/20 whitespace-nowrap">
-                                                        {inc.incident_duration} min
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                log.downtime_minutes > 0 && <p className="text-xs text-slate-400 italic mt-2">No specific incidents logged. ({log.comments})</p>
-                            )}
-                        </div>
-                    </div>
-                ))}
+        <div className="card mb-4">
+            <div className="card-header bg-soft-primary">
+                <h6 className="mb-0 d-flex align-items-center gap-2 text-primary">
+                    <Clock className="h-4 w-4" />
+                    Stoppage Event Timeline
+                </h6>
             </div>
-        </Card>
+            <div className="card-body">
+                <div className="position-relative border-start border-2 border-primary ms-3 ps-4">
+                    {logs.slice().sort((a, b) => (a.hour_index - b.hour_index)).map((log, idx) => (
+                        <div key={idx} className="position-relative mb-4">
+                            {/* Dot */}
+                            <div className="position-absolute bg-primary rounded-circle border border-4 border-white" 
+                                 style={{ left: '-42px', top: '4px', width: '20px', height: '20px' }} />
+
+                            <div className="card border">
+                                <div className="card-body p-3">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <h6 className="mb-0 fw-bold d-flex align-items-center gap-2">
+                                                Hour {log.hour_index}
+                                                {log.minute_index != null && <span className="text-muted fw-normal">:{String(log.minute_index).padStart(2, '0')}</span>}
+                                            </h6>
+                                            <small className="text-muted">{log.downtime_minutes} min downtime</small>
+                                        </div>
+                                        <span className={`badge ${parseFloat(log.efficiency) >= 80 ? 'bg-soft-success text-success' : 'bg-soft-warning text-warning'}`}>
+                                            {log.efficiency}% Eff
+                                        </span>
+                                    </div>
+
+                                    {/* Incidents */}
+                                    {log.incidents && log.incidents.length > 0 ? (
+                                        <div className="vstack gap-2 mt-3">
+                                            {log.incidents.map((inc, i) => (
+                                                <div key={i} className="d-flex gap-2 align-items-start justify-content-between small p-2 bg-light rounded border">
+                                                    <div className="d-flex gap-2 align-items-start flex-grow-1">
+                                                        <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0 mt-1" />
+                                                        <div>
+                                                            <p className="mb-0 fw-medium">
+                                                                {inc.downtime_category_name || 'Uncategorized'}
+                                                                {inc.sub_downtime_category_name && <span className="text-muted fw-normal"> / {inc.sub_downtime_category_name}</span>}
+                                                            </p>
+                                                            <p className="mb-0 text-muted small">{inc.incident_description}</p>
+                                                        </div>
+                                                    </div>
+                                                    {inc.incident_duration && (
+                                                        <span className="badge bg-soft-warning text-warning flex-shrink-0">
+                                                            {inc.incident_duration} min
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        log.downtime_minutes > 0 && <p className="text-muted small fst-italic mb-0 mt-2">No specific incidents logged. ({log.comments})</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
     );
 };
 
@@ -412,32 +421,30 @@ const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) =
 
         if (!data) {
             return (
-                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-                    <p className="text-sm">No {title} data recorded</p>
+                <div className="text-center py-5 text-muted">
+                    <p className="small mb-0">No {title} data recorded</p>
                 </div>
             );
         }
 
         return (
-            <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+                <div className="row g-3">
                     {fields.map((field) => (
-                        <div key={field.key} className="bg-slate-50 dark:bg-slate-950/30 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50">
-                            <span className="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider block mb-1">
-                                {field.label}
-                            </span>
-                            <span className="text-slate-900 dark:text-slate-100 font-medium">
-                                {data[field.key] !== null && data[field.key] !== undefined ? data[field.key] : '-'}
-                            </span>
+                        <div key={field.key} className="col-md-4">
+                            <div className="bg-light p-3 rounded border">
+                                <small className="text-muted text-uppercase d-block mb-1">{field.label}</small>
+                                <span className="fw-medium">
+                                    {data[field.key] !== null && data[field.key] !== undefined ? data[field.key] : '-'}
+                                </span>
+                            </div>
                         </div>
                     ))}
                 </div>
                 {data.remarks && (
-                    <div className="mt-4 bg-slate-50 dark:bg-slate-950/30 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50">
-                        <span className="text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider block mb-1">
-                            Remarks
-                        </span>
-                        <p className="text-slate-700 dark:text-slate-300 text-sm">{data.remarks}</p>
+                    <div className="mt-3 bg-light p-3 rounded border">
+                        <small className="text-muted text-uppercase d-block mb-1">Remarks</small>
+                        <p className="mb-0 small">{data.remarks}</p>
                     </div>
                 )}
             </div>
@@ -490,15 +497,12 @@ const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) =
     return (
         <div className="space-y-4">
             {/* Segmented Control */}
-            <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg w-fit">
+            <div className="btn-group mb-3" role="group">
                 {readingTabs.map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveReadingTab(tab.id)}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeReadingTab === tab.id
-                            ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                            }`}
+                        className={`btn ${activeReadingTab === tab.id ? 'btn-primary' : 'btn-outline-primary'}`}
                     >
                         {tab.label}
                     </button>
@@ -702,8 +706,8 @@ const ReportDetails = () => {
     const COLOR_EFFICIENCY = '#10b981'; // emerald-500
     const COLOR_LOSS = '#ef4444'; // red-500
 
-    if (loading) return <div className="p-8 text-center text-slate-500">Loading details...</div>;
-    if (!report) return <div className="p-8 text-center text-red-400">Report not found</div>;
+    if (loading) return <div className="p-4 text-center text-muted">Loading details...</div>;
+    if (!report) return <div className="p-4 text-center text-danger">Report not found</div>;
 
     const tabs = [
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
@@ -714,91 +718,115 @@ const ReportDetails = () => {
 
     const getStatusColor = (status) => {
         switch (status?.toUpperCase()) {
-
-            case 'COMPLETED': return 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20';
-            case 'PENDING': return 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20';
-            case 'IN_PROGRESS': return 'bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20';
-            default: return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+            case 'COMPLETED': return 'bg-soft-success text-success';
+            case 'PENDING': return 'bg-soft-warning text-warning';
+            case 'IN_PROGRESS': return 'bg-soft-info text-info';
+            case 'APPROVED': return 'bg-soft-purple text-purple';
+            default: return 'bg-soft-secondary text-secondary';
         }
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <>
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" onClick={() => navigate('/dashboard/production')}>
-                        <ArrowLeft className="h-4 w-4 mr-2" />
+            <div className="d-flex align-items-center justify-content-between mb-4">
+                <div className="d-flex align-items-center gap-3">
+                    <button className="btn btn-outline-light" onClick={() => navigate('/dashboard/production')}>
+                        <i className="ti ti-arrow-left me-2"></i>
                         Back
-                    </Button>
+                    </button>
                     <div>
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                                {report.report_code}
-                            </h1>
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(report.status)}`}>
+                        <div className="d-flex align-items-center gap-3">
+                            <h4 className="mb-0">{report.report_code}</h4>
+                            <span className={`badge ${getStatusColor(report.status)}`}>
                                 {report.status}
                             </span>
                         </div>
-                        <p className="text-slate-400 text-sm mt-1">
+                        <p className="text-muted small mb-0 mt-1">
                             {new Date(report.production_date).toLocaleDateString()} • {report.shift_name}
                         </p>
                     </div>
                 </div>
-                <Button variant="secondary" onClick={() => navigate(`/dashboard/production/${id}/edit`)}>
+                <button className="btn btn-primary" onClick={() => navigate(`/dashboard/production/${id}/edit`)}>
                     Edit Report
-                </Button>
+                </button>
             </div>
 
             {/* General Overview Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
+            <div className="row g-3 mb-4">
                 {/* Product & Line Info */}
-                <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <SectionHeader title="Product Details" icon={Package} />
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                        <DetailRow label="Product Name" value={report.product_name} />
-                        <DetailRow label="PET Name" value={report.pet_name} />
-                        <DetailRow label="Bottle Size" value={report.bottle_size} />
-                        <DetailRow label="Bottles / Pack" value={report.bottles_per_pack} />
-                        <DetailRow label="Line" value={`Line ${report.line}`} />
-                        <DetailRow label="Shift" value={report.shift_name} />
-                        <DetailRow label="Packs Per Pallet" value={report.packs_per_pallet} />
+                <div className="col-lg-4">
+                    <div className="card h-100">
+                        <div className="card-header bg-soft-primary">
+                            <h6 className="mb-0 d-flex align-items-center gap-2 text-primary">
+                                <Package className="h-4 w-4" />
+                                Product Details
+                            </h6>
+                        </div>
+                        <div className="card-body">
+                            <DetailRow label="Product Name" value={report.product_name} />
+                            <DetailRow label="PET Name" value={report.pet_name} />
+                            <DetailRow label="Bottle Size" value={report.bottle_size} />
+                            <DetailRow label="Bottles / Pack" value={report.bottles_per_pack} />
+                            <DetailRow label="Line" value={`Line ${report.line}`} />
+                            <DetailRow label="Shift" value={report.shift_name} />
+                            <DetailRow label="Packs Per Pallet" value={report.packs_per_pallet} />
+                        </div>
                     </div>
-                </Card>
+                </div>
 
                 {/* Production Metrics */}
-                <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <SectionHeader title="Metrics & Counters" icon={Activity} />
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                        <DetailRow label="Total Bottles" value={report.total_bottles_produced?.toLocaleString()} />
-                        <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
-                        <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
-                        <DetailRow label="Line Speed" value={report.line_speed} />
-
+                <div className="col-lg-4">
+                    <div className="card h-100">
+                        <div className="card-header bg-soft-success">
+                            <h6 className="mb-0 d-flex align-items-center gap-2 text-success">
+                                <Activity className="h-4 w-4" />
+                                Metrics & Counters
+                            </h6>
+                        </div>
+                        <div className="card-body">
+                            <DetailRow label="Total Bottles" value={report.total_bottles_produced?.toLocaleString()} />
+                            <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
+                            <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
+                            <DetailRow label="Line Speed" value={report.line_speed} />
+                        </div>
                     </div>
-                </Card>
+                </div>
 
                 {/* Timing & Personnel */}
-                <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <SectionHeader title="Timing & Team" icon={Clock} />
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-2">
-                        <DetailRow label="Start Time" value={report.start_time} />
-                        <DetailRow label="End Time" value={report.end_time} />
-                        <DetailRow label="Prod. Time" value={`${report.total_production_time_hours ?? 0} hrs`} />
-                        <DetailRow label="Downtime" value={`${report.total_downtime_minutes ?? 0} min`} />
-                        <DetailRow label="Supervisor" value={report.supervisor_name} />
-                        <DetailRow label="Prod. Manager" value={report.production_manager || '-'} />
+                <div className="col-lg-4">
+                    <div className="card h-100">
+                        <div className="card-header bg-soft-info">
+                            <h6 className="mb-0 d-flex align-items-center gap-2 text-info">
+                                <Clock className="h-4 w-4" />
+                                Timing & Team
+                            </h6>
+                        </div>
+                        <div className="card-body">
+                            <DetailRow label="Start Time" value={report.start_time} />
+                            <DetailRow label="End Time" value={report.end_time} />
+                            <DetailRow label="Prod. Time" value={`${report.total_production_time_hours ?? 0} hrs`} />
+                            <DetailRow label="Downtime" value={`${report.total_downtime_minutes ?? 0} min`} />
+                            <DetailRow label="Supervisor" value={report.supervisor_name} />
+                            <DetailRow label="Prod. Manager" value={report.production_manager || '-'} />
+                        </div>
                     </div>
-                </Card>
+                </div>
             </div>
 
             {/* Production Performance Analysis */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="row g-3 mb-4">
                 {/* Efficiency Chart */}
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <SectionHeader title="Efficiency Analysis" icon={Activity} />
-                    <div className="flex flex-col md:flex-row items-center gap-8 justify-center h-64">
+                <div className="col-lg-6">
+                    <div className="card h-100">
+                        <div className="card-header bg-soft-success">
+                            <h6 className="mb-0 d-flex align-items-center gap-2 text-success">
+                                <Activity className="h-4 w-4" />
+                                Efficiency Analysis
+                            </h6>
+                        </div>
+                        <div className="card-body">
+                            <div className="d-flex flex-column flex-md-row align-items-center gap-4 justify-content-center" style={{ minHeight: '250px' }}>
                         <div className="relative w-48 h-48 flex-shrink-0">
                             {efficiencyData.length > 0 ? (
                                 <div className="w-full h-full">
@@ -827,42 +855,49 @@ const ReportDetails = () => {
                                             />
                                         </PieChart>
                                     </ResponsiveContainer>
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                        <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Score</span>
-                                        <span className={`text-2xl font-bold ${efficiencyData[0]?.value >= 80 ? 'text-emerald-500' : efficiencyData[0]?.value >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
+                                        <small className="text-muted text-uppercase d-block">Score</small>
+                                        <h3 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`}>
                                             {efficiencyData[0]?.value}%
-                                        </span>
+                                        </h3>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="w-full h-full rounded-full border-4 border-slate-100 dark:border-slate-800 border-dashed flex items-center justify-center">
-                                    <span className="text-slate-400 text-xs">No Data</span>
+                                <div className="w-100 h-100 rounded-circle border border-3 border-dashed d-flex align-items-center justify-content-center">
+                                    <span className="text-muted small">No Data</span>
                                 </div>
                             )}
                         </div>
-                        <div className="w-full max-w-xs space-y-4">
+                        <div className="vstack gap-3">
                             {efficiencyData.map((item, index) => (
-                                <div key={index} className="flex items-start gap-3 group">
+                                <div key={index} className="d-flex align-items-start gap-3">
                                     <div
-                                        className="w-1.5 h-10 rounded-full mt-1 flex-shrink-0 transition-all group-hover:scale-110"
-                                        style={{ backgroundColor: item.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS }}
+                                        className="rounded-pill mt-1 flex-shrink-0"
+                                        style={{ backgroundColor: item.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS, width: '6px', height: '40px' }}
                                     />
                                     <div>
-                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">{item.name}</p>
-                                        <div className="flex items-baseline gap-2">
-                                            <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100">{item.value}%</h4>
-                                        </div>
+                                        <small className="text-muted text-uppercase fw-bold d-block">{item.name}</small>
+                                        <h5 className="mb-0 fw-bold">{item.value}%</h5>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
-                </Card>
+                </div>
+                    </div>
+                </div>
 
                 {/* Downtime Analysis Chart */}
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <SectionHeader title="Downtime Breakdown (Minutes)" icon={AlertTriangle} />
-                    <div className="h-64 w-full">
+                <div className="col-lg-6">
+                    <div className="card h-100">
+                        <div className="card-header bg-soft-warning">
+                            <h6 className="mb-0 d-flex align-items-center gap-2 text-warning">
+                                <AlertTriangle className="h-4 w-4" />
+                                Downtime Breakdown (Minutes)
+                            </h6>
+                        </div>
+                        <div className="card-body">
+                            <div style={{ height: '250px', width: '100%' }}>
                         {downtimeData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={downtimeData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
@@ -885,129 +920,158 @@ const ReportDetails = () => {
                                 </BarChart>
                             </ResponsiveContainer>
                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 space-y-2 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-xl">
-                                <Activity className="h-8 w-8 opacity-20" />
-                                <span className="text-sm">No Downtime Recorded</span>
+                            <div className="w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted border border-2 border-dashed rounded">
+                                <Activity className="h-8 w-8 opacity-25 mb-2" />
+                                <span className="small">No Downtime Recorded</span>
                             </div>
                         )}
                     </div>
-                </Card>
+                </div>
+                    </div>
+                </div>
             </div>
 
             {/* OEE Analysis Charts */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <OEEBarChart
-                    title="Availability"
-                    data={[{ name: report.pet_name, value: Number(oeeMetrics.availability) }]}
-                    color="#3b82f6" // blue
-                    tooltipPrefix="Availability"
-                    gridColor={chartGridColor}
-                    textColor={tooltipText}
-                    bgColor={tooltipBg}
-                    borderColor={tooltipBorder}
-                />
-                <OEEBarChart
-                    title="Quality"
-                    data={[{ name: report.pet_name, value: Number(oeeMetrics.quality) }]}
-                    color="#10b981" // emerald
-                    tooltipPrefix="Quality"
-                    gridColor={chartGridColor}
-                    textColor={tooltipText}
-                    bgColor={tooltipBg}
-                    borderColor={tooltipBorder}
-                />
-                <OEEBarChart
-                    title="Performance"
-                    data={[{ name: report.pet_name, value: Number(oeeMetrics.performance) }]}
-                    color="#f59e0b" // amber
-                    tooltipPrefix="Performance"
-                    gridColor={chartGridColor}
-                    textColor={tooltipText}
-                    bgColor={tooltipBg}
-                    borderColor={tooltipBorder}
-                />
+            <div className="row g-3 mb-4">
+                <div className="col-lg-4">
+                    <OEEBarChart
+                        title="Availability"
+                        data={[{ name: report.pet_name, value: Number(oeeMetrics.availability) }]}
+                        color="#3b82f6"
+                        tooltipPrefix="Availability"
+                        gridColor={chartGridColor}
+                        textColor={tooltipText}
+                        bgColor={tooltipBg}
+                        borderColor={tooltipBorder}
+                    />
+                </div>
+                <div className="col-lg-4">
+                    <OEEBarChart
+                        title="Quality"
+                        data={[{ name: report.pet_name, value: Number(oeeMetrics.quality) }]}
+                        color="#10b981"
+                        tooltipPrefix="Quality"
+                        gridColor={chartGridColor}
+                        textColor={tooltipText}
+                        bgColor={tooltipBg}
+                        borderColor={tooltipBorder}
+                    />
+                </div>
+                <div className="col-lg-4">
+                    <OEEBarChart
+                        title="Performance"
+                        data={[{ name: report.pet_name, value: Number(oeeMetrics.performance) }]}
+                        color="#f59e0b"
+                        tooltipPrefix="Performance"
+                        gridColor={chartGridColor}
+                        textColor={tooltipText}
+                        bgColor={tooltipBg}
+                        borderColor={tooltipBorder}
+                    />
+                </div>
             </div>
 
             {/* Meter Readings Section */}
-            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                <div className="mb-6">
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">Meter Readings</h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Production, Syrup, and CO2 consumption data</p>
+            <div className="card mb-4">
+                <div className="card-header bg-soft-indigo">
+                    <h6 className="mb-0 text-indigo">Meter Readings</h6>
+                    <small className="text-muted">Production, Syrup, and CO2 consumption data</small>
                 </div>
+                <div className="card-body">
                 <MeterReadingsView
                     productionReadings={report.production_readings}
                     syrupReadings={report.syrup_readings}
                     co2Readings={report.co2_readings}
                 />
-            </Card>
+            </div>
+        </div>
 
             {/* Remarks Section */}
             {(report.remarks || report.summary_text) && (
-                <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                    <SectionHeader title="Remarks & Summary" icon={Box} />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {report.remarks && (
-                            <div>
-                                <span className="text-slate-500 text-xs uppercase tracking-wider block mb-2">Remarks</span>
-                                <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed bg-slate-50 dark:bg-slate-950/30 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50">
-                                    {report.remarks}
-                                </p>
-                            </div>
-                        )}
-                        {report.summary_text && (
-                            <div>
-                                <span className="text-slate-500 text-xs uppercase tracking-wider block mb-2">Summary Text</span>
-                                <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed bg-slate-50 dark:bg-slate-950/30 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50">
-                                    {report.summary_text}
-                                </p>
-                            </div>
-                        )}
+                <div className="card mb-4">
+                    <div className="card-header">
+                        <h6 className="mb-0 d-flex align-items-center gap-2">
+                            <Box className="h-4 w-4" />
+                            Remarks & Summary
+                        </h6>
                     </div>
-                </Card>
+                    <div className="card-body">
+                        <div className="row g-4">
+                            {report.remarks && (
+                                <div className="col-md-6">
+                                    <small className="text-muted text-uppercase d-block mb-2">Remarks</small>
+                                    <div className="bg-light p-3 rounded border">
+                                        {report.remarks}
+                                    </div>
+                                </div>
+                            )}
+                            {report.summary_text && (
+                                <div className="col-md-6">
+                                    <small className="text-muted text-uppercase d-block mb-2">Summary Text</small>
+                                    <div className="bg-light p-3 rounded border">
+                                        {report.summary_text}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* High Level Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <StatCard
+            <div className="row g-3 mb-4">
+                <div className="col-lg-3 col-md-6">
+                    <StatCard
                     title="Total Output"
                     value={totalOutput.toLocaleString()}
                     icon={Layers}
                     cardColor="success"
                 />
-                <StatCard
+                </div>
+                <div className="col-lg-3 col-md-6">
+                    <StatCard
                     title="Production Time"
                     value={`${productionTime} hrs`}
                     icon={Clock}
                     cardColor="info"
                 />
-                <StatCard
+                </div>
+                <div className="col-lg-3 col-md-6">
+                    <StatCard
                     title="Efficiency"
                     value={`${efficiency}%`}
                     icon={Activity}
                     cardColor="indigo"
                 />
-                <StatCard
+                </div>
+                <div className="col-lg-3 col-md-6">
+                    <StatCard
                     title="Downtime"
                     value={`${totalDowntime} min`}
                     icon={AlertTriangle}
                     cardColor="warning"
                 />
+                </div>
             </div>
 
             {/* Downtime Breakdown Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <StatCard
+            <div className="row g-3 mb-4">
+                <div className="col-md-6">
+                    <StatCard
                     title="Mechanical Downtime"
                     value={`${mechanicalDowntime} min`}
                     icon={AlertTriangle}
                     cardColor="danger"
                 />
-                <StatCard
+                </div>
+                <div className="col-md-6">
+                    <StatCard
                     title="Planned Downtime"
                     value={`${plannedDowntime} min`}
                     icon={Clock}
                     cardColor="info"
                 />
+                </div>
             </div>
 
 
@@ -1016,36 +1080,27 @@ const ReportDetails = () => {
             <StoppageTimeline logs={report.stoppage_logs} />
 
             {/* Tabbed Detailed Content */}
-            <Card className="min-h-[400px] border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden">
-                <div className="border-b border-slate-200 dark:border-slate-800">
-                    <div className="flex overflow-x-auto hide-scrollbar">
-                        {tabs.map(tab => (
+            <div className="card">
+                <div className="card-header p-0 border-0">
+                    <div className="d-flex overflow-auto">{tabs.map(tab => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`px-6 py-4 text-sm font-medium transition-colors relative whitespace-nowrap flex items-center gap-2 ${activeTab === tab.id
-                                    ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-slate-800/30'
-                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/20'
+                                className={`px-4 py-3 text-sm fw-medium border-0 bg-transparent d-flex align-items-center gap-2 ${activeTab === tab.id
+                                    ? 'text-primary border-bottom border-primary border-3'
+                                    : 'text-muted'
                                     }`}
                             >
                                 {tab.label}
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-blue-500/20' : 'bg-slate-200 dark:bg-slate-800'
-                                    }`}>
+                                <span className={`badge ${activeTab === tab.id ? 'bg-primary' : 'bg-secondary'}`}>
                                     {tab.count}
                                 </span>
-                                {activeTab === tab.id && (
-                                    <motion.div
-                                        layoutId="activeTab"
-                                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400"
-                                    />
-                                )}
                             </button>
                         ))}
                     </div>
                 </div>
 
-                <div className="p-6">
-                    {activeTab === 'batches' && (
+                <div className="card-body">{activeTab === 'batches' && (
                         <DataTable
                             columns={[
                                 { header: 'Batch #', accessor: 'batch_number' },
@@ -1078,8 +1133,8 @@ const ReportDetails = () => {
                         />
                     )}
                 </div>
-            </Card>
-        </div>
+            </div>
+        </>
     );
 };
 

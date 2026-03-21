@@ -49,6 +49,10 @@ const ProductionList = () => {
 
     const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
+    // Broad dataset for charts (independent of table pagination/date filters)
+    const [chartReports, setChartReports] = useState([]);
+    const [chartDataLoading, setChartDataLoading] = useState(true);
+
     const getReportDate = useCallback((report) => {
         const rawDate = report?.production_date || report?.log_date || '';
         return String(rawDate).split('T')[0];
@@ -118,7 +122,7 @@ const ProductionList = () => {
     }, [pets]);
 
     const bottlesByPetChartData = useMemo(() => {
-        const filteredReports = applyCardFilters(reports, {
+        const filteredReports = applyCardFilters(chartReports, {
             period: chartFilter,
             singleDate: chartDate,
             useRange: useDateRange,
@@ -126,10 +130,10 @@ const ProductionList = () => {
             endDate: chartDateRange.end
         });
         return buildLineChartData(filteredReports);
-    }, [reports, chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end, applyCardFilters, buildLineChartData]);
+    }, [chartReports, chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end, applyCardFilters, buildLineChartData]);
 
     const productionShareChartData = useMemo(() => {
-        const filteredReports = applyCardFilters(reports, {
+        const filteredReports = applyCardFilters(chartReports, {
             period: chart2Filter,
             singleDate: chart2Date,
             useRange: useDateRange2,
@@ -137,7 +141,7 @@ const ProductionList = () => {
             endDate: chart2DateRange.end
         });
         return buildLineChartData(filteredReports);
-    }, [reports, chart2Filter, chart2Date, useDateRange2, chart2DateRange.start, chart2DateRange.end, applyCardFilters, buildLineChartData]);
+    }, [chartReports, chart2Filter, chart2Date, useDateRange2, chart2DateRange.start, chart2DateRange.end, applyCardFilters, buildLineChartData]);
 
     const fetchReports = async () => {
         setLoading(true);
@@ -232,6 +236,34 @@ const ProductionList = () => {
         }, 500);
         return () => clearTimeout(timeoutId);
     }, [filters, globalFilters.start_date, globalFilters.end_date]);
+
+    // Fetch broad dataset for charts (all reports, no date restriction)
+    const fetchChartData = useCallback(async () => {
+        setChartDataLoading(true);
+        try {
+            const res = await productionApi.getReports({ page_size: 1000 });
+            const responseData = res.data;
+            let listData = [];
+            if (Array.isArray(responseData)) {
+                listData = responseData;
+            } else if (responseData.data?.results && Array.isArray(responseData.data.results)) {
+                listData = responseData.data.results;
+            } else if (responseData.results && Array.isArray(responseData.results)) {
+                listData = responseData.results;
+            } else if (responseData.data && Array.isArray(responseData.data)) {
+                listData = responseData.data;
+            }
+            setChartReports(listData);
+        } catch (err) {
+            console.error('Failed to fetch chart data:', err);
+        } finally {
+            setChartDataLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchChartData();
+    }, [fetchChartData]);
 
     const handlePageChange = (newPage) => {
         setFilters(prev => ({ ...prev, page: newPage }));
@@ -499,7 +531,7 @@ const ProductionList = () => {
             )}
 
             {/* Pie Charts Row */}
-            {loading ? (
+            {chartDataLoading ? (
                 <div className="row mb-4">
                     <div className="col-lg-6"><SkeletonDonut /></div>
                     <div className="col-lg-6"><SkeletonDonut /></div>
