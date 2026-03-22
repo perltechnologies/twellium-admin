@@ -60,9 +60,7 @@ const Login = () => {
                                     <div className="text-center mb-5 auth-logo" style={{
                                         animation: mounted ? 'fadeInDown 0.8s ease-out' : 'none'
                                     }}>
-                                        <div className="d-inline-flex align-items-center justify-content-center p-3 rounded-2xl bg-gradient-primary bg-opacity-10 mb-3">
-                                            <LogIn className="h-8 w-8 text-primary" />
-                                        </div>
+
                                         <img src="/logo.jpeg" className="img-fluid" alt="Logo" style={{ maxWidth: '160px' }} />
                                     </div>
 
@@ -200,28 +198,17 @@ const Login = () => {
                         </div>
                     </div>
 
-                    {/* Right: Background Image/Gradient */}
-                    <div className="col-lg-6 login-bg-01 d-none d-lg-block" style={{
-                                        background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
+                    {/* Right: Background Image */}
+                    <div className="col-lg-6 d-none d-lg-block vh-100" style={{
+                                        backgroundImage: 'url(/twellium-all-products.jpg)',
+                                        backgroundSize: 'cover',
+                                        backgroundPosition: 'center bottom',
+                                        backgroundRepeat: 'no-repeat',
                                         opacity: mounted ? 1 : 0,
                                         transition: 'opacity 1s ease-out 0.3s',
                                         position: 'relative',
                                         overflow: 'hidden'
                                     }}>
-                                        <div className="position-absolute top-50 start-50 translate-middle text-center text-white p-5">
-                                            <div className="mb-4" style={{ opacity: mounted ? 0 : 0.5, transition: 'opacity 1s ease-out 0.5s' }}>
-                                                <svg className="d-block mx-auto" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
-                                                    <path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-9a4 4 0 0 1 4-4v0a4 4 0 0 1 4 4v9" />
-                                                </svg>
-                                            </div>
-                                            <h2 className="fw-bold mb-3 display-6" style={{ opacity: mounted ? 0 : 0.5, transition: 'opacity 1s ease-out 0.7s' }}>Enterprise Dashboard</h2>
-                                            <p className="lead mb-0" style={{ opacity: mounted ? 0 : 0.5, transition: 'opacity 1s ease-out 0.9s', maxWidth: '400px', margin: '0 auto' }}>
-                                                Streamline your production management with our comprehensive admin platform
-                                            </p>
-                                        </div>
-                                        {/* Decorative circles */}
-                                        <div className="position-absolute" style={{ top: '10%', left: '10%', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', filter: 'blur(40px)' }}></div>
-                                        <div className="position-absolute" style={{ bottom: '20%', right: '15%', width: '300px', height: '300px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', filter: 'blur(60px)' }}></div>
                                     </div>
 
                 </div>

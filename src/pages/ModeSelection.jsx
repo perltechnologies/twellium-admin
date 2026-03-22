@@ -11,9 +11,7 @@ const ModeSelection = () => {
 
                 {/* Header */}
                 <div className="text-center mb-5 animate__animated animate__fadeInDown">
-                    <div className="d-inline-flex align-items-center justify-content-center p-3 rounded-2xl bg-white dark:bg-slate-800 shadow-sm mb-4">
-                        <Building2 className="h-10 w-10 text-primary" />
-                    </div>
+
                     <img
                         src="/logo.jpeg"
                         alt="Twellium"
