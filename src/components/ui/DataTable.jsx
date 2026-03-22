@@ -28,14 +28,12 @@ export const DataTable = ({
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
-
-
     React.useEffect(() => {
         const timer = setTimeout(() => {
             if (onSearch) onSearch(searchTerm);
         }, 500);
         return () => clearTimeout(timer);
-    }, [searchTerm]);
+    }, [searchTerm, onSearch]);
 
     const handleSearch = (e) => {
         setSearchTerm(e.target.value);
@@ -46,7 +44,7 @@ export const DataTable = ({
             {/* Table Actions */}
             <div className="flex flex-wrap items-center gap-4">
                 <div className="relative w-72">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <Input
                         placeholder={searchPlaceholder}
                         value={searchTerm}
@@ -62,7 +60,7 @@ export const DataTable = ({
                             <select
                                 value={activeFilters[filter.name] || ''}
                                 onChange={(e) => onFilterChange(filter.name, e.target.value)}
-                                className="w-full px-3 py-2 bg-white dark:bg-[#0c0c20] border border-[#e2e8f0] dark:border-[#161641] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 text-[#1f2020] dark:text-[#d9dcff] text-sm"
+                                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-900 dark:text-slate-100 text-sm cursor-pointer transition-all duration-200"
                             >
                                 <option value="">All {filter.label}</option>
                                 {filter.options.map(opt => (
@@ -93,38 +91,44 @@ export const DataTable = ({
             <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-[#707070] dark:text-[#828997] uppercase bg-[#f7f8f9] dark:bg-[#0c0c20] border-b border-[#e2e8f0] dark:border-[#161641]">
+                        <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
                             <tr>
                                 {columns.map((col, idx) => (
-                                    <th key={idx} className="px-5 py-3.5 font-medium tracking-wider">
+                                    <th key={idx} className="px-5 py-3.5 font-semibold tracking-wide">
                                         {col.header}
                                     </th>
                                 ))}
                                 {(onEdit || onDelete || onView) && (
-                                    <th className="px-5 py-3.5 text-right font-medium">Actions</th>
+                                    <th className="px-5 py-3.5 text-right font-semibold tracking-wide">Actions</th>
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#e2e8f0] dark:divide-[#161641]">
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {isLoading ? (
                                 // Loading Skeletons
                                 [...Array(5)].map((_, i) => (
                                     <tr key={i} className="animate-pulse">
                                         {columns.map((_, j) => (
                                             <td key={j} className="px-5 py-3.5">
-                                                <div className="h-4 bg-[#e2e8f0] dark:bg-[#161641] rounded w-24"></div>
+                                                <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-24"></div>
                                             </td>
                                         ))}
                                         <td className="px-5 py-3.5 text-right">
-                                            <div className="h-4 bg-[#e2e8f0] dark:bg-[#161641] rounded w-8 ml-auto"></div>
+                                            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-8 ml-auto"></div>
                                         </td>
                                     </tr>
                                 ))
                             ) : (!data || !Array.isArray(data) || data.length === 0) ? (
                                 // Empty State
                                 <tr>
-                                    <td colSpan={columns.length + 1} className="px-5 py-12 text-center text-[#9d9d9d]">
-                                        No records found
+                                    <td colSpan={columns.length + 1} className="px-5 py-12 text-center text-slate-400">
+                                        <div className="flex flex-col items-center justify-center">
+                                            <div className="w-16 h-16 mb-4 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                                                <Search className="h-8 w-8 text-slate-400" />
+                                            </div>
+                                            <p className="text-base font-medium">No records found</p>
+                                            <p className="text-sm mt-1">Try adjusting your search or filters</p>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : (
@@ -132,23 +136,23 @@ export const DataTable = ({
                                 data.map((row, rowIndex) => (
                                     <motion.tr
                                         key={row.id || rowIndex}
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        transition={{ delay: rowIndex * 0.05 }}
-                                        className="hover:bg-[#f7f8f9] dark:hover:bg-[#0c0c20] transition-colors group"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: rowIndex * 0.03 }}
+                                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group"
                                     >
                                         {columns.map((col, colIndex) => (
-                                            <td key={colIndex} className="px-5 py-3.5 whitespace-nowrap text-[#707070] dark:text-[#d9dcff]">
+                                            <td key={colIndex} className="px-5 py-3.5 whitespace-nowrap text-slate-600 dark:text-slate-300">
                                                 {col.render ? col.render(row) : row[col.accessor]}
                                             </td>
                                         ))}
                                         {(onEdit || onDelete || onView) && (
                                             <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {onView && (
                                                         <button
                                                             onClick={() => onView(row)}
-                                                            className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/10 text-[#9d9d9d] hover:text-blue-600 rounded-lg transition-colors"
+                                                            className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-400 hover:text-blue-600 rounded-lg transition-colors"
                                                             title="View Details"
                                                         >
                                                             <Eye className="h-4 w-4" />
@@ -157,7 +161,7 @@ export const DataTable = ({
                                                     {onEdit && (
                                                         <button
                                                             onClick={() => onEdit(row)}
-                                                            className="p-1.5 hover:bg-green-50 dark:hover:bg-green-900/10 text-[#9d9d9d] hover:text-green-600 rounded-lg transition-colors"
+                                                            className="p-2 hover:bg-green-50 dark:hover:bg-green-900/20 text-slate-400 hover:text-green-600 rounded-lg transition-colors"
                                                             title="Edit"
                                                         >
                                                             <Edit className="h-4 w-4" />
@@ -166,7 +170,7 @@ export const DataTable = ({
                                                     {onDelete && (
                                                         <button
                                                             onClick={() => onDelete(row)}
-                                                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/10 text-[#9d9d9d] hover:text-red-500 rounded-lg transition-colors"
+                                                            className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
                                                             title="Delete"
                                                         >
                                                             <Trash2 className="h-4 w-4" />
@@ -184,18 +188,18 @@ export const DataTable = ({
 
                 {/* Pagination */}
                 {pagination && (
-                    <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#e2e8f0] dark:border-[#161641]">
-                        <div className="text-13 text-[#707070]">
-                            Showing <span className="font-medium text-[#1f2020] dark:text-[#d9dcff]">
+                    <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                            Showing <span className="font-medium text-slate-700 dark:text-slate-300">
                                 {Math.min((pagination.currentPage - 1) * pagination.pageSize + 1, pagination.totalCount)}
-                            </span> to <span className="font-medium text-[#1f2020] dark:text-[#d9dcff]">
+                            </span> to <span className="font-medium text-slate-700 dark:text-slate-300">
                                 {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)}
-                            </span> of <span className="font-medium text-[#1f2020] dark:text-[#d9dcff]">{pagination.totalCount}</span> results
+                            </span> of <span className="font-medium text-slate-700 dark:text-slate-300">{pagination.totalCount}</span> results
                         </div>
                         <div className="flex gap-2">
                             <Button
                                 variant="secondary"
-                                className="px-2 py-1 h-8 text-xs"
+                                className="px-3 py-2 h-9 text-sm"
                                 disabled={!pagination.hasPrev}
                                 onClick={() => onPageChange(pagination.prev)}
                             >
@@ -203,7 +207,7 @@ export const DataTable = ({
                             </Button>
                             <Button
                                 variant="secondary"
-                                className="px-2 py-1 h-8 text-xs"
+                                className="px-3 py-2 h-9 text-sm"
                                 disabled={!pagination.hasNext}
                                 onClick={() => onPageChange(pagination.next)}
                             >

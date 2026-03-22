@@ -1,6 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../../api/users';
+import { Users, Shield, UserCog, User, Search, RefreshCw, X, Plus, Edit, Trash2 } from 'lucide-react';
+import { Button, Input, Card, CardHeader, CardBody, Badge } from '../../components/ui';
 
 const UserList = () => {
     const navigate = useNavigate();
@@ -64,7 +66,6 @@ const UserList = () => {
             setTotalCount(count);
             setPaginationLinks({ next, previous });
 
-            // Calculate stats by role
             const adminCount = listData.filter(u => u.role?.toLowerCase() === 'admin').length;
             const managerCount = listData.filter(u => u.role?.toLowerCase() === 'manager').length;
             const userCount = listData.filter(u => u.role?.toLowerCase() === 'user').length;
@@ -119,93 +120,61 @@ const UserList = () => {
 
     const totalPages = Math.ceil(totalCount / filters.page_size);
 
+    const StatCard = ({ title, value, icon: Icon, color }) => (
+        <div className="col-xl-3 col-sm-6">
+            <Card hover className="h-100">
+                <CardBody>
+                    <div className="d-flex align-items-start justify-content-between">
+                        <div>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{title}</p>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-0">
+                                {loading ? <span className="animate-pulse">...</span> : value}
+                            </h2>
+                        </div>
+                        <div className={`p-3 rounded-xl bg-${color}-100 dark:bg-${color}-900/20`}>
+                            <Icon className={`h-6 w-6 text-${color}-600 dark:text-${color}-400`} />
+                        </div>
+                    </div>
+                </CardBody>
+            </Card>
+        </div>
+    );
+
     return (
         <>
             {/* Page Header */}
-            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2" style={{
-                animation: 'fadeInDown 0.5s ease-out'
-            }}>
-                <h4 className="mb-0">User Management</h4>
-                <button className="btn btn-primary" onClick={() => navigate('/dashboard/users/new')}>
-                    <i className="ti ti-plus me-2"></i>Add New User
-                </button>
+            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2 animate__animated animate__fadeInDown">
+                <div>
+                    <h4 className="mb-1 text-slate-900 dark:text-white">User Management</h4>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-0">Manage system users and their permissions</p>
+                </div>
+                <Button onClick={() => navigate('/dashboard/users/new')}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add New User
+                </Button>
             </div>
 
             {/* Stats Cards */}
-            <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.1s both' }}>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <p className="fs-14 mb-1">Total Users</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalUsers}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-primary border border-primary">
-                                    <i className="ti ti-users fs-16 text-primary"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <p className="fs-14 mb-1">Admins</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.adminCount}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-danger border border-danger">
-                                    <i className="ti ti-shield-check fs-16 text-danger"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <p className="fs-14 mb-1">Managers</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.managerCount}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-warning border border-warning">
-                                    <i className="ti ti-user-star fs-16 text-warning"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card mb-0">
-                        <div className="card-body">
-                            <div className="d-flex align-items-start justify-content-between">
-                                <div>
-                                    <p className="fs-14 mb-1">Users</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.userCount}</h2>
-                                </div>
-                                <span className="avatar avatar-md rounded-circle bg-soft-success border border-success">
-                                    <i className="ti ti-user fs-16 text-success"></i>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <div className="row row-gap-3 mb-4 animate__animated animate__fadeInUp">
+                <StatCard title="Total Users" value={stats.totalUsers} icon={Users} color="blue" />
+                <StatCard title="Admins" value={stats.adminCount} icon={Shield} color="red" />
+                <StatCard title="Managers" value={stats.managerCount} icon={UserCog} color="amber" />
+                <StatCard title="Users" value={stats.userCount} icon={User} color="green" />
             </div>
 
             {/* Filters */}
-            <div className="card mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.15s both' }}>
-                <div className="card-body">
+            <Card className="mb-4 animate__animated animate__fadeInUp">
+                <CardBody>
                     <div className="row g-3">
                         <div className="col-md-5">
-                            <label className="form-label">Search</label>
+                            <label className="form-label text-sm fw-medium">Search</label>
                             <div className="input-group">
-                                <span className="input-group-text"><i className="ti ti-search"></i></span>
+                                <span className="input-group-text bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                                    <Search className="h-4 w-4 text-slate-400" />
+                                </span>
                                 <input
                                     type="text"
-                                    className="form-control"
+                                    className="form-control border-slate-200 dark:border-slate-700"
                                     placeholder="Search by username, name, or email..."
                                     value={filters.search}
                                     onChange={handleSearch}
@@ -213,9 +182,9 @@ const UserList = () => {
                             </div>
                         </div>
                         <div className="col-md-3">
-                            <label className="form-label">Role</label>
+                            <label className="form-label text-sm fw-medium">Role</label>
                             <select
-                                className="form-select"
+                                className="form-select border-slate-200 dark:border-slate-700"
                                 value={filters.role}
                                 onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value, page: 1 }))}
                             >
@@ -226,28 +195,27 @@ const UserList = () => {
                             </select>
                         </div>
                         <div className="col-md-2 d-flex align-items-end">
-                            <button className="btn btn-outline-secondary w-100" onClick={fetchUsers}>
-                                <i className={`ti ti-refresh${loading ? ' spin' : ''} me-2`}></i>Refresh
-                            </button>
+                            <Button variant="secondary" className="w-100" onClick={fetchUsers}>
+                                <RefreshCw className={`h-4 w-4 mr-2${loading ? ' spin' : ''}`} />
+                                Refresh
+                            </Button>
                         </div>
                         <div className="col-md-2 d-flex align-items-end">
-                            <button 
-                                className="btn btn-outline-danger w-100" 
-                                onClick={() => setFilters({ search: '', role: '', page: 1, page_size: 15 })}
-                            >
-                                <i className="ti ti-x me-2"></i>Clear
-                            </button>
+                            <Button variant="ghost" className="w-100 text-danger" onClick={() => setFilters({ search: '', role: '', page: 1, page_size: 15 })}>
+                                <X className="h-4 w-4 mr-2" />
+                                Clear
+                            </Button>
                         </div>
                     </div>
-                </div>
-            </div>
+                </CardBody>
+            </Card>
 
             {/* Table Card */}
-            <div className="card" style={{ animation: 'fadeInUp 0.6s ease-out 0.2s both' }}>
-                <div className="card-header d-flex align-items-center justify-content-between">
+            <Card className="animate__animated animate__fadeInUp">
+                <CardHeader>
                     <h6 className="mb-0">All Users ({totalCount})</h6>
-                </div>
-                <div className="card-body p-0">
+                </CardHeader>
+                <CardBody className="p-0">
                     {loading ? (
                         <div className="text-center py-5">
                             <div className="spinner-border text-primary" role="status">
@@ -256,57 +224,57 @@ const UserList = () => {
                         </div>
                     ) : users.length === 0 ? (
                         <div className="text-center py-5">
-                            <i className="ti ti-user-off fs-1 text-muted mb-3 d-block"></i>
-                            <p className="text-muted mb-0">No users found</p>
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                                <User className="h-8 w-8 text-slate-400" />
+                            </div>
+                            <p className="text-slate-500 dark:text-slate-400 mb-0">No users found</p>
                         </div>
                     ) : (
                         <div className="table-responsive">
                             <table className="table table-hover mb-0">
-                                <thead className="table-light">
+                                <thead className="bg-slate-50 dark:bg-slate-800/50">
                                     <tr>
-                                        <th>ID</th>
-                                        <th>Username</th>
-                                        <th>Full Name</th>
-                                        <th>Email</th>
-                                        <th>Role</th>
-                                        <th>Company</th>
-                                        <th className="text-end">Actions</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">ID</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Username</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Full Name</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Email</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Role</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-end">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                                     {users.map((row, idx) => (
-                                        <tr key={row.id} style={{
-                                            animation: `fadeInUp 0.4s ease-out ${idx * 0.05}s both`
-                                        }}>
-                                            <td>{row.id}</td>
-                                            <td><span className="fw-medium">{row.username}</span></td>
-                                            <td>{row.full_name}</td>
-                                            <td>{row.email}</td>
+                                        <tr key={row.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                            <td className="text-slate-600 dark:text-slate-300">{row.id}</td>
+                                            <td><span className="fw-medium text-slate-900 dark:text-white">{row.username}</span></td>
+                                            <td className="text-slate-600 dark:text-slate-300">{row.full_name}</td>
+                                            <td className="text-slate-600 dark:text-slate-300">{row.email}</td>
                                             <td>
-                                                <span className={`badge ${
-                                                    row.role?.toLowerCase() === 'admin' ? 'bg-soft-danger text-danger' :
-                                                    row.role?.toLowerCase() === 'manager' ? 'bg-soft-warning text-warning' :
-                                                    'bg-soft-success text-success'
-                                                }`}>
+                                                <Badge variant={
+                                                    row.role?.toLowerCase() === 'admin' ? 'danger' :
+                                                    row.role?.toLowerCase() === 'manager' ? 'warning' :
+                                                    'success'
+                                                }>
                                                     {row.role}
-                                                </span>
+                                                </Badge>
                                             </td>
-                                            <td>{row.company_name || '-'}</td>
+                                            <td className="text-slate-600 dark:text-slate-300">{row.company_name || '-'}</td>
                                             <td className="text-end">
-                                                <div className="d-flex gap-2 justify-content-end">
+                                                <div className="d-flex gap-2 justify-content-end opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
-                                                        className="btn btn-sm btn-icon btn-outline-info"
+                                                        className="btn btn-sm btn-icon btn-outline-info rounded-lg"
                                                         onClick={() => navigate(`/dashboard/users/${row.id}/edit`)}
                                                         title="Edit"
                                                     >
-                                                        <i className="ti ti-edit"></i>
+                                                        <Edit className="h-4 w-4" />
                                                     </button>
                                                     <button
-                                                        className="btn btn-sm btn-icon btn-outline-danger"
+                                                        className="btn btn-sm btn-icon btn-outline-danger rounded-lg"
                                                         onClick={() => handleDelete(row)}
                                                         title="Delete"
                                                     >
-                                                        <i className="ti ti-trash"></i>
+                                                        <Trash2 className="h-4 w-4" />
                                                     </button>
                                                 </div>
                                             </td>
@@ -316,17 +284,17 @@ const UserList = () => {
                             </table>
                         </div>
                     )}
-                </div>
+                </CardBody>
                 {totalPages > 1 && (
-                    <div className="card-footer d-flex align-items-center justify-content-between">
-                        <p className="mb-0 text-muted">
-                            Showing {((filters.page - 1) * filters.page_size) + 1} to {Math.min(filters.page * filters.page_size, totalCount)} of {totalCount} entries
+                    <div className="card-footer d-flex align-items-center justify-content-between bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
+                        <p className="mb-0 text-sm text-slate-500 dark:text-slate-400">
+                            Showing <span className="font-medium text-slate-700 dark:text-slate-300">{((filters.page - 1) * filters.page_size) + 1}</span> to <span className="font-medium text-slate-700 dark:text-slate-300">{Math.min(filters.page * filters.page_size, totalCount)}</span> of <span className="font-medium text-slate-700 dark:text-slate-300">{totalCount}</span> entries
                         </p>
                         <nav>
-                            <ul className="pagination mb-0">
+                            <ul className="pagination mb-0 gap-1">
                                 <li className={`page-item ${!paginationLinks.previous ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => handlePageChange(filters.page - 1)} disabled={!paginationLinks.previous}>
-                                        <i className="ti ti-chevron-left"></i>
+                                    <button className="page-link rounded-lg" onClick={() => handlePageChange(filters.page - 1)} disabled={!paginationLinks.previous}>
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                                     </button>
                                 </li>
                                 {[...Array(Math.min(5, totalPages))].map((_, i) => {
@@ -340,44 +308,45 @@ const UserList = () => {
                                     );
                                 })}
                                 <li className={`page-item ${!paginationLinks.next ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => handlePageChange(filters.page + 1)} disabled={!paginationLinks.next}>
-                                        <i className="ti ti-chevron-right"></i>
+                                    <button className="page-link rounded-lg" onClick={() => handlePageChange(filters.page + 1)} disabled={!paginationLinks.next}>
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                     </button>
                                 </li>
                             </ul>
                         </nav>
                     </div>
                 )}
-            </div>
+            </Card>
 
             {/* Delete Modal */}
             {deleteModalOpen && (
-                <div className="modal fade show d-block" style={{ 
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    animation: 'fadeIn 0.2s ease-out'
-                }} onClick={() => setDeleteModalOpen(false)}>
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setDeleteModalOpen(false)}>
                     <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-content">
-                            <div className="modal-header">
+                        <div className="modal-content border-0 shadow-xl">
+                            <div className="modal-header border-slate-200 dark:border-slate-700">
                                 <h5 className="modal-title">Delete User</h5>
                                 <button type="button" className="btn-close" onClick={() => setDeleteModalOpen(false)}></button>
                             </div>
-                            <div className="modal-body">
-                                <p className="mb-0">Are you sure you want to delete this user? This action cannot be undone.</p>
+                            <div className="modal-body py-4">
+                                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-3">
+                                    <Trash2 className="h-6 w-6 text-red-600 dark:text-red-400" />
+                                </div>
+                                <p className="text-slate-600 dark:text-slate-300 mb-0">Are you sure you want to delete this user? This action cannot be undone.</p>
                             </div>
-                            <div className="modal-footer">
-                                <button type="button" className="btn btn-secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</button>
-                                <button type="button" className="btn btn-danger" onClick={confirmDelete} disabled={deleting}>
+                            <div className="modal-footer border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                                <Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
+                                <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
                                     {deleting ? (
                                         <>
                                             <span className="spinner-border spinner-border-sm me-2"></span>Deleting...
                                         </>
                                     ) : (
                                         <>
-                                            <i className="ti ti-trash me-2"></i>Delete
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Delete
                                         </>
                                     )}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>

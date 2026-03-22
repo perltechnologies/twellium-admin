@@ -81,10 +81,9 @@ const StoppageLogList = () => {
             setTotalCount(count);
             setPaginationLinks({ next, previous });
 
-            // Calculate stats
             const totalDowntime = listData.reduce((sum, s) => sum + (s.downtime_minutes || 0), 0);
-            const avgEfficiency = listData.length > 0 
-                ? listData.reduce((sum, s) => sum + (s.efficiency || 0), 0) / listData.length 
+            const avgEfficiency = listData.length > 0
+                ? listData.reduce((sum, s) => sum + (s.efficiency || 0), 0) / listData.length
                 : 0;
 
             setStats({
@@ -153,21 +152,22 @@ const StoppageLogList = () => {
     return (
         <>
             {/* Page Header */}
-            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2" style={{
-                animation: 'fadeInDown 0.5s ease-out'
-            }}>
-                <h4 className="mb-0">Stoppage Logs</h4>
+            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+                <div>
+                    <h4 className="mb-1">Stoppage Logs</h4>
+                    <p className="text-muted mb-0">Track and analyze production stoppages</p>
+                </div>
                 <button className="btn btn-primary" onClick={() => navigate('/dashboard/production/stoppages/new')}>
                     <i className="ti ti-plus me-2"></i>Create New Stoppage
                 </button>
             </div>
 
             {/* Top Filters */}
-            <div className="card mb-4" style={{ animation: 'fadeInUp 0.5s ease-out 0.05s both' }}>
+            <div className="card mb-4">
                 <div className="card-body">
                     <div className="row g-3 align-items-end">
                         <div className="col-md-3">
-                            <label className="form-label fw-medium">Date</label>
+                            <label className="form-label fw-semibold">Date</label>
                             <input
                                 type="date"
                                 className="form-control"
@@ -176,7 +176,7 @@ const StoppageLogList = () => {
                             />
                         </div>
                         <div className="col-md-3">
-                            <label className="form-label fw-medium">PET Line</label>
+                            <label className="form-label fw-semibold">PET Line</label>
                             <select
                                 className="form-select"
                                 value={filters.pet}
@@ -194,8 +194,8 @@ const StoppageLogList = () => {
                             </button>
                         </div>
                         <div className="col-md-2">
-                            <button 
-                                className="btn btn-outline-secondary w-100" 
+                            <button
+                                className="btn btn-outline-secondary w-100"
                                 onClick={() => setFilters({ log_date: '', pet: '', search: '', page: 1, page_size: 15 })}
                             >
                                 <i className="ti ti-x me-2"></i>Clear All
@@ -206,13 +206,13 @@ const StoppageLogList = () => {
             </div>
 
             {/* Stats Cards */}
-            <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.1s both' }}>
+            <div className="row row-gap-3 mb-4">
                 <div className="col-xl-3 col-sm-6">
                     <div className="card mb-0">
                         <div className="card-body">
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
-                                    <p className="fs-14 mb-1">Total Stoppages</p>
+                                    <p className="fs-14 mb-1 text-muted">Total Stoppages</p>
                                     <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalStoppages}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-warning border border-warning">
@@ -227,7 +227,7 @@ const StoppageLogList = () => {
                         <div className="card-body">
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
-                                    <p className="fs-14 mb-1">Total Downtime</p>
+                                    <p className="fs-14 mb-1 text-muted">Total Downtime</p>
                                     <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.totalDowntime} min`}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-danger border border-danger">
@@ -242,7 +242,7 @@ const StoppageLogList = () => {
                         <div className="card-body">
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
-                                    <p className="fs-14 mb-1">Avg Downtime</p>
+                                    <p className="fs-14 mb-1 text-muted">Avg Downtime</p>
                                     <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.avgDowntime} min`}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-info border border-info">
@@ -257,7 +257,7 @@ const StoppageLogList = () => {
                         <div className="card-body">
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
-                                    <p className="fs-14 mb-1">Avg Efficiency</p>
+                                    <p className="fs-14 mb-1 text-muted">Avg Efficiency</p>
                                     <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.avgEfficiency}%`}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-success border border-success">
@@ -270,7 +270,7 @@ const StoppageLogList = () => {
             </div>
 
             {/* Search */}
-            <div className="card mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.15s both' }}>
+            <div className="card mb-4">
                 <div className="card-body">
                     <div className="row g-3">
                         <div className="col-md-4">
@@ -288,7 +288,7 @@ const StoppageLogList = () => {
                         </div>
                         <div className="col-md-3">
                             <label className="form-label">Order By</label>
-                            <select 
+                            <select
                                 className="form-select"
                                 value={filters.ordering}
                                 onChange={(e) => setFilters({...filters, ordering: e.target.value, page: 1})}
@@ -313,11 +313,11 @@ const StoppageLogList = () => {
             </div>
 
             {/* Table Card */}
-            <div className="card" style={{ animation: 'fadeInUp 0.6s ease-out 0.2s both' }}>
+            <div className="card">
                 <div className="card-header d-flex align-items-center justify-content-between">
                     <h6 className="mb-0">All Stoppages ({totalCount})</h6>
                     <div className="position-relative">
-                        <button 
+                        <button
                             className="btn btn-sm btn-outline-secondary"
                             onClick={() => setShowColumnToggle(!showColumnToggle)}
                         >
@@ -382,14 +382,11 @@ const StoppageLogList = () => {
                                 </thead>
                                 <tbody>
                                     {stoppages.map((row, idx) => (
-                                        <tr key={row.id} style={{
-                                            animation: `fadeInUp 0.4s ease-out ${idx * 0.05}s both`,
-                                            cursor: 'pointer'
-                                        }} onClick={() => navigate(`/dashboard/production/stoppages/${row.id}`)}>
+                                        <tr key={row.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/dashboard/production/stoppages/${row.id}`)}>
                                             {visibleColumns.dateTime && (
                                                 <td>
                                                     <div>
-                                                        <div className="fw-medium">{format(new Date(row.log_date), 'MMM dd, yyyy')}</div>
+                                                        <div className="fw-semibold">{format(new Date(row.log_date), 'MMM dd, yyyy')}</div>
                                                         <small className="text-muted">{row.log_time ? format(new Date(`2000-01-01T${row.log_time}`), 'hh:mm a') : '-'}</small>
                                                     </div>
                                                 </td>
@@ -494,10 +491,7 @@ const StoppageLogList = () => {
 
             {/* Delete Modal */}
             {deleteModalOpen && (
-                <div className="modal fade show d-block" style={{ 
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    animation: 'fadeIn 0.2s ease-out'
-                }} onClick={() => setDeleteModalOpen(false)}>
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setDeleteModalOpen(false)}>
                     <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-content">
                             <div className="modal-header">
@@ -530,3 +524,4 @@ const StoppageLogList = () => {
 };
 
 export default StoppageLogList;
+

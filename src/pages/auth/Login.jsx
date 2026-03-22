@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { User, Lock, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 
 const Login = () => {
     const [username, setUsername] = useState('');
@@ -39,16 +40,16 @@ const Login = () => {
 
     return (
         <div className="main-wrapper">
-            <div className="overflow-hidden p-3 acc-vh">
+            <div className="overflow-hidden p-0 acc-vh">
                 <div className="row vh-100 w-100 g-0">
 
                     {/* Left: Login Form */}
-                    <div className="col-lg-6 vh-100 overflow-y-auto overflow-x-hidden">
+                    <div className="col-lg-6 vh-100 overflow-y-auto overflow-x-hidden bg-white">
                         <div className="row">
                             <div className="col-md-10 mx-auto">
                                 <form
                                     onSubmit={handleSubmit}
-                                    className="vh-100 d-flex justify-content-between flex-column p-4 pb-0"
+                                    className="vh-100 d-flex justify-content-between flex-column p-5 pb-4"
                                     style={{
                                         opacity: mounted ? 1 : 0,
                                         transform: mounted ? 'translateY(0)' : 'translateY(20px)',
@@ -56,81 +57,71 @@ const Login = () => {
                                     }}
                                 >
                                     {/* Logo */}
-                                    <div className="text-center mb-4 auth-logo" style={{
+                                    <div className="text-center mb-5 auth-logo" style={{
                                         animation: mounted ? 'fadeInDown 0.8s ease-out' : 'none'
                                     }}>
-                                        <img src="/logo.jpeg" className="img-fluid" alt="Logo" style={{ maxWidth: '180px' }} />
+                                        <div className="d-inline-flex align-items-center justify-content-center p-3 rounded-2xl bg-gradient-primary bg-opacity-10 mb-3">
+                                            <LogIn className="h-8 w-8 text-primary" />
+                                        </div>
+                                        <img src="/logo.jpeg" className="img-fluid" alt="Logo" style={{ maxWidth: '160px' }} />
                                     </div>
 
                                     <div>
                                         {/* Heading */}
-                                        <div className="mb-4" style={{
+                                        <div className="mb-5" style={{
                                             animation: mounted ? 'fadeInUp 0.8s ease-out 0.2s both' : 'none'
                                         }}>
-                                            <h1 className="mb-2 fw-bold" style={{ fontSize: '2rem' }}>Welcome Back</h1>
-                                            <p className="mb-0 text-muted">Access the Twellium admin panel</p>
+                                            <h1 className="mb-2 fw-bold text-slate-900" style={{ fontSize: '2rem' }}>Welcome Back</h1>
+                                            <p className="mb-0 text-slate-500">Access the Twellium admin panel</p>
                                         </div>
 
                                         {/* Username */}
-                                        <div className="mb-3" style={{
+                                        <div className="mb-4" style={{
                                             animation: mounted ? 'fadeInUp 0.8s ease-out 0.3s both' : 'none'
                                         }}>
-                                            <label className="form-label fw-medium">Username</label>
-                                            <div className="input-group input-group-flat">
+                                            <label className="form-label fw-semibold text-slate-700">Username</label>
+                                            <div className="input-group input-group-lg">
+                                                <span className="input-group-text bg-slate-50 border-slate-200 text-slate-400">
+                                                    <User className="h-5 w-5" />
+                                                </span>
                                                 <input
                                                     type="text"
-                                                    className="form-control"
+                                                    className="form-control border-slate-200"
                                                     placeholder="Enter your username"
                                                     value={username}
                                                     onChange={(e) => setUsername(e.target.value)}
                                                     required
-                                                    style={{
-                                                        padding: '0.75rem 1rem',
-                                                        fontSize: '0.95rem',
-                                                        transition: 'all 0.3s ease'
-                                                    }}
-                                                    onFocus={(e) => e.target.style.boxShadow = '0 0 0 0.2rem rgba(228, 31, 7, 0.15)'}
-                                                    onBlur={(e) => e.target.style.boxShadow = 'none'}
+                                                    style={{ transition: 'all 0.3s ease' }}
                                                 />
-                                                <span className="input-group-text">
-                                                    <i className="ti ti-user"></i>
-                                                </span>
                                             </div>
                                         </div>
 
                                         {/* Password */}
-                                        <div className="mb-3" style={{
+                                        <div className="mb-4" style={{
                                             animation: mounted ? 'fadeInUp 0.8s ease-out 0.4s both' : 'none'
                                         }}>
-                                            <label className="form-label fw-medium">Password</label>
-                                            <div className="input-group input-group-flat pass-group">
+                                            <label className="form-label fw-semibold text-slate-700">Password</label>
+                                            <div className="input-group input-group-lg">
+                                                <span className="input-group-text bg-slate-50 border-slate-200 text-slate-400">
+                                                    <Lock className="h-5 w-5" />
+                                                </span>
                                                 <input
                                                     type={showPassword ? 'text' : 'password'}
-                                                    className="form-control pass-input"
+                                                    className="form-control border-slate-200"
                                                     placeholder="Enter your password"
                                                     value={password}
                                                     onChange={(e) => setPassword(e.target.value)}
                                                     required
-                                                    style={{
-                                                        padding: '0.75rem 1rem',
-                                                        fontSize: '0.95rem',
-                                                        transition: 'all 0.3s ease'
-                                                    }}
-                                                    onFocus={(e) => e.target.style.boxShadow = '0 0 0 0.2rem rgba(228, 31, 7, 0.15)'}
-                                                    onBlur={(e) => e.target.style.boxShadow = 'none'}
+                                                    style={{ transition: 'all 0.3s ease' }}
                                                 />
-                                                <span
-                                                    className="input-group-text toggle-password"
+                                                <button
+                                                    type="button"
+                                                    className="input-group-text bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600"
                                                     onClick={() => setShowPassword(!showPassword)}
-                                                    style={{ 
-                                                        cursor: 'pointer',
-                                                        transition: 'all 0.2s ease'
-                                                    }}
-                                                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
-                                                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                    style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
                                                 >
-                                                    <i className={`ti ${showPassword ? 'ti-eye' : 'ti-eye-off'}`}></i>
-                                                </span>
+                                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                                </button>
                                             </div>
                                         </div>
 
@@ -146,26 +137,24 @@ const Login = () => {
                                                     checked={rememberMe}
                                                     onChange={(e) => setRememberMe(e.target.checked)}
                                                 />
-                                                <label className="form-check-label text-dark ms-2" htmlFor="rememberMe">
+                                                <label className="form-check-label text-slate-700 ms-2" htmlFor="rememberMe">
                                                     Remember Me
                                                 </label>
                                             </div>
                                             <div className="text-end">
-                                                <a href="#" className="link-danger fw-medium" style={{
-                                                    textDecoration: 'none',
-                                                    transition: 'all 0.2s ease'
-                                                }}>Forgot Password?</a>
+                                                <a href="#" className="text-primary fw-medium text-decoration-none hover-underline">Forgot Password?</a>
                                             </div>
                                         </div>
 
                                         {/* Error Alert */}
                                         {error && (
-                                            <div className="alert alert-danger py-3 mb-3" role="alert" style={{
+                                            <div className="alert alert-danger py-3 mb-4 d-flex align-items-center gap-3" role="alert" style={{
                                                 animation: 'shake 0.5s ease-in-out',
-                                                borderLeft: '4px solid var(--danger)'
+                                                borderLeft: '4px solid #dc2626',
+                                                backgroundColor: '#fef2f2'
                                             }}>
-                                                <i className="ti ti-alert-circle me-2"></i>
-                                                {error}
+                                                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                                                <span>{error}</span>
                                             </div>
                                         )}
 
@@ -175,14 +164,12 @@ const Login = () => {
                                         }}>
                                             <button
                                                 type="submit"
-                                                className="btn btn-primary w-100"
+                                                className="btn btn-primary btn-lg w-100 py-3 fw-semibold"
                                                 disabled={isLoading}
                                                 style={{
-                                                    padding: '0.75rem 1rem',
-                                                    fontSize: '1rem',
-                                                    fontWeight: '600',
                                                     transition: 'all 0.3s ease',
-                                                    transform: isLoading ? 'scale(0.98)' : 'scale(1)'
+                                                    transform: isLoading ? 'scale(0.98)' : 'scale(1)',
+                                                    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.3)'
                                                 }}
                                             >
                                                 {isLoading ? (
@@ -192,7 +179,7 @@ const Login = () => {
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <i className="ti ti-login me-2"></i>
+                                                        <LogIn className="h-5 w-5 me-2 d-inline-block" />
                                                         Sign In
                                                     </>
                                                 )}
@@ -201,11 +188,11 @@ const Login = () => {
                                     </div>
 
                                     {/* Footer */}
-                                    <div className="text-center pb-4" style={{
+                                    <div className="text-center pb-3" style={{
                                         animation: mounted ? 'fadeIn 1s ease-out 0.8s both' : 'none'
                                     }}>
-                                        <p className="text-muted mb-0" style={{ fontSize: '0.875rem' }}>
-                                            Copyright &copy; {new Date().getFullYear()} - Twellium
+                                        <p className="text-slate-400 mb-0" style={{ fontSize: '0.875rem' }}>
+                                            Copyright © {new Date().getFullYear()} Twellium. All rights reserved.
                                         </p>
                                     </div>
                                 </form>
@@ -213,11 +200,29 @@ const Login = () => {
                         </div>
                     </div>
 
-                    {/* Right: Background Image */}
-                    <div className="col-lg-6 login-bg-01" style={{
-                        opacity: mounted ? 1 : 0,
-                        transition: 'opacity 1s ease-out 0.3s'
-                    }}></div>
+                    {/* Right: Background Image/Gradient */}
+                    <div className="col-lg-6 login-bg-01 d-none d-lg-block" style={{
+                                        background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
+                                        opacity: mounted ? 1 : 0,
+                                        transition: 'opacity 1s ease-out 0.3s',
+                                        position: 'relative',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <div className="position-absolute top-50 start-50 translate-middle text-center text-white p-5">
+                                            <div className="mb-4" style={{ opacity: mounted ? 0 : 0.5, transition: 'opacity 1s ease-out 0.5s' }}>
+                                                <svg className="d-block mx-auto" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
+                                                    <path d="M3 21h18M5 21V7l8-4 8 4v14M8 21v-9a4 4 0 0 1 4-4v0a4 4 0 0 1 4 4v9" />
+                                                </svg>
+                                            </div>
+                                            <h2 className="fw-bold mb-3 display-6" style={{ opacity: mounted ? 0 : 0.5, transition: 'opacity 1s ease-out 0.7s' }}>Enterprise Dashboard</h2>
+                                            <p className="lead mb-0" style={{ opacity: mounted ? 0 : 0.5, transition: 'opacity 1s ease-out 0.9s', maxWidth: '400px', margin: '0 auto' }}>
+                                                Streamline your production management with our comprehensive admin platform
+                                            </p>
+                                        </div>
+                                        {/* Decorative circles */}
+                                        <div className="position-absolute" style={{ top: '10%', left: '10%', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', filter: 'blur(40px)' }}></div>
+                                        <div className="position-absolute" style={{ bottom: '20%', right: '15%', width: '300px', height: '300px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', filter: 'blur(60px)' }}></div>
+                                    </div>
 
                 </div>
             </div>

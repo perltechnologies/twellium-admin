@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Search, RefreshCw, Plus, Edit, Trash2, Eye, X, AlertCircle, CheckCircle, List } from 'lucide-react';
+import { Button, Card, CardHeader, CardBody, Badge } from '../../components/ui';
 
 const GenericCrudPage = ({
     title,
@@ -11,7 +13,13 @@ const GenericCrudPage = ({
     onView,
     filters = [],
     searchPlaceholder,
-    showStats = false
+    showStats = false,
+    subtitle,
+    createButtonLabel = 'Add New',
+    tableTitle = 'All Records',
+    emptyStateTitle = 'No records found',
+    emptyStateDescription = 'Try adjusting your search and add a new item.',
+    showActionsOnHover = true
 }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -67,7 +75,7 @@ const GenericCrudPage = ({
             setData(listData);
             setTotalCount(count);
             setPaginationLinks({ next, previous });
-            
+
             if (showStats) {
                 setStats({
                     total: count,
@@ -148,7 +156,7 @@ const GenericCrudPage = ({
         try {
             const payload = transformPayload ? transformPayload(formData) : formData;
             console.log('Submitting payload:', payload);
-            
+
             if (currentItem) {
                 const response = await api.update(currentItem.id, payload);
                 console.log('Update response:', response);
@@ -161,10 +169,10 @@ const GenericCrudPage = ({
         } catch (err) {
             console.error("Failed to save:", err);
             console.error("Error response:", err.response?.data);
-            const errorMsg = err.response?.data?.message 
+            const errorMsg = err.response?.data?.message
                 || err.response?.data?.detail
                 || Object.values(err.response?.data || {}).flat().join(', ')
-                || err.message 
+                || err.message
                 || 'Failed to save';
             setError(errorMsg);
         } finally {
@@ -182,75 +190,82 @@ const GenericCrudPage = ({
     return (
         <>
             {/* Page Header */}
-            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2" style={{
-                animation: 'fadeInDown 0.5s ease-out'
-            }}>
-                <h4 className="mb-0">{title}</h4>
-                <button className="btn btn-primary" onClick={handleCreate}>
-                    <i className="ti ti-plus me-2"></i>Add New
-                </button>
+            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2 animate__animated animate__fadeInDown">
+                <div>
+                    <h4 className="mb-1 text-slate-900 dark:text-white">{title}</h4>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-0">{subtitle || `Manage ${title.toLowerCase()}`}</p>
+                </div>
+                <Button onClick={handleCreate}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    {createButtonLabel}
+                </Button>
             </div>
 
             {/* Stats Cards */}
             {showStats && (
-                <div className="row row-gap-3 mb-4" style={{ animation: 'fadeInUp 0.6s ease-out 0.1s both' }}>
+                <div className="row row-gap-3 mb-4 animate__animated animate__fadeInUp">
                     <div className="col-xl-3 col-sm-6">
-                        <div className="card mb-0">
-                            <div className="card-body">
+                        <Card hover className="h-100">
+                            <CardBody>
                                 <div className="d-flex align-items-start justify-content-between">
                                     <div>
-                                        <p className="fs-14 mb-1">Total {title}</p>
-                                        <h2 className="mb-1 fs-16">{loading ? '...' : stats.total}</h2>
+                                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Total {title}</p>
+                                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-0">
+                                            {loading ? <span className="animate-pulse">...</span> : stats.total}
+                                        </h2>
                                     </div>
-                                    <span className="avatar avatar-md rounded-circle bg-soft-primary border border-primary">
-                                        <i className="ti ti-list fs-16 text-primary"></i>
-                                    </span>
+                                    <div className="p-3 rounded-xl bg-blue-100 dark:bg-blue-900/20">
+                                        <List className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
+                            </CardBody>
+                        </Card>
                     </div>
                     <div className="col-xl-3 col-sm-6">
-                        <div className="card mb-0">
-                            <div className="card-body">
+                        <Card hover className="h-100">
+                            <CardBody>
                                 <div className="d-flex align-items-start justify-content-between">
                                     <div>
-                                        <p className="fs-14 mb-1">Active Records</p>
-                                        <h2 className="mb-1 fs-16">{loading ? '...' : stats.active}</h2>
+                                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Active Records</p>
+                                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-0">
+                                            {loading ? <span className="animate-pulse">...</span> : stats.active}
+                                        </h2>
                                     </div>
-                                    <span className="avatar avatar-md rounded-circle bg-soft-success border border-success">
-                                        <i className="ti ti-circle-check fs-16 text-success"></i>
-                                    </span>
+                                    <div className="p-3 rounded-xl bg-green-100 dark:bg-green-900/20">
+                                        <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
+                            </CardBody>
+                        </Card>
                     </div>
                 </div>
             )}
 
             {/* Card with Table */}
-            <div className="card" style={{
-                animation: 'fadeInUp 0.6s ease-out 0.1s both'
-            }}>
-                <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-3">
-                    <h6 className="mb-0">All Records</h6>
-                    <div className="d-flex align-items-center gap-2">
-                        <div className="input-group" style={{ maxWidth: '300px' }}>
-                            <span className="input-group-text"><i className="ti ti-search"></i></span>
-                            <input
-                                type="text"
-                                className="form-control"
-                                placeholder={searchPlaceholder || `Search ${title}...`}
-                                value={params.search}
-                                onChange={handleSearch}
-                                style={{ transition: 'all 0.3s ease' }}
-                            />
+            <Card className="animate__animated animate__fadeInUp">
+                <CardHeader>
+                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 w-100">
+                        <h6 className="mb-0">{tableTitle}</h6>
+                        <div className="d-flex align-items-center gap-2">
+                            <div className="input-group" style={{ maxWidth: '300px' }}>
+                                <span className="input-group-text bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                                    <Search className="h-4 w-4 text-slate-400" />
+                                </span>
+                                <input
+                                    type="text"
+                                    className="form-control border-slate-200 dark:border-slate-700"
+                                    placeholder={searchPlaceholder || `Search ${title}...`}
+                                    value={params.search}
+                                    onChange={handleSearch}
+                                />
+                            </div>
+                            <Button variant="secondary" className="btn-icon" onClick={fetchData} title="Refresh">
+                                <RefreshCw className={`h-4 w-4${loading ? ' spin' : ''}`} />
+                            </Button>
                         </div>
-                        <button className="btn btn-icon btn-outline-light" onClick={fetchData} title="Refresh">
-                            <i className={`ti ti-refresh${loading ? ' spin' : ''}`}></i>
-                        </button>
                     </div>
-                </div>
-                <div className="card-body p-0">
+                </CardHeader>
+                <CardBody className="p-0">
                     {loading ? (
                         <div className="text-center py-5">
                             <div className="spinner-border text-primary" role="status">
@@ -258,58 +273,58 @@ const GenericCrudPage = ({
                             </div>
                         </div>
                     ) : data.length === 0 ? (
-                        <div className="text-center py-5" style={{ animation: 'fadeIn 0.4s ease-out' }}>
-                            <i className="ti ti-database-off fs-1 text-muted mb-3 d-block"></i>
-                            <p className="text-muted mb-0">No records found</p>
+                        <div className="text-center py-5">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                                <AlertCircle className="h-8 w-8 text-slate-400" />
+                            </div>
+                            <p className="text-slate-700 dark:text-slate-300 mb-1 fw-medium">{emptyStateTitle}</p>
+                            <p className="text-slate-500 dark:text-slate-400 mb-0 text-sm">{emptyStateDescription}</p>
                         </div>
                     ) : (
                         <div className="table-responsive">
                             <table className="table table-hover mb-0">
-                                <thead className="table-light">
+                                <thead className="bg-slate-50 dark:bg-slate-800/50">
                                     <tr>
                                         {columns.map((col) => (
-                                            <th key={col.accessor || col.header}>{col.header}</th>
+                                            <th key={col.accessor || col.header} className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                                                {col.header}
+                                            </th>
                                         ))}
-                                        <th className="text-end">Actions</th>
+                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-end">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                                     {data.map((row, idx) => (
-                                        <tr key={row.id || idx} style={{
-                                            animation: `fadeInUp 0.4s ease-out ${idx * 0.05}s both`
-                                        }}>
+                                        <tr key={row.id || idx} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                             {columns.map((col) => (
-                                                <td key={col.accessor || col.header}>
+                                                <td key={col.accessor || col.header} className="text-slate-600 dark:text-slate-300">
                                                     {col.render ? col.render(row) : row[col.accessor]}
                                                 </td>
                                             ))}
                                             <td className="text-end">
-                                                <div className="d-flex gap-2 justify-content-end">
+                                                <div className={`d-flex gap-2 justify-content-end transition-opacity ${showActionsOnHover ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
                                                     {onView && (
                                                         <button
-                                                            className="btn btn-sm btn-icon btn-outline-primary"
+                                                            className="btn btn-sm btn-icon btn-outline-primary rounded-lg"
                                                             onClick={() => onView(row)}
                                                             title="View"
-                                                            style={{ transition: 'all 0.2s ease' }}
                                                         >
-                                                            <i className="ti ti-eye"></i>
+                                                            <Eye className="h-4 w-4" />
                                                         </button>
                                                     )}
                                                     <button
-                                                        className="btn btn-sm btn-icon btn-outline-info"
+                                                        className="btn btn-sm btn-icon btn-outline-info rounded-lg"
                                                         onClick={() => handleEditInternal(row)}
                                                         title="Edit"
-                                                        style={{ transition: 'all 0.2s ease' }}
                                                     >
-                                                        <i className="ti ti-edit"></i>
+                                                        <Edit className="h-4 w-4" />
                                                     </button>
                                                     <button
-                                                        className="btn btn-sm btn-icon btn-outline-danger"
+                                                        className="btn btn-sm btn-icon btn-outline-danger rounded-lg"
                                                         onClick={() => handleDelete(row)}
                                                         title="Delete"
-                                                        style={{ transition: 'all 0.2s ease' }}
                                                     >
-                                                        <i className="ti ti-trash"></i>
+                                                        <Trash2 className="h-4 w-4" />
                                                     </button>
                                                 </div>
                                             </td>
@@ -319,17 +334,17 @@ const GenericCrudPage = ({
                             </table>
                         </div>
                     )}
-                </div>
+                </CardBody>
                 {totalPages > 1 && (
-                    <div className="card-footer d-flex align-items-center justify-content-between">
-                        <p className="mb-0 text-muted">
-                            Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} entries
+                    <div className="card-footer d-flex align-items-center justify-content-between bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
+                        <p className="mb-0 text-sm text-slate-500 dark:text-slate-400">
+                            Showing <span className="font-medium text-slate-700 dark:text-slate-300">{((currentPage - 1) * pageSize) + 1}</span> to <span className="font-medium text-slate-700 dark:text-slate-300">{Math.min(currentPage * pageSize, totalCount)}</span> of <span className="font-medium text-slate-700 dark:text-slate-300">{totalCount}</span> entries
                         </p>
                         <nav>
-                            <ul className="pagination mb-0">
+                            <ul className="pagination mb-0 gap-1">
                                 <li className={`page-item ${!paginationLinks.previous ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => handlePageChange(currentPage - 1)} disabled={!paginationLinks.previous}>
-                                        <i className="ti ti-chevron-left"></i>
+                                    <button className="page-link rounded-lg" onClick={() => handlePageChange(currentPage - 1)} disabled={!paginationLinks.previous}>
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                                     </button>
                                 </li>
                                 {[...Array(Math.min(5, totalPages))].map((_, i) => {
@@ -343,43 +358,36 @@ const GenericCrudPage = ({
                                     );
                                 })}
                                 <li className={`page-item ${!paginationLinks.next ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => handlePageChange(currentPage + 1)} disabled={!paginationLinks.next}>
-                                        <i className="ti ti-chevron-right"></i>
+                                    <button className="page-link rounded-lg" onClick={() => handlePageChange(currentPage + 1)} disabled={!paginationLinks.next}>
+                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                                     </button>
                                 </li>
                             </ul>
                         </nav>
                     </div>
                 )}
-            </div>
+            </Card>
 
             {/* Create/Edit Modal */}
             {isModalOpen && (
-                <div className="modal fade show d-block" style={{ 
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    animation: 'fadeIn 0.2s ease-out'
-                }} onClick={() => setIsModalOpen(false)}>
-                    <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()} style={{
-                        animation: 'zoomIn 0.3s ease-out'
-                    }}>
-                        <div className="modal-content">
-                            <div className="modal-header">
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setIsModalOpen(false)}>
+                    <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-content border-0 shadow-xl">
+                            <div className="modal-header border-slate-200 dark:border-slate-700">
                                 <h5 className="modal-title">{currentItem ? 'Edit Item' : 'Create New Item'}</h5>
                                 <button type="button" className="btn-close" onClick={() => setIsModalOpen(false)}></button>
                             </div>
                             <form onSubmit={handleSubmit}>
                                 <div className="modal-body">
                                     {error && (
-                                        <div className="alert alert-danger py-2 mb-3" role="alert">
-                                            <i className="ti ti-alert-circle me-2"></i>
-                                            {error}
+                                        <div className="alert alert-danger py-3 mb-3 d-flex align-items-center gap-3">
+                                            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                                            <span>{error}</span>
                                         </div>
                                     )}
                                     {formFields.map((field, idx) => (
-                                        <div key={field.name} className="mb-3" style={{
-                                            animation: `fadeInUp 0.3s ease-out ${idx * 0.05}s both`
-                                        }}>
-                                            <label className="form-label">{field.label}</label>
+                                        <div key={field.name} className="mb-3">
+                                            <label className="form-label text-sm fw-medium">{field.label}</label>
                                             {field.type === 'select' ? (
                                                 <select
                                                     className="form-select"
@@ -387,7 +395,6 @@ const GenericCrudPage = ({
                                                     value={formData[field.name] || ''}
                                                     onChange={handleChange}
                                                     required={field.required}
-                                                    style={{ transition: 'all 0.3s ease' }}
                                                 >
                                                     <option value="">Select...</option>
                                                     {(field.options || []).map((opt) => (
@@ -404,25 +411,25 @@ const GenericCrudPage = ({
                                                     required={field.required}
                                                     placeholder={field.placeholder}
                                                     step={field.step}
-                                                    style={{ transition: 'all 0.3s ease' }}
                                                 />
                                             )}
                                         </div>
                                     ))}
                                 </div>
-                                <div className="modal-footer">
-                                    <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                                    <button type="submit" className="btn btn-primary" disabled={submitting}>
+                                <div className="modal-footer border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                                    <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                                    <Button type="submit" disabled={submitting}>
                                         {submitting ? (
                                             <>
                                                 <span className="spinner-border spinner-border-sm me-2"></span>Saving...
                                             </>
                                         ) : (
                                             <>
-                                                <i className="ti ti-check me-2"></i>Save
+                                                <CheckCircle className="h-4 w-4 mr-2" />
+                                                Save
                                             </>
                                         )}
-                                    </button>
+                                    </Button>
                                 </div>
                             </form>
                         </div>
@@ -432,34 +439,33 @@ const GenericCrudPage = ({
 
             {/* Delete Confirmation Modal */}
             {deleteModalOpen && (
-                <div className="modal fade show d-block" style={{ 
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    animation: 'fadeIn 0.2s ease-out'
-                }} onClick={() => setDeleteModalOpen(false)}>
-                    <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()} style={{
-                        animation: 'shake 0.5s ease-out'
-                    }}>
-                        <div className="modal-content">
-                            <div className="modal-header">
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setDeleteModalOpen(false)}>
+                    <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-content border-0 shadow-xl">
+                            <div className="modal-header border-slate-200 dark:border-slate-700">
                                 <h5 className="modal-title">Confirm Deletion</h5>
                                 <button type="button" className="btn-close" onClick={() => setDeleteModalOpen(false)}></button>
                             </div>
-                            <div className="modal-body">
-                                <p className="mb-0">Are you sure you want to delete this item? This action cannot be undone.</p>
+                            <div className="modal-body py-4">
+                                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-3">
+                                    <Trash2 className="h-6 w-6 text-red-600 dark:text-red-400" />
+                                </div>
+                                <p className="text-slate-600 dark:text-slate-300 mb-0">Are you sure you want to delete this item? This action cannot be undone.</p>
                             </div>
-                            <div className="modal-footer">
-                                <button type="button" className="btn btn-secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</button>
-                                <button type="button" className="btn btn-danger" onClick={confirmDelete} disabled={deleting}>
+                            <div className="modal-footer border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                                <Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
+                                <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
                                     {deleting ? (
                                         <>
                                             <span className="spinner-border spinner-border-sm me-2"></span>Deleting...
                                         </>
                                     ) : (
                                         <>
-                                            <i className="ti ti-trash me-2"></i>Delete
+                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            Delete
                                         </>
                                     )}
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     </div>

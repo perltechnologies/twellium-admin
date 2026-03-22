@@ -1,10 +1,10 @@
 import React from 'react';
 
 const shimmerStyle = {
-    background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)',
+    background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
     backgroundSize: '200% 100%',
     animation: 'shimmer 1.5s ease-in-out infinite',
-    borderRadius: 4,
+    borderRadius: 8,
 };
 
 /* Inject keyframes once */
@@ -29,10 +29,10 @@ export const SkeletonStatCard = () => (
                 <div className="d-flex align-items-start justify-content-between">
                     <div style={{ flex: 1 }}>
                         <Bone width="60%" height={12} style={{ marginBottom: 10 }} />
-                        <Bone width="40%" height={22} style={{ marginBottom: 8 }} />
+                        <Bone width="40%" height={24} style={{ marginBottom: 8 }} />
                         <Bone width="75%" height={11} />
                     </div>
-                    <div style={{ ...shimmerStyle, width: 40, height: 40, borderRadius: '50%' }} />
+                    <div style={{ ...shimmerStyle, width: 48, height: 48, borderRadius: '12px' }} />
                 </div>
             </div>
         </div>
@@ -51,9 +51,9 @@ export const SkeletonStatCards = ({ count = 4 }) => (
 /* ── Gauge Skeleton ─────────────────────────────── */
 export const SkeletonGauge = () => (
     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-        <div className="d-flex flex-column align-items-center p-3 border rounded-3 shadow-sm w-100" style={{ background: '#fafafa' }}>
-            <Bone width="50%" height={14} style={{ marginBottom: 16 }} />
-            <div style={{ ...shimmerStyle, width: 130, height: 130, borderRadius: '50%', margin: '8px 0' }} />
+        <div className="d-flex flex-column align-items-center p-4 border rounded-3 shadow-sm w-100" style={{ background: '#ffffff' }}>
+            <Bone width="50%" height={14} style={{ marginBottom: 20 }} />
+            <div style={{ ...shimmerStyle, width: 140, height: 140, borderRadius: '50%', margin: '8px 0' }} />
             <Bone width="35%" height={20} style={{ marginTop: 12 }} />
         </div>
     </div>
@@ -97,7 +97,7 @@ export const SkeletonChart = ({ height = 350, title }) => (
                             ...shimmerStyle,
                             flex: 1,
                             height: `${h}%`,
-                            borderRadius: '4px 4px 0 0',
+                            borderRadius: '6px 6px 0 0',
                         }}
                     />
                 ))}
@@ -111,7 +111,7 @@ export const SkeletonTable = ({ rows = 4, cols = 6 }) => (
     <div className="card flex-fill">
         <div className="card-header d-flex align-items-center justify-content-between">
             <Bone width="30%" height={16} />
-            <Bone width={60} height={28} style={{ borderRadius: 6 }} />
+            <Bone width={80} height={32} style={{ borderRadius: 8 }} />
         </div>
         <div className="card-body p-0">
             <StyleTag />
@@ -163,7 +163,7 @@ export const SkeletonDowntimeList = () => (
                 <div key={i} className="border rounded p-3 mb-3">
                     <div className="d-flex align-items-center justify-content-between mb-2">
                         <div className="d-flex align-items-center gap-2">
-                            <div style={{ ...shimmerStyle, width: 32, height: 32, borderRadius: 6 }} />
+                            <div style={{ ...shimmerStyle, width: 32, height: 32, borderRadius: '8px' }} />
                             <Bone width={120} height={14} />
                         </div>
                         <div className="text-end">
@@ -196,5 +196,49 @@ export const SkeletonDonut = ({ title }) => (
                 </div>
             ))}
         </div>
+    </div>
+);
+
+/* ── Enhanced Page Skeleton ─────────────────────── */
+export const SkeletonPage = ({ sections = 3 }) => (
+    <div className="animate-in">
+        <StyleTag />
+        {/* Page Header */}
+        <div className="d-flex align-items-center justify-content-between gap-2 mb-4">
+            <div>
+                <Bone width={180} height={28} style={{ marginBottom: 8 }} />
+                <Bone width={280} height={14} />
+            </div>
+            <Bone width={120} height={36} style={{ borderRadius: 8 }} />
+        </div>
+        
+        {/* Filters */}
+        <div className="card mb-4">
+            <div className="card-body">
+                <div className="row g-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="col-md-3">
+                            <Bone width="100%" height={40} style={{ borderRadius: 8 }} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+        
+        {/* Stat Cards */}
+        <SkeletonStatCards count={4} />
+        
+        {/* Charts and Tables */}
+        {Array.from({ length: sections }).map((_, i) => (
+            <div key={i} className="card mb-4">
+                <div className="card-header">
+                    <Bone width="30%" height={16} />
+                </div>
+                <div className="card-body">
+                    <StyleTag />
+                    <div style={{ ...shimmerStyle, width: '100%', height: 250, borderRadius: 12 }} />
+                </div>
+            </div>
+        ))}
     </div>
 );

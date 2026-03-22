@@ -1,23 +1,27 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Factory, Truck, ArrowRight, Building2 } from 'lucide-react';
 
 const ModeSelection = () => {
     const navigate = useNavigate();
 
     return (
-        <div className="d-flex align-items-center justify-content-center vh-100 bg-light">
-            <div className="container" style={{ maxWidth: 900 }}>
+        <div className="d-flex align-items-center justify-content-center min-vh-100 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+            <div className="container" style={{ maxWidth: 1000 }}>
 
                 {/* Header */}
-                <div className="text-center mb-5">
+                <div className="text-center mb-5 animate__animated animate__fadeInDown">
+                    <div className="d-inline-flex align-items-center justify-content-center p-3 rounded-2xl bg-white dark:bg-slate-800 shadow-sm mb-4">
+                        <Building2 className="h-10 w-10 text-primary" />
+                    </div>
                     <img
                         src="/logo.jpeg"
                         alt="Twellium"
-                        style={{ maxWidth: 141 }}
+                        style={{ maxWidth: 140 }}
                         className="mb-3"
                     />
-                    <h2 className="fw-bold mb-2">Select Mode</h2>
-                    <p className="text-muted mb-0">Choose your operational environment to continue</p>
+                    <h2 className="fw-bold mb-2 text-slate-900 dark:text-white">Select Mode</h2>
+                    <p className="text-slate-500 dark:text-slate-400 mb-0">Choose your operational environment to continue</p>
                 </div>
 
                 {/* Cards */}
@@ -26,23 +30,31 @@ const ModeSelection = () => {
                     {/* Pre Production */}
                     <div className="col-md-6">
                         <div
-                            className="card border h-100 text-center mode-card"
+                            className="card border-0 h-100 shadow-sm mode-card cursor-pointer animate__animated animate__fadeInLeft"
                             role="button"
                             onClick={() => navigate('/dashboard')}
+                            style={{
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                borderRadius: '16px'
+                            }}
                         >
                             <div className="card-body d-flex flex-column align-items-center justify-content-center p-5">
                                 <div
-                                    className="rounded-circle d-flex align-items-center justify-content-center mb-4 mode-icon mode-icon-primary"
-                                    style={{ width: 80, height: 80 }}
+                                    className="rounded-2xl d-flex align-items-center justify-content-center mb-4 mode-icon mode-icon-primary"
+                                    style={{ 
+                                        width: 88, 
+                                        height: 88,
+                                        transition: 'all 0.3s ease'
+                                    }}
                                 >
-                                    <i className="ti ti-building-factory-2 fs-1"></i>
+                                    <Factory className="h-10 w-10" />
                                 </div>
-                                <h4 className="fw-bold mb-2">Pre Production</h4>
-                                <p className="text-muted fs-14 mb-4">
+                                <h4 className="fw-bold mb-2 text-slate-900 dark:text-white">Pre Production</h4>
+                                <p className="text-slate-500 dark:text-slate-400 text-center mb-4">
                                     Access the main production dashboard, stoppage logs, and reports management.
                                 </p>
-                                <span className="text-primary fw-medium d-inline-flex align-items-center">
-                                    Enter Dashboard <i className="ti ti-arrow-right ms-2"></i>
+                                <span className="text-primary fw-semibold d-inline-flex align-items-center mt-auto">
+                                    Enter Dashboard <ArrowRight className="h-4 w-4 ms-2" />
                                 </span>
                             </div>
                         </div>
@@ -51,64 +63,89 @@ const ModeSelection = () => {
                     {/* Post Production */}
                     <div className="col-md-6">
                         <div
-                            className="card border h-100 text-center mode-card"
+                            className="card border-0 h-100 shadow-sm mode-card cursor-pointer animate__animated animate__fadeInRight"
                             role="button"
                             onClick={() => navigate('/post-production/production')}
+                            style={{
+                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                borderRadius: '16px'
+                            }}
                         >
                             <div className="card-body d-flex flex-column align-items-center justify-content-center p-5">
                                 <div
-                                    className="rounded-circle d-flex align-items-center justify-content-center mb-4 mode-icon mode-icon-success"
-                                    style={{ width: 80, height: 80 }}
+                                    className="rounded-2xl d-flex align-items-center justify-content-center mb-4 mode-icon mode-icon-success"
+                                    style={{ 
+                                        width: 88, 
+                                        height: 88,
+                                        transition: 'all 0.3s ease'
+                                    }}
                                 >
-                                    <i className="ti ti-truck-delivery fs-1"></i>
+                                    <Truck className="h-10 w-10" />
                                 </div>
-                                <h4 className="fw-bold mb-2">Post Production</h4>
-                                <p className="text-muted fs-14 mb-4">
+                                <h4 className="fw-bold mb-2 text-slate-900 dark:text-white">Post Production</h4>
+                                <p className="text-slate-500 dark:text-slate-400 text-center mb-4">
                                     Manage barcode generation, warehouse scanning, and logistics.
                                 </p>
-                                <span className="text-success fw-medium d-inline-flex align-items-center">
-                                    Enter Dashboard <i className="ti ti-arrow-right ms-2"></i>
+                                <span className="text-success fw-semibold d-inline-flex align-items-center mt-auto">
+                                    Enter Dashboard <ArrowRight className="h-4 w-4 ms-2" />
                                 </span>
                             </div>
                         </div>
                     </div>
 
                 </div>
+
+                {/* Additional Info */}
+                <div className="text-center mt-5 animate__animated animate__fadeIn">
+                    <p className="text-slate-400 dark:text-slate-500 mb-0" style={{ fontSize: '0.875rem' }}>
+                        Copyright © {new Date().getFullYear()} Twellium. All rights reserved.
+                    </p>
+                </div>
             </div>
 
             {/* Scoped styles for hover effects */}
             <style>{`
                 .mode-card {
-                    transition: transform 0.25s ease, box-shadow 0.25s ease;
-                    cursor: pointer;
+                    background: white;
                 }
                 .mode-card:hover {
-                    transform: translateY(-4px);
-                    box-shadow: 0 .75rem 1.5rem rgba(18,38,63,.08);
+                    transform: translateY(-8px);
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1) !important;
+                }
+                [data-bs-theme="dark"] .mode-card {
+                    background: #1e293b;
+                }
+                [data-bs-theme="dark"] .mode-card:hover {
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3) !important;
                 }
                 .mode-icon {
-                    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
-                    border: 1px solid;
+                    transition: all 0.3s ease;
+                    border: 2px solid;
                 }
                 .mode-icon-primary {
-                    background-color: rgba(var(--bs-primary-rgb), .08);
-                    color: var(--bs-primary);
-                    border-color: rgba(var(--bs-primary-rgb), .2);
+                    background-color: rgba(37, 99, 235, 0.08);
+                    color: #2563eb;
+                    border-color: rgba(37, 99, 235, 0.2);
                 }
                 .mode-card:hover .mode-icon-primary {
-                    background-color: var(--bs-primary);
+                    background-color: #2563eb;
                     color: #fff;
-                    border-color: var(--bs-primary);
+                    border-color: #2563eb;
+                    transform: scale(1.1);
                 }
                 .mode-icon-success {
-                    background-color: rgba(var(--bs-success-rgb), .08);
-                    color: var(--bs-success);
-                    border-color: rgba(var(--bs-success-rgb), .2);
+                    background-color: rgba(22, 163, 74, 0.08);
+                    color: #16a34a;
+                    border-color: rgba(22, 163, 74, 0.2);
                 }
                 .mode-card:hover .mode-icon-success {
-                    background-color: var(--bs-success);
+                    background-color: #16a34a;
                     color: #fff;
-                    border-color: var(--bs-success);
+                    border-color: #16a34a;
+                    transform: scale(1.1);
+                }
+                .cursor-pointer {
+                    cursor: pointer;
                 }
             `}</style>
         </div>

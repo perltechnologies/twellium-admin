@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, Trash2, AlertCircle } from 'lucide-react';
-import { Button, Input, Card } from '../../../components/ui';
+import { Save, Plus, Trash2, AlertCircle } from 'lucide-react';
 import { productionApi } from '../../../api/production';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const StoppageLogForm = () => {
     const { id } = useParams();
@@ -157,190 +155,237 @@ const StoppageLogForm = () => {
         }
     };
 
-    if (initialLoading) return <div className="p-8 text-center text-slate-500">Loading form...</div>;
+    if (initialLoading) return <div className="p-5 text-center text-muted">Loading form...</div>;
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-between">
-                <Button variant="ghost" onClick={() => navigate('/dashboard/production/stoppages')}>
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Back
-                </Button>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {isEditMode ? 'Edit Stoppage Log' : 'New Stoppage Log'}
-                </h1>
+        <>
+            {/* Header */}
+            <div className="card mb-4">
+                <div className="card-body">
+                    <div className="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+                        <div>
+                            <button 
+                                type="button"
+                                onClick={() => navigate('/dashboard/production/stoppages')} 
+                                className="btn btn-link p-0 mb-2 text-decoration-none"
+                            >
+                                <i className="ti ti-arrow-left me-2"></i>
+                                Back to Stoppage Logs
+                            </button>
+                            <h4 className="mb-2">
+                                {isEditMode ? 'Edit Stoppage Log' : 'Create Stoppage Log'}
+                            </h4>
+                            <p className="text-muted small mb-0">
+                                Record line downtime and incident details for accurate tracking and reporting.
+                            </p>
+                        </div>
+                        <span className={`badge ${isEditMode ? 'bg-soft-warning text-warning' : 'bg-soft-primary text-primary'}`}>
+                            <i className="ti ti-clock me-1"></i>
+                            {isEditMode ? 'Editing Mode' : 'New Entry'}
+                        </span>
+                    </div>
+                </div>
             </div>
 
             {error && (
-                <div className="bg-red-500/10 text-red-400 p-4 rounded-lg flex items-center gap-2 border border-red-500/20">
-                    <AlertCircle className="h-5 w-5" />
+                <div className="alert alert-danger d-flex align-items-center mb-4">
+                    <AlertCircle className="h-5 w-5 me-2" />
                     {error}
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 space-y-4">
-                    <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800 pb-2">Log Details</h3>
+            <form onSubmit={handleSubmit}>
+                {/* Log Details Card */}
+                <div className="card mb-4">
+                    <div className="card-header bg-soft-primary">
+                        <h5 className="mb-1 text-primary">Log Details</h5>
+                        <small className="text-muted">Fill core stoppage metrics and production context</small>
+                    </div>
+                    <div className="card-body">
+                        <div className="row g-3">
+                            <div className="col-md-6">
+                                <label className="form-label">Report <span className="text-danger">*</span></label>
+                                <select
+                                    name="report"
+                                    value={formData.report}
+                                    onChange={handleChange}
+                                    className="form-select"
+                                    required
+                                >
+                                    <option value="">Select Report</option>
+                                    {reports.map(r => (
+                                        <option key={r.id} value={r.id}>{r.report_code} - {r.shift_name}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Report</label>
-                            <select
-                                name="report"
-                                value={formData.report}
-                                onChange={handleChange}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                                required
-                            >
-                                <option value="">Select Report</option>
-                                {reports.map(r => (
-                                    <option key={r.id} value={r.id} className="dark:bg-slate-900">{r.report_code} - {r.shift_name}</option>
-                                ))}
-                            </select>
-                        </div>
+                            <div className="col-md-6">
+                                <label className="form-label">PET <span className="text-danger">*</span></label>
+                                <select
+                                    name="pet"
+                                    value={formData.pet}
+                                    onChange={handleChange}
+                                    className="form-select"
+                                    required
+                                >
+                                    <option value="">Select PET</option>
+                                    {pets.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.name || p.pet_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">PET</label>
-                            <select
-                                name="pet"
-                                value={formData.pet}
-                                onChange={handleChange}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                                required
-                            >
-                                <option value="">Select PET</option>
-                                {pets.map(p => (
-                                    <option key={p.id} value={p.id} className="dark:bg-slate-900">
-                                        {p.name || p.pet_name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Hour Index</label>
-                                <Input
+                            <div className="col-md-3">
+                                <label className="form-label">Hour Index <span className="text-danger">*</span></label>
+                                <input
                                     type="number"
                                     name="hour_index"
                                     value={formData.hour_index}
                                     onChange={handleChange}
+                                    className="form-control"
                                     placeholder="e.g. 1"
                                     required
                                 />
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Minute Index</label>
-                                <Input
+
+                            <div className="col-md-3">
+                                <label className="form-label">Minute Index</label>
+                                <input
                                     type="number"
                                     name="minute_index"
                                     value={formData.minute_index}
                                     onChange={handleChange}
+                                    className="form-control"
                                     placeholder="e.g. 30"
                                 />
                             </div>
-                        </div>
 
-                        <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Efficiency (%)</label>
-                            <Input
-                                type="number"
-                                step="0.01"
-                                name="efficiency"
-                                value={formData.efficiency}
-                                onChange={handleChange}
-                                placeholder="e.g. 95.5"
-                                required
-                            />
-                        </div>
+                            <div className="col-md-3">
+                                <label className="form-label">Efficiency (%) <span className="text-danger">*</span></label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    name="efficiency"
+                                    value={formData.efficiency}
+                                    onChange={handleChange}
+                                    className="form-control"
+                                    placeholder="e.g. 95.5"
+                                    required
+                                />
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Downtime (Minutes)</label>
-                            <Input
-                                type="number"
-                                name="downtime_minutes"
-                                value={formData.downtime_minutes}
-                                onChange={handleChange}
-                                placeholder="0"
-                                required
-                            />
-                        </div>
+                            <div className="col-md-3">
+                                <label className="form-label">Downtime (Minutes) <span className="text-danger">*</span></label>
+                                <input
+                                    type="number"
+                                    name="downtime_minutes"
+                                    value={formData.downtime_minutes}
+                                    onChange={handleChange}
+                                    className="form-control"
+                                    placeholder="0"
+                                    required
+                                />
+                            </div>
 
-                        <div className="space-y-1">
-                            <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Bottles Produced</label>
-                            <Input
-                                type="number"
-                                name="bottles_produced"
-                                value={formData.bottles_produced}
-                                onChange={handleChange}
-                                placeholder="0"
-                                required
-                            />
+                            <div className="col-md-6">
+                                <label className="form-label">Bottles Produced <span className="text-danger">*</span></label>
+                                <input
+                                    type="number"
+                                    name="bottles_produced"
+                                    value={formData.bottles_produced}
+                                    onChange={handleChange}
+                                    className="form-control"
+                                    placeholder="0"
+                                    required
+                                />
+                            </div>
+
+                            <div className="col-12">
+                                <label className="form-label">Comments</label>
+                                <textarea
+                                    name="comments"
+                                    value={formData.comments}
+                                    onChange={handleChange}
+                                    rows="3"
+                                    className="form-control"
+                                    placeholder="Optional notes for shift handover, context, or follow-up."
+                                />
+                            </div>
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Comments</label>
-                        <textarea
-                            name="comments"
-                            value={formData.comments}
-                            onChange={handleChange}
-                            rows="3"
-                            className="w-full bg-white dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y"
-                            placeholder="Optional comments..."
-                        />
-                    </div>
-                </Card>
+                </div>
 
-                <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-                        <h3 className="text-lg font-medium text-slate-900 dark:text-slate-200">Incidents</h3>
-                        <Button type="button" variant="ghost" onClick={addIncident} className="text-blue-400 hover:text-blue-300">
-                            <Plus className="h-4 w-4 mr-1" /> Add Incident
-                        </Button>
+                {/* Incidents Card */}
+                <div className="card mb-4">
+                    <div className="card-header bg-soft-warning d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5 className="mb-1 text-warning">Downtime Incidents</h5>
+                            <small className="text-muted">Attach specific downtime events with categories and durations</small>
+                        </div>
+                        <button type="button" className="btn btn-warning btn-sm" onClick={addIncident}>
+                            <Plus className="h-4 w-4 me-1" />
+                            Add Incident
+                        </button>
                     </div>
-
-                    <div className="space-y-3">
-                        <AnimatePresence>
+                    <div className="card-body">
+                        <div className="vstack gap-3">
                             {formData.incidents.map((incident, index) => (
-                                <motion.div
-                                    key={index}
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: 'auto' }}
-                                    exit={{ opacity: 0, height: 0 }}
-                                    className="flex gap-2 items-center"
-                                >
-                                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800 space-y-3">
-                                        <div className="flex gap-2">
-                                            <Input
-                                                value={incident.incident_description}
-                                                onChange={(e) => handleIncidentChange(index, 'incident_description', e.target.value)}
-                                                placeholder="Describe the incident..."
-                                                className="flex-1"
-                                                required
-                                            />
-                                            <Input
-                                                type="time"
-                                                value={incident.incident_time}
-                                                onChange={(e) => handleIncidentChange(index, 'incident_time', e.target.value)}
-                                                className="w-32"
-                                            />
-                                            <Button
+                                <div key={index} className="card border-warning">
+                                    <div className="card-body">
+                                        <div className="d-flex align-items-center justify-content-between mb-3">
+                                            <span className="badge bg-soft-warning text-warning">
+                                                <i className="ti ti-alert-triangle me-1"></i>
+                                                Incident {index + 1}
+                                            </span>
+                                            <button
                                                 type="button"
-                                                variant="ghost"
                                                 onClick={() => removeIncident(index)}
-                                                className="text-red-400 hover:bg-red-500/10 p-2 h-auto self-start"
+                                                className="btn btn-sm btn-outline-danger"
+                                                title="Remove incident"
                                             >
                                                 <Trash2 className="h-4 w-4" />
-                                            </Button>
+                                            </button>
                                         </div>
+                                        <div className="row g-3">
+                                            <div className="col-md-6">
+                                                <label className="form-label small">Description <span className="text-danger">*</span></label>
+                                                <input
+                                                    type="text"
+                                                    value={incident.incident_description}
+                                                    onChange={(e) => handleIncidentChange(index, 'incident_description', e.target.value)}
+                                                    placeholder="Describe what happened..."
+                                                    className="form-control"
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="col-md-3">
+                                                <label className="form-label small">Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={incident.incident_time}
+                                                    onChange={(e) => handleIncidentChange(index, 'incident_time', e.target.value)}
+                                                    className="form-control"
+                                                />
+                                            </div>
+                                            <div className="col-md-3">
+                                                <label className="form-label small">Duration (min)</label>
+                                                <input
+                                                    type="number"
+                                                    value={incident.incident_duration || ''}
+                                                    onChange={(e) => handleIncidentChange(index, 'incident_duration', e.target.value)}
+                                                    placeholder="Minutes"
+                                                    className="form-control"
+                                                />
+                                            </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Downtime Category</label>
+                                            <div className="col-md-6">
+                                                <label className="form-label small">Downtime Category</label>
                                                 <select
                                                     value={incident.downtime_category}
                                                     onChange={(e) => handleIncidentChange(index, 'downtime_category', e.target.value)}
-                                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                                    className="form-select"
                                                 >
                                                     <option value="">Select Category...</option>
                                                     {downtimeCategories.map(cat => (
@@ -348,12 +393,13 @@ const StoppageLogForm = () => {
                                                     ))}
                                                 </select>
                                             </div>
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Sub-Category</label>
+
+                                            <div className="col-md-6">
+                                                <label className="form-label small">Sub-Category</label>
                                                 <select
                                                     value={incident.sub_downtime_category}
                                                     onChange={(e) => handleIncidentChange(index, 'sub_downtime_category', e.target.value)}
-                                                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="form-select"
                                                     disabled={!incident.downtime_category}
                                                 >
                                                     <option value="">Select Sub-Category...</option>
@@ -364,26 +410,39 @@ const StoppageLogForm = () => {
                                             </div>
                                         </div>
                                     </div>
-                                </motion.div>
+                                </div>
                             ))}
-                        </AnimatePresence>
-                        {formData.incidents.length === 0 && (
-                            <p className="text-sm text-slate-600 italic">No incidents added.</p>
-                        )}
+                            {formData.incidents.length === 0 && (
+                                <div className="border border-dashed rounded p-4 text-center bg-light">
+                                    <p className="text-muted small mb-2">No incidents added yet.</p>
+                                    <p className="text-muted small mb-3">Use "Add Incident" to attach downtime events to this stoppage log.</p>
+                                    <button type="button" className="btn btn-outline-warning btn-sm" onClick={addIncident}>
+                                        <Plus className="h-4 w-4 me-1" />
+                                        Add First Incident
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </Card>
+                </div>
 
-                <div className="flex justify-end gap-3 pt-4">
-                    <Button type="button" variant="ghost" onClick={() => navigate('/dashboard/production/stoppages')}>
+
+                {/* Form Actions */}
+                <div className="d-flex justify-content-end gap-2">
+                    <button type="button" className="btn btn-outline-secondary" onClick={() => navigate('/dashboard/production/stoppages')}>
                         Cancel
-                    </Button>
-                    <Button type="submit" className="bg-blue-600 hover:bg-blue-500 w-32" isLoading={loading}>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save Log
-                    </Button>
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={loading}>
+                        {loading ? (
+                            <span className="spinner-border spinner-border-sm me-2"></span>
+                        ) : (
+                            <Save className="h-4 w-4 me-2" />
+                        )}
+                        {isEditMode ? 'Update Log' : 'Save Log'}
+                    </button>
                 </div>
             </form>
-        </div>
+        </>
     );
 };
 

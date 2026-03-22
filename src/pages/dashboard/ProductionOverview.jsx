@@ -15,6 +15,7 @@ import ChartErrorBoundary from '../../components/ui/ChartErrorBoundary';
 import {
     SkeletonChart, SkeletonDonut, SkeletonTable
 } from '../../components/ui/Skeletons';
+import { useFilters } from '../../context/FilterContext';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -88,6 +89,7 @@ const formatDate = (d) => {
 const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
+    const { updateFilters } = useFilters();
 
     /* Stale-while-revalidate: separate initial vs refresh state */
     const [initialLoading, setInitialLoading] = useState(true);
@@ -109,8 +111,10 @@ const Overview = () => {
     const [downtimeByLine, setDowntimeByLine] = useState([]);
     const [oeeSummary, setOeeSummary] = useState([]); // OEE data from API
 
-    // Filter for PET selection (uses global date filters)
-    const [petSelected, setPetSelected] = useState('');
+    const handlePetChange = (e) => {
+        const petId = e.target.value;
+        updateFilters({ pet_id: petId });
+    };
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -276,7 +280,7 @@ const Overview = () => {
                 setRefreshing(false);
             }
         }
-    }, [filters]);
+    }, [getParams]);
 
     useEffect(() => {
         loadData();
@@ -297,8 +301,8 @@ const Overview = () => {
         let filtered = [...reports];
 
         // Apply PET filter if selected
-        if (petSelected) {
-            const selectedPetName = pets.find(p => p.id === parseInt(petSelected))?.pet_name;
+        if (filters.pet_id) {
+            const selectedPetName = pets.find(p => p.id === parseInt(filters.pet_id))?.pet_name;
             if (selectedPetName) filtered = filtered.filter(r => r.pet_name === selectedPetName);
         }
 
@@ -312,7 +316,7 @@ const Overview = () => {
             lineMap[line].planned += planned;
         });
         return Object.values(lineMap).sort((a, b) => b.actual - a.actual).slice(0, 6);
-    }, [reports, petSelected, pets]);
+    }, [reports, filters.pet_id, pets]);
 
     // PET Contribution to Production & Quality - uses OEE summary API
     const petProductionAndQuality = useMemo(() => {
@@ -595,8 +599,8 @@ const Overview = () => {
                                     <label className="form-label small">Filter by PET</label>
                                     <select
                                         className="form-select form-select-sm"
-                                        value={petSelected}
-                                        onChange={(e) => setPetSelected(e.target.value)}
+                                        value={filters.pet_id || ''}
+                                        onChange={handlePetChange}
                                     >
                                         <option value="">All PETs</option>
                                         {pets.sort((a, b) => {

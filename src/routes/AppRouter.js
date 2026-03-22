@@ -90,6 +90,7 @@ export const AppRouter = () => {
                                     element={
                                         <GenericCrudPage
                                             title="Incident Categories"
+                                            subtitle="Organize stoppage incidents with clear, reusable categories."
                                             api={{
                                                 list: productionApi.getIncidentCategories,
                                                 create: productionApi.createIncidentCategory,
@@ -98,7 +99,15 @@ export const AppRouter = () => {
                                             }}
                                             columns={[
                                                 { header: 'ID', accessor: 'id' },
-                                                { header: 'Category Name', accessor: 'category_name' },
+                                                {
+                                                    header: 'Category Name',
+                                                    accessor: 'category_name',
+                                                    render: (row) => (
+                                                        <span className="badge bg-soft-primary rounded-full px-3 py-2 text-primary fw-semibold text-capitalize">
+                                                            {row.category_name || '-'}
+                                                        </span>
+                                                    )
+                                                },
                                                 { 
                                                     header: 'Created', 
                                                     accessor: 'created_at',
@@ -108,6 +117,11 @@ export const AppRouter = () => {
                                             formFields={[
                                                 { name: 'category_name', label: 'Category Name', required: true }
                                             ]}
+                                            createButtonLabel="Add Incident Category"
+                                            tableTitle="Incident Category Directory"
+                                            emptyStateTitle="No incident categories yet"
+                                            emptyStateDescription="Create a category to standardize incident logging in production stoppages."
+                                            showActionsOnHover={false}
                                             showStats={true}
                                         />
                                     }
@@ -119,6 +133,7 @@ export const AppRouter = () => {
                                     element={
                                         <GenericCrudPage
                                             title="Downtime Categories"
+                                            subtitle="Classify and manage downtime types for accurate production tracking."
                                             api={{
                                                 list: productionApi.getDowntimeCategories,
                                                 create: productionApi.createDowntimeCategory,
@@ -127,13 +142,40 @@ export const AppRouter = () => {
                                             }}
                                             columns={[
                                                 { header: 'ID', accessor: 'id' },
-                                                { header: 'Name', accessor: 'name' },
-                                                { header: 'Description', accessor: 'description' },
+                                                {
+                                                    header: 'Category Name',
+                                                    accessor: 'name',
+                                                    render: (row) => (
+                                                        <span className="badge bg-soft-warning rounded-full px-3 py-2 text-warning fw-semibold text-capitalize">
+                                                            {row.name || '-'}
+                                                        </span>
+                                                    )
+                                                },
+                                                {
+                                                    header: 'Description',
+                                                    accessor: 'description',
+                                                    render: (row) => (
+                                                        <span className="text-slate-500 dark:text-slate-400">
+                                                            {row.description || <em className="text-slate-400">No description</em>}
+                                                        </span>
+                                                    )
+                                                },
+                                                {
+                                                    header: 'Created',
+                                                    accessor: 'created_at',
+                                                    render: (row) => row.created_at ? new Date(row.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'
+                                                }
                                             ]}
                                             formFields={[
                                                 { name: 'name', label: 'Category Name', required: true },
                                                 { name: 'description', label: 'Description', required: false }
                                             ]}
+                                            createButtonLabel="Add Downtime Category"
+                                            tableTitle="Downtime Category Directory"
+                                            emptyStateTitle="No downtime categories yet"
+                                            emptyStateDescription="Create a category to classify downtime events in production reports."
+                                            showActionsOnHover={false}
+                                            showStats={true}
                                         />
                                     }
                                 />
