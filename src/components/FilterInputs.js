@@ -23,10 +23,12 @@ const FilterInputs = ({ showPageSize = false }) => {
   };
 
   return (
-    <div className="row mb-3 align-items-end">
+    <div className="card mb-3">
+        <div className="card-body">
+            <div className="row align-items-end">
       <div className={showPageSize ? "col-md-3" : "col-md-4"}>
         <div className="d-flex align-items-center gap-2 mb-2">
-          <label className="form-label mb-0">Date</label>
+          <label className="form-label mb-0 fw-semibold">Date Filter</label>
           <div className="form-check form-switch">
             <input
               className="form-check-input"
@@ -34,7 +36,7 @@ const FilterInputs = ({ showPageSize = false }) => {
               checked={useRange}
               onChange={(e) => handleRangeToggle(e.target.checked)}
             />
-            <label className="form-check-label small">Range</label>
+            <label className="form-check-label small ms-1">Range</label>
           </div>
         </div>
         {!useRange ? (
@@ -64,23 +66,23 @@ const FilterInputs = ({ showPageSize = false }) => {
         )}
       </div>
       <div className={showPageSize ? "col-md-3" : "col-md-4"}>
-        <label className="form-label">PET</label>
+        <label className="form-label fw-semibold">PET Line</label>
         <select
           className="form-select"
           value={filters.pet || ''}
           onChange={(e) => updateFilters({ pet: e.target.value || null })}
         >
-          <option value="">All</option>
+          <option value="">All PET Lines</option>
           {pets.sort((a, b) => {
             const aName = (a.pet_name || '').toLowerCase();
             const bName = (b.pet_name || '').toLowerCase();
-            
+
             // Canline always last
             const aIsCan = aName.includes('can');
             const bIsCan = bName.includes('can');
             if (aIsCan && !bIsCan) return 1;
             if (!aIsCan && bIsCan) return -1;
-            
+
             // Extract numbers and sort
             const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
@@ -92,7 +94,7 @@ const FilterInputs = ({ showPageSize = false }) => {
       </div>
       {showPageSize && (
         <div className="col-md-3">
-          <label className="form-label">Page Size</label>
+          <label className="form-label fw-semibold">Page Size</label>
           <select
             className="form-select"
             value={filters.page_size}
@@ -105,6 +107,8 @@ const FilterInputs = ({ showPageSize = false }) => {
           </select>
         </div>
       )}
+            </div>
+        </div>
     </div>
   );
 };

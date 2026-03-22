@@ -16,6 +16,7 @@ import {
     SkeletonChart, SkeletonDonut, SkeletonTable
 } from '../../components/ui/Skeletons';
 import { useFilters } from '../../context/FilterContext';
+import ReactApexChart from 'react-apexcharts';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
@@ -86,6 +87,32 @@ const formatDate = (d) => {
 };
 
 /* ── component ───────────────────────────────────── */
+const FilterBadge = ({ filters, localFilter, pets = [] }) => {
+    const badges = [];
+    if (localFilter) badges.push(<span key="local" className="badge bg-soft-info text-info fs-11 ms-2">{localFilter}</span>);
+    
+    if (filters?.pet) {
+        const petName = pets.find(p => p.id === parseInt(filters.pet))?.pet_name || `PET ${filters.pet}`;
+        badges.push(<span key="pet" className="badge bg-soft-primary text-primary fs-11 ms-2">{petName}</span>);
+    }
+    
+    if (filters?.shift) {
+        badges.push(<span key="shift" className="badge bg-soft-primary text-primary fs-11 ms-2">Shift: {filters.shift}</span>);
+    }
+    
+    if (filters?.log_date) {
+        badges.push(<span key="logdate" className="badge bg-soft-primary text-primary fs-11 ms-2">{formatDate(filters.log_date)}</span>);
+    } else if (filters?.start_date && filters?.end_date) {
+        badges.push(<span key="date" className="badge bg-soft-primary text-primary fs-11 ms-2">{formatDate(filters.start_date)} - {formatDate(filters.end_date)}</span>);
+    } else if (filters?.start_date) {
+        badges.push(<span key="date" className="badge bg-soft-primary text-primary fs-11 ms-2">From: {formatDate(filters.start_date)}</span>);
+    } else if (filters?.end_date) {
+        badges.push(<span key="date" className="badge bg-soft-primary text-primary fs-11 ms-2">To: {formatDate(filters.end_date)}</span>);
+    }
+    
+    return badges.length > 0 ? <>{badges}</> : null;
+};
+
 const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
@@ -111,9 +138,77 @@ const Overview = () => {
     const [downtimeByLine, setDowntimeByLine] = useState([]);
     const [oeeSummary, setOeeSummary] = useState([]); // OEE data from API
 
+    // Downtime chart local filters
+    const [dtFilter, setDtFilter] = useState('all');
+    const [dtDate, setDtDate] = useState('');
+    const [dtDateRange, setDtDateRange] = useState({ start: '', end: '' });
+    const [dtUseRange, setDtUseRange] = useState(false);
+    const [allStoppages, setAllStoppages] = useState([]);
+
+    // Fetch all stoppages once for downtime chart
+    useEffect(() => {
+        productionApi.getStoppages({ page_size: 1000 })
+            .then(res => setAllStoppages(extractList(res)))
+            .catch(err => console.error('Failed to fetch all stoppages:', err));
+    }, []);
+
+    // Derive downtime by line from allStoppages with client-side date filtering
+    const activeDowntimeByLine = useMemo(() => {
+        let filtered = [...allStoppages];
+
+        const getDate = (s) => (s.log_date || s.created_at || s.start_time || '').split('T')[0];
+
+        // Apply date filters
+        if (dtUseRange) {
+            if (dtDateRange.start) filtered = filtered.filter(s => getDate(s) >= dtDateRange.start);
+            if (dtDateRange.end) filtered = filtered.filter(s => getDate(s) <= dtDateRange.end);
+        } else if (dtDate) {
+            filtered = filtered.filter(s => getDate(s) === dtDate);
+        }
+
+        if (dtFilter !== 'all') {
+            const end = new Date();
+            const start = new Date();
+            if (dtFilter === 'week') start.setDate(end.getDate() - 6);
+            if (dtFilter === 'month') start.setMonth(end.getMonth() - 1);
+            const startStr = start.toISOString().split('T')[0];
+            const endStr = end.toISOString().split('T')[0];
+            filtered = filtered.filter(s => {
+                const d = getDate(s);
+                return d >= startStr && d <= endStr;
+            });
+        }
+
+        const lineMap = {};
+        filtered.forEach(s => {
+            const raw = s.pet_name || s.line_name || 'Unknown';
+            const key = raw.toLowerCase().trim();
+            if (!lineMap[key]) lineMap[key] = { name: raw, Mechanical: 0, Planned: 0 };
+            (s.incidents || []).forEach(inc => {
+                const cat = (inc.downtime_category_name || '').toLowerCase();
+                const dur = parseFloat(inc.incident_duration || 0);
+                if (cat.includes('mechanical')) lineMap[key].Mechanical += dur;
+                else if (cat.includes('planned')) lineMap[key].Planned += dur;
+            });
+        });
+        return Object.values(lineMap)
+            .filter(l => l.Mechanical + l.Planned > 0)
+            .sort((a, b) => {
+                const aName = a.name.toLowerCase();
+                const bName = b.name.toLowerCase();
+                const aIsCan = aName.includes('can');
+                const bIsCan = bName.includes('can');
+                if (aIsCan && !bIsCan) return 1;
+                if (!aIsCan && bIsCan) return -1;
+                const aNum = parseInt(aName.match(/(\d+)/)?.[0] || '999');
+                const bNum = parseInt(bName.match(/(\d+)/)?.[0] || '999');
+                return aNum - bNum;
+            });
+    }, [allStoppages, dtFilter, dtDate, dtUseRange, dtDateRange.start, dtDateRange.end]);
+
     const handlePetChange = (e) => {
         const petId = e.target.value;
-        updateFilters({ pet_id: petId });
+        updateFilters({ pet: petId });
     };
 
     const loadData = useCallback(async () => {
@@ -149,9 +244,11 @@ const Overview = () => {
             console.log('ProductionOverview - Fetching with params:', params);
             console.log('ProductionOverview - OEE params:', oeeParams);
 
+            const stoppageParams = getParams({}, true);
+
             const [reportsRes, stoppagesRes, oeeRes] = await Promise.all([
                 productionApi.getReports(params),
-                productionApi.getStoppages(params),
+                productionApi.getStoppages(stoppageParams),
                 productionApi.getOeeSummary(oeeParams),
             ]);
 
@@ -301,8 +398,8 @@ const Overview = () => {
         let filtered = [...reports];
 
         // Apply PET filter if selected
-        if (filters.pet_id) {
-            const selectedPetName = pets.find(p => p.id === parseInt(filters.pet_id))?.pet_name;
+        if (filters.pet) {
+            const selectedPetName = pets.find(p => p.id === parseInt(filters.pet))?.pet_name;
             if (selectedPetName) filtered = filtered.filter(r => r.pet_name === selectedPetName);
         }
 
@@ -316,24 +413,27 @@ const Overview = () => {
             lineMap[line].planned += planned;
         });
         return Object.values(lineMap).sort((a, b) => b.actual - a.actual).slice(0, 6);
-    }, [reports, filters.pet_id, pets]);
+    }, [reports, filters.pet, pets]);
 
-    // PET Contribution to Production & Quality - uses OEE summary API
-    const petProductionAndQuality = useMemo(() => {
-        console.log('petProductionAndQuality - oeeSummary:', oeeSummary);
-        const result = oeeSummary
-            .map(pet => ({
-                name: pet.pet_name,
-                production: pet.metrics?.details?.total_output_pcs || pet.total_production || pet.production || 0,
-                quality: pet.metrics?.quality ?? pet.quality ?? 0,
-                oee: pet.metrics?.oee ?? pet.oee ?? 0,
-                availability: pet.metrics?.availability ?? pet.availability ?? 0,
-                performance: pet.metrics?.performance ?? pet.performance ?? 0
+    // PET Contribution to Quality - uses OEE summary API, aggregated per PET
+    const petQuality = useMemo(() => {
+        const grouped = {};
+        oeeSummary.forEach(pet => {
+            const name = pet.pet_name;
+            if (!name) return;
+            const q = pet.metrics?.quality ?? pet.quality ?? 0;
+            if (!grouped[name]) grouped[name] = { total: 0, count: 0 };
+            grouped[name].total += q;
+            grouped[name].count += 1;
+        });
+        return Object.entries(grouped)
+            .map(([name, { total, count }]) => ({
+                name,
+                quality: count > 0 ? total / count : 0
             }))
-            .sort((a, b) => b.production - a.production)
+            .filter(pet => pet.quality > 0)
+            .sort((a, b) => b.quality - a.quality)
             .slice(0, 6);
-        console.log('petProductionAndQuality - result:', result);
-        return result;
     }, [oeeSummary]);
 
     // Transform downtimeTypes for DowntimeBreakdownChart component
@@ -349,17 +449,25 @@ const Overview = () => {
     return (
         <>
             {/* Page Header */}
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
-                <div className="d-flex align-items-center gap-2">
-                    <h4 className="mb-1">Dashboard</h4>
-                    {refreshing && (
-                        <span className="spinner-border spinner-border-sm text-primary" role="status" />
-                    )}
-                </div>
-                <div className="gap-2 d-flex align-items-center flex-wrap">
-                    <button className="btn btn-icon btn-outline-light shadow" title="Refresh" onClick={loadData} disabled={refreshing}>
-                        <i className={`ti ti-refresh${refreshing ? ' spin' : ''}`}></i>
-                    </button>
+            <div className="card border-0 shadow-sm mb-3">
+                <div className="card-body py-3">
+                    <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                        <div className="d-flex align-items-center gap-2">
+                            <div className="avatar bg-soft-primary rounded-circle p-2">
+                                <i className="ti ti-layout-dashboard text-primary fs-4"></i>
+                            </div>
+                            <div>
+                                <h4 className="mb-0 fs-18 fw-bold">Production Overview</h4>
+                                <small className="text-muted">Real-time production metrics and insights</small>
+                            </div>
+                        </div>
+                        <div className="d-flex align-items-center gap-2">
+                            <button className="btn btn-outline-primary d-flex align-items-center gap-1" onClick={loadData} disabled={refreshing}>
+                                <i className={`ti ti-refresh${refreshing ? ' spin' : ''}`}></i>
+                                <span className="d-none d-sm-inline">Refresh</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -368,10 +476,13 @@ const Overview = () => {
 
             {/* Error State */}
             {error && (
-                <div className="alert alert-danger d-flex align-items-center mb-4">
+                <div className="alert alert-danger d-flex align-items-center shadow-sm mb-3">
                     <i className="ti ti-alert-circle fs-4 me-2"></i>
-                    <div className="flex-grow-1">{error}</div>
-                    <button className="btn btn-outline-danger btn-sm ms-2" onClick={loadData}>
+                    <div className="flex-grow-1">
+                        <strong className="d-block">Error Loading Data</strong>
+                        <small>{error}</small>
+                    </div>
+                    <button className="btn btn-danger btn-sm ms-2" onClick={loadData}>
                         <i className="ti ti-refresh me-1"></i>Retry
                     </button>
                 </div>
@@ -380,23 +491,90 @@ const Overview = () => {
             {/* Production Summary - Efficiency trends and multi-line comparison */}
             {isLoading ? <SkeletonChart height={400} title /> : (
                 <ChartErrorBoundary fallbackMessage="Failed to render production summary">
-                    <ProductionSummary 
-                        reports={reports}
+                    <ProductionSummary
+                        reports={oeeSummary}
                         loading={isLoading}
                         pets={pets}
                     />
                 </ChartErrorBoundary>
             )}
 
+            {/* Stats Overview Cards */}
+            <div className="row g-3 mb-4">
+                <div className="col-md-3">
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-body">
+                            <div className="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <p className="text-muted mb-0 fs-13">Total Reports</p>
+                                    <h3 className="mb-0 mt-1 fs-24 fw-bold">{stats.totalReports}</h3>
+                                </div>
+                                <div className="avatar bg-soft-primary rounded-circle p-3">
+                                    <i className="ti ti-file-report text-primary fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-md-3">
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-body">
+                            <div className="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <p className="text-muted mb-0 fs-13">Active Lines</p>
+                                    <h3 className="mb-0 mt-1 fs-24 fw-bold">{stats.activeLines}</h3>
+                                </div>
+                                <div className="avatar bg-soft-info rounded-circle p-3">
+                                    <i className="ti ti-building-factory-2 text-info fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-md-3">
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-body">
+                            <div className="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <p className="text-muted mb-0 fs-13">Total Stoppages</p>
+                                    <h3 className="mb-0 mt-1 fs-24 fw-bold">{stats.totalStoppages}</h3>
+                                </div>
+                                <div className="avatar bg-soft-warning rounded-circle p-3">
+                                    <i className="ti ti-alert-triangle text-warning fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-md-3">
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-body">
+                            <div className="d-flex align-items-center justify-content-between">
+                                <div>
+                                    <p className="text-muted mb-0 fs-13">Total Downtime</p>
+                                    <h3 className="mb-0 mt-1 fs-24 fw-bold">{formatDuration(stats.totalDowntime)}</h3>
+                                </div>
+                                <div className="avatar bg-soft-danger rounded-circle p-3">
+                                    <i className="ti ti-clock-stop text-danger fs-4"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Charts Row */}
-            <div className="row">
+            <div className="row g-3 mb-4">
                 {/* Reports by Status – donut */}
                 <div className="col-xxl-3 col-lg-6 d-flex">
                     {isLoading ? <SkeletonDonut /> : (
                     <ChartErrorBoundary fallbackMessage="Failed to render status chart">
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">Reports by Status</h6>
+                    <div className="card border-0 shadow-sm flex-fill">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                            <h6 className="mb-0 fw-semibold">
+                                Reports by Status
+                                <FilterBadge filters={filters} pets={pets} />
+                            </h6>
                         </div>
                         <div className="card-body">
                             {statusBreakdown.length > 0 ? (
@@ -432,25 +610,31 @@ const Overview = () => {
                 </div>
 
                 {/* Plan vs Actual – bar chart */}
-                <div className="col-lg-6 d-flex">
+                <div className="col-xxl-6 col-lg-6 d-flex">
                     {isLoading ? <SkeletonChart height={220} title /> : (
                     <ChartErrorBoundary fallbackMessage="Failed to render plan vs actual chart">
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">Plan vs Actual Output</h6>
+                    <div className="card border-0 shadow-sm flex-fill">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                            <h6 className="mb-0 fw-semibold">
+                                Plan vs Actual Output
+                                <FilterBadge filters={filters} pets={pets} />
+                            </h6>
                         </div>
                         <div className="card-body pb-0">
                             <div className="d-flex align-items-center justify-content-between flex-wrap mb-3">
                                 <div className="mb-1">
                                     <h5 className="mb-2 fs-16 fw-bold">{formatNum(totals.actual)}</h5>
+                                    <small className="text-muted">Total bottles produced</small>
                                 </div>
                                 <div className="d-flex align-items-center gap-3">
-                                    <p className="fs-14 text-dark d-flex align-items-center mb-1">
-                                        <i className="ti ti-circle-filled me-1 fs-6" style={{ color: '#2F80ED' }}></i>Planned
-                                    </p>
-                                    <p className="fs-14 text-dark d-flex align-items-center mb-1">
-                                        <i className="ti ti-circle-filled me-1 fs-6" style={{ color: '#1ABE17' }}></i>Actual
-                                    </p>
+                                    <div className="d-flex align-items-center gap-1">
+                                        <span className="badge rounded-pill" style={{ backgroundColor: '#2F80ED' }}></span>
+                                        <span className="fs-13 text-muted">Planned</span>
+                                    </div>
+                                    <div className="d-flex align-items-center gap-1">
+                                        <span className="badge rounded-pill" style={{ backgroundColor: '#1ABE17' }}></span>
+                                        <span className="fs-13 text-muted">Actual</span>
+                                    </div>
                                 </div>
                             </div>
                             {planVsActual.length > 0 ? (
@@ -478,12 +662,15 @@ const Overview = () => {
                 </div>
 
                 {/* Top Lines – donut */}
-                <div className="col-xxl-3 col-xl-12 d-flex">
+                <div className="col-xxl-3 col-xl-6 d-flex">
                     {isLoading ? <SkeletonDonut /> : (
                     <ChartErrorBoundary fallbackMessage="Failed to render top lines chart">
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">Top PET Lines</h6>
+                    <div className="card border-0 shadow-sm flex-fill">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                            <h6 className="mb-0 fw-semibold">
+                                Top PET Lines
+                                <FilterBadge filters={filters} pets={pets} />
+                            </h6>
                         </div>
                         <div className="card-body">
                             {topLines.length > 0 ? (
@@ -524,55 +711,96 @@ const Overview = () => {
             </div>
 
             {/* Downtime Breakdown Row */}
-            <div className="row">
-                {/* Downtime Breakdown Chart */}
-                <div className="col-xxl-4 col-lg-6 d-flex">
-                    {isLoading ? <SkeletonDonut /> : (
-                    <ChartErrorBoundary fallbackMessage="Failed to render downtime breakdown">
-                        <DowntimeBreakdownChart 
-                            downtimeCategories={downtimeCategories}
-                            loading={false}
-                            showDetailsButton={true}
-                            detailsRoute="/dashboard/downtime"
-                        />
-                    </ChartErrorBoundary>
-                    )}
-                </div>
-
+            <div className="row g-3 mb-4">
                 {/* Downtime by Line – grouped bar */}
-                <div className="col-xxl-8 col-lg-6 d-flex">
-                    {isLoading ? <SkeletonChart height={400} title /> : (
+                <div className="col-12 d-flex">
+                    {isLoading ? <SkeletonChart height={220} title /> : (
                     <ChartErrorBoundary fallbackMessage="Failed to render downtime by line chart">
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">Mechanical vs Planned by Line</h6>
-                            <div className="d-flex align-items-center gap-3">
-                                <p className="fs-13 text-dark d-flex align-items-center mb-0">
-                                    <i className="ti ti-circle-filled me-1" style={{ color: DOWNTIME_COLORS.Mechanical, fontSize: 8 }}></i>Mechanical
-                                </p>
-                                <p className="fs-13 text-dark d-flex align-items-center mb-0">
-                                    <i className="ti ti-circle-filled me-1" style={{ color: DOWNTIME_COLORS.Planned, fontSize: 8 }}></i>Planned
-                                </p>
+                    <div className="card border-0 shadow-sm w-100">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-2">
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div>
+                                    <h6 className="mb-0 fw-semibold">
+                                        Mechanical vs Planned Downtime
+                                        <FilterBadge filters={filters} pets={pets} localFilter={dtFilter !== 'all' ? dtFilter : dtDate || (dtDateRange.start && 'Custom Range')} />
+                                    </h6>
+                                    <small className="text-muted">Downtime comparison by PET line</small>
+                                </div>
+                                <div className="d-flex align-items-center gap-3">
+                                    <div className="d-flex align-items-center gap-1">
+                                        <span className="d-inline-block rounded-circle" style={{ width: 8, height: 8, backgroundColor: DOWNTIME_COLORS.Mechanical }}></span>
+                                        <span className="fs-13 text-muted">Mechanical</span>
+                                    </div>
+                                    <div className="d-flex align-items-center gap-1">
+                                        <span className="d-inline-block rounded-circle" style={{ width: 8, height: 8, backgroundColor: DOWNTIME_COLORS.Planned }}></span>
+                                        <span className="fs-13 text-muted">Planned</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-2">
+                                <div className="d-flex align-items-center gap-2">
+                                    {activeDowntimeByLine.length > 0 && (
+                                        <>
+                                            <div className="border rounded px-3 py-1">
+                                                <small className="text-muted d-block" style={{ fontSize: 11 }}>Total Mechanical</small>
+                                                <span className="fw-bold text-danger fs-14">{formatDuration(activeDowntimeByLine.reduce((s, l) => s + l.Mechanical, 0))}</span>
+                                            </div>
+                                            <div className="border rounded px-3 py-1">
+                                                <small className="text-muted d-block" style={{ fontSize: 11 }}>Total Planned</small>
+                                                <span className="fw-bold text-primary fs-14">{formatDuration(activeDowntimeByLine.reduce((s, l) => s + l.Planned, 0))}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="d-flex align-items-center gap-2">
+                                    {!dtUseRange ? (
+                                        <input type="date" className="form-control form-control-sm" style={{ maxWidth: 150 }}
+                                            value={dtDate} onChange={(e) => { setDtDate(e.target.value); setDtFilter('all'); }} />
+                                    ) : (
+                                        <>
+                                            <input type="date" className="form-control form-control-sm" style={{ maxWidth: 140 }}
+                                                value={dtDateRange.start} onChange={(e) => setDtDateRange(prev => ({ ...prev, start: e.target.value }))} />
+                                            <input type="date" className="form-control form-control-sm" style={{ maxWidth: 140 }}
+                                                value={dtDateRange.end} onChange={(e) => setDtDateRange(prev => ({ ...prev, end: e.target.value }))} />
+                                        </>
+                                    )}
+                                    <div className="form-check form-switch mb-0">
+                                        <input className="form-check-input" type="checkbox" checked={dtUseRange}
+                                            onChange={(e) => { setDtUseRange(e.target.checked); if (!e.target.checked) setDtDateRange({ start: '', end: '' }); else setDtDate(''); }} />
+                                        <label className="form-check-label small">Range</label>
+                                    </div>
+                                    <div className="btn-group btn-group-sm">
+                                        <button className={`btn ${dtFilter === 'all' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            onClick={() => { setDtFilter('all'); setDtDate(''); setDtDateRange({ start: '', end: '' }); }}>All</button>
+                                        <button className={`btn ${dtFilter === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            onClick={() => { setDtFilter('week'); setDtDate(''); }}>Week</button>
+                                        <button className={`btn ${dtFilter === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            onClick={() => { setDtFilter('month'); setDtDate(''); }}>Month</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="card-body p-0 d-flex" style={{ minHeight: '400px' }}>
-                            {downtimeByLine.length > 0 ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={downtimeByLine} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e9ecef" />
-                                        <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                                        <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
+                        <div className="card-body pt-0 pb-2">
+                            {activeDowntimeByLine.length > 0 ? (
+                                <ResponsiveContainer width="100%" height={220}>
+                                    <BarChart data={activeDowntimeByLine} layout="vertical" margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                                        <XAxis type="number" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false}
                                             tickFormatter={v => formatDuration(v)} />
+                                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151', fontWeight: 500 }} axisLine={false} tickLine={false} width={60} />
                                         <Tooltip
-                                            contentStyle={{ borderRadius: 8, border: '1px solid #e9ecef', fontSize: 12 }}
+                                            cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                                            contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: 12, padding: '8px 12px' }}
                                             formatter={(v, name) => [formatDuration(v), name]}
                                         />
-                                        <Bar dataKey="Mechanical" fill={DOWNTIME_COLORS.Mechanical} radius={[3, 3, 0, 0]} barSize={18} />
-                                        <Bar dataKey="Planned" fill={DOWNTIME_COLORS.Planned} radius={[3, 3, 0, 0]} barSize={18} />
+                                        <Bar dataKey="Mechanical" fill={DOWNTIME_COLORS.Mechanical} radius={[0, 4, 4, 0]} barSize={20}
+                                            label={{ position: 'right', fontSize: 10, fill: '#6b7280', formatter: (v) => v > 0 ? formatDuration(v) : '' }} />
+                                        <Bar dataKey="Planned" fill={DOWNTIME_COLORS.Planned} radius={[0, 4, 4, 0]} barSize={20}
+                                            label={{ position: 'right', fontSize: 10, fill: '#6b7280', formatter: (v) => v > 0 ? formatDuration(v) : '' }} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <p className="text-center text-muted py-5 mb-0 w-100 align-self-center">No downtime data</p>
+                                <p className="text-center text-muted py-5 mb-0">No downtime data</p>
                             )}
                         </div>
                     </div>
@@ -581,121 +809,117 @@ const Overview = () => {
                 </div>
             </div>
 
-            {/* Pie Charts Row */}
-            <div className="row">
+            {/* Downtime Details Row */}
+            <div className="row g-3 mb-4">
+                {/* Downtime Breakdown Chart */}
+                <div className="col-xxl-4 col-lg-4 d-flex">
+                    {isLoading ? <SkeletonDonut /> : (
+                    <ChartErrorBoundary fallbackMessage="Failed to render downtime breakdown">
+                        <DowntimeBreakdownChart
+                            downtimeCategories={downtimeCategories}
+                            loading={false}
+                            showDetailsButton={true}
+                            detailsRoute="/dashboard/production/downtime-breakdown"
+                        />
+                    </ChartErrorBoundary>
+                    )}
+                </div>
+
                 {/* Bottles by PET */}
-                <div className="col-lg-6 d-flex">
+                <div className="col-xxl-4 col-lg-4 d-flex">
                     {isLoading ? <SkeletonDonut /> : (
                     <ChartErrorBoundary fallbackMessage="Failed to render bottles by PET chart">
-                    <div className="card flex-fill">
-                        <div className="card-header">
-                            <h6 className="mb-0">Production Output by PET</h6>
-                            <small className="text-muted">Production distribution across lines</small>
+                    <div className="card border-0 shadow-sm w-100">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                            <div>
+                                <h6 className="mb-0 fw-semibold">
+                                    Production Output by PET
+                                    <FilterBadge filters={filters} pets={pets} />
+                                </h6>
+                                <small className="text-muted">Production distribution across lines</small>
+                            </div>
                         </div>
                         <div className="card-body">
-                            {/* PET Filter */}
-                            <div className="row mb-3 align-items-end">
-                                <div className="col-md-6">
-                                    <label className="form-label small">Filter by PET</label>
-                                    <select
-                                        className="form-select form-select-sm"
-                                        value={filters.pet_id || ''}
-                                        onChange={handlePetChange}
-                                    >
-                                        <option value="">All PETs</option>
-                                        {pets.sort((a, b) => {
-                                            const aName = (a.pet_name || '').toLowerCase();
-                                            const bName = (b.pet_name || '').toLowerCase();
-                                            const aIsCan = aName.includes('can');
-                                            const bIsCan = bName.includes('can');
-                                            if (aIsCan && !bIsCan) return 1;
-                                            if (!aIsCan && bIsCan) return -1;
-                                            const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
-                                            const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
-                                            return aNum - bNum;
-                                        }).map(pet => (
-                                            <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="col-md-6">
-                                    <small className="text-muted">
-                                        <i className="ti ti-calendar me-1"></i>
-                                        Using global date filter{filters.log_date || filters.start_date ? `: ${filters.log_date || filters.start_date}${filters.end_date ? ` - ${filters.end_date}` : ''}` : ' (all time)'}
-                                    </small>
-                                </div>
-                            </div>
-
-                            {filteredPlanVsActual.length > 0 ? (
-                                <>
-                                    <ResponsiveContainer width="100%" height={250}>
-                                        <PieChart>
-                                            <Pie data={filteredPlanVsActual} cx="50%" cy="50%" outerRadius={90}
-                                                paddingAngle={2} dataKey="actual" label={(entry) => `${entry.name}: ${formatNum(entry.actual)}`}>
-                                                {filteredPlanVsActual.map((entry, idx) => (
-                                                    <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip formatter={(v) => [formatNum(v) + ' bottles', 'Production']} />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                    <div className="mt-3">
-                                        {filteredPlanVsActual.map((l, idx) => {
-                                            const total = filteredPlanVsActual.reduce((s, t) => s + t.actual, 0);
-                                            const pct = total > 0 ? ((l.actual / total) * 100).toFixed(1) : 0;
-                                            return (
-                                                <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
-                                                    <p className="f-14 fw-medium text-dark mb-0">
-                                                        <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
-                                                        {l.name}
-                                                    </p>
-                                                    <p className="f-14 fw-medium text-dark mb-0">{pct}% ({formatNum(l.actual)})</p>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </>
-                            ) : (
-                                <p className="text-center text-muted py-5 mb-0">No data for selected filters</p>
-                            )}
+                            {(() => {
+                                const totalOutput = filteredPlanVsActual.reduce((s, l) => s + l.actual, 0);
+                                const series = filteredPlanVsActual.map(l => totalOutput > 0 ? Number(((l.actual / totalOutput) * 100).toFixed(1)) : 0);
+                                const labels = filteredPlanVsActual.map(l => l.name);
+                                return filteredPlanVsActual.length > 0 ? (
+                                    <ReactApexChart
+                                        options={{
+                                            chart: { type: 'radialBar' },
+                                            plotOptions: {
+                                                radialBar: {
+                                                    hollow: { size: '15%' },
+                                                    track: { strokeWidth: '100%', margin: 8 },
+                                                    dataLabels: {
+                                                        total: {
+                                                            show: true,
+                                                            label: 'TOTAL',
+                                                            formatter: () => formatNum(totalOutput)
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            labels,
+                                            colors: DONUT_COLORS.slice(0, labels.length),
+                                            legend: {
+                                                show: true,
+                                                position: 'bottom',
+                                                formatter: (name, opts) => {
+                                                    const val = filteredPlanVsActual[opts.seriesIndex]?.actual || 0;
+                                                    return `${name}: ${formatNum(val)}`;
+                                                }
+                                            },
+                                            stroke: { lineCap: 'round' }
+                                        }}
+                                        series={series}
+                                        type="radialBar"
+                                        height={380}
+                                    />
+                                ) : (
+                                    <p className="text-center text-muted py-5 mb-0">No data for selected filters</p>
+                                );
+                            })()}
                         </div>
                     </div>
                     </ChartErrorBoundary>
                     )}
                 </div>
 
-                {/* PET Contribution to Production & Quality */}
-                <div className="col-lg-6 d-flex">
+                {/* PET Contribution to Quality */}
+                <div className="col-xxl-4 col-lg-4 d-flex">
                     {isLoading ? <SkeletonDonut /> : (
-                    <ChartErrorBoundary fallbackMessage="Failed to render production & quality chart">
-                    <div className="card flex-fill">
-                        <div className="card-header">
+                    <ChartErrorBoundary fallbackMessage="Failed to render quality chart">
+                    <div className="card border-0 shadow-sm w-100">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
                             <div>
-                                <h6 className="mb-0">PET Contribution to Production & Quality</h6>
-                                <small className="text-muted">Production volume vs quality performance</small>
+                                <h6 className="mb-0 fw-semibold">
+                                    PET Contribution to Quality
+                                    <FilterBadge filters={filters} pets={pets} />
+                                </h6>
+                                <small className="text-muted">Quality performance by line</small>
                             </div>
                         </div>
                         <div className="card-body">
-                            {petProductionAndQuality.length > 0 ? (
+                            {petQuality.length > 0 ? (
                                 <>
                                     <ResponsiveContainer width="100%" height={250}>
                                         <PieChart>
                                             <Pie
-                                                data={petProductionAndQuality}
+                                                data={petQuality}
                                                 cx="50%" cy="50%" outerRadius={90}
-                                                paddingAngle={2} dataKey="production"
-                                                label={(entry) => `${entry.name}: ${formatNum(entry.production)}`}>
-                                                {petProductionAndQuality.map((entry, idx) => (
+                                                paddingAngle={2} dataKey="quality"
+                                                label={(entry) => `${entry.name}: ${entry.quality.toFixed(1)}%`}>
+                                                {petQuality.map((entry, idx) => (
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip formatter={(v, name) => [`${formatNum(v)} bottles`, 'Production']} />
+                                            <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}%`, 'Quality']} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="mt-3">
-                                        {petProductionAndQuality.map((l, idx) => {
-                                            const total = petProductionAndQuality.reduce((s, t) => s + t.production, 0);
-                                            const pct = total > 0 ? ((l.production / total) * 100).toFixed(1) : 0;
+                                        {petQuality.map((l, idx) => {
                                             const qualityBadge = l.quality >= 95 ? 'success' : l.quality >= 85 ? 'warning' : 'danger';
                                             return (
                                                 <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
@@ -703,12 +927,9 @@ const Overview = () => {
                                                         <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
                                                         {l.name}
                                                     </p>
-                                                    <div className="d-flex align-items-center gap-2">
-                                                        <p className="f-14 fw-medium text-dark mb-0">{pct}% ({formatNum(l.production)})</p>
-                                                        <span className={`badge bg-soft-${qualityBadge} text-${qualityBadge} fs-10`}>
-                                                            Q: {l.quality.toFixed(1)}%
-                                                        </span>
-                                                    </div>
+                                                    <span className={`badge bg-soft-${qualityBadge} text-${qualityBadge} fs-10`}>
+                                                        {l.quality.toFixed(1)}%
+                                                    </span>
                                                 </div>
                                             );
                                         })}
@@ -725,21 +946,28 @@ const Overview = () => {
             </div>
 
             {/* Bottom Row – Lists */}
-            <div className="row">
+            <div className="row g-3 mb-4">
                 {/* Recent Reports */}
-                <div className="col-xxl-4 col-xl-12 d-flex">
+                <div className="col-xxl-4 col-xl-6">
                     {isLoading ? <SkeletonTable rows={5} cols={3} /> : (
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h5 className="mb-0 fs-16 fw-bold">Recent Reports</h5>
-                            <button onClick={() => navigate('/dashboard/production')} className="btn btn-primary btn-xs">View All</button>
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                            <div className="d-flex align-items-center justify-content-between gap-2">
+                                <h5 className="mb-0 fs-16 fw-bold">
+                                    Recent Reports
+                                    <FilterBadge filters={filters} pets={pets} />
+                                </h5>
+                                <button onClick={() => navigate('/dashboard/production')} className="btn btn-primary btn-xs">
+                                    View All <i className="ti ti-arrow-right ms-1"></i>
+                                </button>
+                            </div>
                         </div>
                         <div className="card-body pb-2">
                             {recentReports.length === 0 ? (
                                 <p className="text-center text-muted py-4 mb-0">No recent reports</p>
                             ) : (
                                 recentReports.map((r, idx) => (
-                                    <div key={r.id} className={`d-sm-flex justify-content-between flex-wrap ${idx < recentReports.length - 1 ? 'mb-4' : 'mb-0'}`}
+                                    <div key={r.id} className={`d-sm-flex justify-content-between flex-wrap ${idx < recentReports.length - 1 ? 'mb-4' : 'mb-0'} p-2 rounded hover-bg-light`}
                                         style={{ cursor: 'pointer' }} onClick={() => navigate(`/dashboard/production/${r.id}`)}>
                                         <div className="d-flex align-items-center">
                                             <span className="avatar avatar-md border rounded-circle flex-shrink-0 bg-soft-primary">
@@ -747,7 +975,7 @@ const Overview = () => {
                                             </span>
                                             <div className="ms-2 flex-fill">
                                                 <h6 className="fw-medium text-truncate mb-1 fs-14">{r.report_code || r.product_name || '-'}</h6>
-                                                <p className="fs-13 mb-0">{formatDate(r.production_date)}</p>
+                                                <p className="fs-13 mb-0 text-muted">{formatDate(r.production_date)}</p>
                                             </div>
                                         </div>
                                         <div className="text-sm-end mb-0">
@@ -763,19 +991,26 @@ const Overview = () => {
                 </div>
 
                 {/* Recent Stoppages */}
-                <div className="col-xxl-4 col-xl-12 d-flex">
+                <div className="col-xxl-4 col-xl-6">
                     {isLoading ? <SkeletonTable rows={5} cols={3} /> : (
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h5 className="mb-0 fs-16 fw-bold">Recent Stoppages</h5>
-                            <button onClick={() => navigate('/dashboard/stoppages')} className="btn btn-primary btn-xs">View All</button>
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                            <div className="d-flex align-items-center justify-content-between gap-2">
+                                <h5 className="mb-0 fs-16 fw-bold">
+                                    Recent Stoppages
+                                    <FilterBadge filters={filters} pets={pets} />
+                                </h5>
+                                <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
+                                    View All <i className="ti ti-arrow-right ms-1"></i>
+                                </button>
+                            </div>
                         </div>
                         <div className="card-body pb-2">
                             {recentStoppages.length === 0 ? (
                                 <p className="text-center text-muted py-4 mb-0">No stoppages recorded</p>
                             ) : (
                                 recentStoppages.map((s, idx) => (
-                                    <div key={s.id} className={`d-sm-flex justify-content-between flex-wrap ${idx < recentStoppages.length - 1 ? 'mb-4' : 'mb-0'}`}>
+                                    <div key={s.id} className={`d-sm-flex justify-content-between flex-wrap ${idx < recentStoppages.length - 1 ? 'mb-4' : 'mb-0'} p-2 rounded hover-bg-light`}>
                                         <div className="d-flex align-items-center">
                                             <span className="avatar avatar-md border rounded-circle flex-shrink-0 bg-soft-danger">
                                                 <i className="ti ti-alert-triangle fs-16 text-danger"></i>
@@ -784,14 +1019,14 @@ const Overview = () => {
                                                 <h6 className="fw-medium text-truncate mb-1 fs-14">
                                                     {s.category_name || s.reason || 'Stoppage'}
                                                 </h6>
-                                                <p className="fs-13 mb-0">{s.pet_name || s.line_name || '-'}</p>
+                                                <p className="fs-13 mb-0 text-muted">{s.pet_name || s.line_name || '-'}</p>
                                             </div>
                                         </div>
                                         <div className="text-sm-end mb-0">
                                             <h6 className="fw-medium text-truncate mb-1 fs-14">
                                                 {s.downtime_minutes || s.duration || 0} min
                                             </h6>
-                                            <p className="fs-13 mb-0">
+                                            <p className="fs-13 mb-0 text-muted">
                                                 {formatDate(s.created_at || s.start_time)}
                                             </p>
                                         </div>
@@ -804,62 +1039,65 @@ const Overview = () => {
                 </div>
 
                 {/* Production Summary */}
-                <div className="col-xxl-4 col-xl-12 d-flex">
+                <div className="col-xxl-4 col-xl-12">
                     {isLoading ? <SkeletonTable rows={5} cols={2} /> : (
                     <ChartErrorBoundary fallbackMessage="Failed to render production summary">
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h5 className="mb-0 fs-16 fw-bold">Production Summary</h5>
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                            <h5 className="mb-0 fs-16 fw-bold">
+                                Production Summary
+                                <FilterBadge filters={filters} pets={pets} />
+                            </h5>
                         </div>
                         <div className="card-body pb-2">
                             {(
                                 <>
-                                    <div className="d-sm-flex justify-content-between flex-wrap mb-4">
+                                    <div className="d-sm-flex justify-content-between flex-wrap mb-4 p-2 rounded hover-bg-light">
                                         <div className="d-flex align-items-center">
                                             <span className="avatar avatar-md border rounded-circle flex-shrink-0 bg-soft-primary">
                                                 <i className="ti ti-bottle fs-16 text-primary"></i>
                                             </span>
                                             <div className="ms-2 flex-fill">
                                                 <h6 className="fw-medium text-truncate mb-1 fs-14">Total Produced</h6>
-                                                <p className="fs-13 mb-0">All lines combined</p>
+                                                <p className="fs-13 mb-0 text-muted">All lines combined</p>
                                             </div>
                                         </div>
                                         <div className="text-sm-end mb-0">
                                             <h6 className="fw-medium text-truncate mb-1 fs-14">{formatNum(stats.totalProduced)}</h6>
-                                            <p className="fs-13 mb-0">bottles</p>
+                                            <p className="fs-13 mb-0 text-muted">bottles</p>
                                         </div>
                                     </div>
-                                    <div className="d-sm-flex justify-content-between flex-wrap mb-4">
+                                    <div className="d-sm-flex justify-content-between flex-wrap mb-4 p-2 rounded hover-bg-light">
                                         <div className="d-flex align-items-center">
                                             <span className="avatar avatar-md border rounded-circle flex-shrink-0 bg-soft-success">
                                                 <i className="ti ti-target fs-16 text-success"></i>
                                             </span>
                                             <div className="ms-2 flex-fill">
                                                 <h6 className="fw-medium text-truncate mb-1 fs-14">Planned Output</h6>
-                                                <p className="fs-13 mb-0">Target across lines</p>
+                                                <p className="fs-13 mb-0 text-muted">Target across lines</p>
                                             </div>
                                         </div>
                                         <div className="text-sm-end mb-0">
                                             <h6 className="fw-medium text-truncate mb-1 fs-14">{formatNum(totals.planned)}</h6>
-                                            <p className="fs-13 mb-0">bottles</p>
+                                            <p className="fs-13 mb-0 text-muted">bottles</p>
                                         </div>
                                     </div>
-                                    <div className="d-sm-flex justify-content-between flex-wrap mb-4">
+                                    <div className="d-sm-flex justify-content-between flex-wrap mb-4 p-2 rounded hover-bg-light">
                                         <div className="d-flex align-items-center">
                                             <span className="avatar avatar-md border rounded-circle flex-shrink-0 bg-soft-warning">
                                                 <i className="ti ti-clock-stop fs-16 text-warning"></i>
                                             </span>
                                             <div className="ms-2 flex-fill">
                                                 <h6 className="fw-medium text-truncate mb-1 fs-14">Total Downtime</h6>
-                                                <p className="fs-13 mb-0">{stats.totalStoppages} stoppages</p>
+                                                <p className="fs-13 mb-0 text-muted">{stats.totalStoppages} stoppages</p>
                                             </div>
                                         </div>
                                         <div className="text-sm-end mb-0">
                                             <h6 className="fw-medium text-truncate mb-1 fs-14">{formatNum(stats.totalDowntime)}</h6>
-                                            <p className="fs-13 mb-0">minutes</p>
+                                            <p className="fs-13 mb-0 text-muted">minutes</p>
                                         </div>
                                     </div>
-                                    <div className="d-sm-flex justify-content-between flex-wrap mb-4">
+                                    <div className="mb-4">
                                         <GaugeChart
                                             value={efficiency}
                                             label="Efficiency"
@@ -867,19 +1105,19 @@ const Overview = () => {
                                             max={120}
                                         />
                                     </div>
-                                    <div className="d-sm-flex justify-content-between flex-wrap mb-0">
+                                    <div className="d-sm-flex justify-content-between flex-wrap mb-0 p-2 rounded hover-bg-light">
                                         <div className="d-flex align-items-center">
                                             <span className="avatar avatar-md border rounded-circle flex-shrink-0 bg-soft-info">
                                                 <i className="ti ti-building-factory-2 fs-16 text-info"></i>
                                             </span>
                                             <div className="ms-2 flex-fill">
                                                 <h6 className="fw-medium text-truncate mb-1 fs-14">Active Lines</h6>
-                                                <p className="fs-13 mb-0">PET production lines</p>
+                                                <p className="fs-13 mb-0 text-muted">PET production lines</p>
                                             </div>
                                         </div>
                                         <div className="text-sm-end mb-0">
                                             <h6 className="fw-medium text-truncate mb-1 fs-14">{stats.activeLines}</h6>
-                                            <p className="fs-13 mb-0">lines</p>
+                                            <p className="fs-13 mb-0 text-muted">lines</p>
                                         </div>
                                     </div>
                                 </>

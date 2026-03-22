@@ -1,29 +1,45 @@
 import React, { useState, useMemo, lazy, Suspense } from 'react';
+import { useFilters } from '../../context/FilterContext';
 
 const ReactApexChart = lazy(() => import('react-apexcharts'));
 
 const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
+    const { filters, updateFilters } = useFilters();
     const [period, setPeriod] = useState('week');
-    const [useRange, setUseRange] = useState(false);
-    const [singleDate, setSingleDate] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [selectedPet, setSelectedPet] = useState('');
+
+    // Use global filters
+    const singleDate = filters.log_date || '';
+    const startDate = filters.start_date || '';
+    const endDate = filters.end_date || '';
+    const useRange = !!startDate || !!endDate;
+    const selectedPet = filters.pet || '';
 
     const chartData = useMemo(() => {
         let filtered = reports;
-        
-        // Filter by date
+
+        // Filter by date - use global filters
         if (useRange) {
-            if (startDate) filtered = filtered.filter(r => r.production_date >= startDate);
-            if (endDate) filtered = filtered.filter(r => r.production_date <= endDate);
+            if (startDate) filtered = filtered.filter(r => {
+                const reportDate = r.production_date || r.log_date || '';
+                return reportDate >= startDate;
+            });
+            if (endDate) filtered = filtered.filter(r => {
+                const reportDate = r.production_date || r.log_date || '';
+                return reportDate <= endDate;
+            });
         } else if (singleDate) {
-            filtered = filtered.filter(r => r.production_date === singleDate);
+            filtered = filtered.filter(r => {
+                const reportDate = r.production_date || r.log_date || '';
+                return reportDate === singleDate;
+            });
         }
-        
-        // Filter by PET
+
+        // Filter by PET - use pet_name for comparison
         if (selectedPet) {
-            filtered = filtered.filter(r => r.pet_id === parseInt(selectedPet));
+            const selectedPetName = pets.find(p => p.id === parseInt(selectedPet))?.pet_name;
+            if (selectedPetName) {
+                filtered = filtered.filter(r => r.pet_name === selectedPetName);
+            }
         }
 
         // Generate date range
@@ -31,49 +47,36 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         let dates = [];
         let grouped = {};
 
-        if (period === 'week') {
-            // Daily for week
-            for (let i = 6; i >= 0; i--) {
-                const d = new Date(now);
-                d.setDate(now.getDate() - i);
-                dates.push(d.toISOString().split('T')[0]);
-            }
-
-            // Group by date
-            filtered.forEach(r => {
-                const date = r.production_date;
-                if (!grouped[date]) grouped[date] = {};
-                
-                const petName = r.pet_name;
-                if (!grouped[date][petName]) {
-                    grouped[date][petName] = { oee: 0, count: 0 };
-                }
-                grouped[date][petName].oee += r.metrics?.oee || 0;
-                grouped[date][petName].count += 1;
-            });
-        } else {
+        if (period === 'month') {
             // Daily for month (last 30 days)
             for (let i = 29; i >= 0; i--) {
                 const d = new Date(now);
                 d.setDate(now.getDate() - i);
                 dates.push(d.toISOString().split('T')[0]);
             }
-
-            // Group by date
-            filtered.forEach(r => {
-                const date = r.production_date;
-                if (!grouped[date]) grouped[date] = {};
-                
-                const petName = r.pet_name;
-                if (!grouped[date][petName]) {
-                    grouped[date][petName] = { oee: 0, count: 0 };
-                }
-                grouped[date][petName].oee += r.metrics?.oee || 0;
-                grouped[date][petName].count += 1;
-            });
+        } else {
+            // Daily for week
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(now);
+                d.setDate(now.getDate() - i);
+                dates.push(d.toISOString().split('T')[0]);
+            }
         }
 
-        const petNames = [...new Set(filtered.map(r => r.pet_name))];
+        // Group by date
+        filtered.forEach(r => {
+            const date = r.production_date || r.log_date || '';
+            if (!grouped[date]) grouped[date] = {};
+
+            const petName = r.pet_name || 'Unknown';
+            if (!grouped[date][petName]) {
+                grouped[date][petName] = { oee: 0, count: 0 };
+            }
+            grouped[date][petName].oee += r.metrics?.oee || r.oee || 0;
+            grouped[date][petName].count += 1;
+        });
+
+        const petNames = [...new Set(filtered.map(r => r.pet_name || 'Unknown'))].filter(Boolean);
 
         const series = petNames.map(pet => ({
             name: pet,
@@ -84,198 +87,229 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         }));
 
         return { dates, series };
-    }, [reports, period, useRange, singleDate, startDate, endDate, selectedPet]);
+    }, [reports, period, useRange, singleDate, startDate, endDate, selectedPet, pets]);
 
     const summary = useMemo(() => {
         let filtered = reports;
-        
-        // Filter by date
+
+        // Filter by date - use global filters
         if (useRange) {
-            if (startDate) filtered = filtered.filter(r => r.production_date >= startDate);
-            if (endDate) filtered = filtered.filter(r => r.production_date <= endDate);
+            if (startDate) filtered = filtered.filter(r => {
+                const reportDate = r.production_date || r.log_date || '';
+                return reportDate >= startDate;
+            });
+            if (endDate) filtered = filtered.filter(r => {
+                const reportDate = r.production_date || r.log_date || '';
+                return reportDate <= endDate;
+            });
         } else if (singleDate) {
-            filtered = filtered.filter(r => r.production_date === singleDate);
-        }
-        
-        // Filter by PET
-        if (selectedPet) {
-            filtered = filtered.filter(r => r.pet_id === parseInt(selectedPet));
+            filtered = filtered.filter(r => {
+                const reportDate = r.production_date || r.log_date || '';
+                return reportDate === singleDate;
+            });
         }
 
-        const totalProduction = filtered.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
-        const avgOee = filtered.length > 0 
-            ? filtered.reduce((s, r) => s + (r.metrics?.oee || 0), 0) / filtered.length 
+        // Filter by PET - use pet_name for comparison
+        if (selectedPet) {
+            const selectedPetName = pets.find(p => p.id === parseInt(selectedPet))?.pet_name;
+            if (selectedPetName) {
+                filtered = filtered.filter(r => r.pet_name === selectedPetName);
+            }
+        }
+
+        const totalProduction = filtered.reduce((s, r) => s + (r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
+        const avgOee = filtered.length > 0
+            ? filtered.reduce((s, r) => s + (r.metrics?.oee || r.oee || 0), 0) / filtered.length
             : 0;
-        const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
+        const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || r.total_downtime_mins || 0), 0);
 
         return { totalProduction, avgOee, totalDowntime, reports: filtered.length };
-    }, [reports, useRange, singleDate, startDate, endDate, selectedPet]);
+    }, [reports, useRange, singleDate, startDate, endDate, selectedPet, pets]);
+
+    const hasActiveFilter = !!(singleDate || startDate || endDate || selectedPet);
 
     return (
-        <div className="card">
-            <div className="card-header">
-                <h6 className="mb-0">Production Summary</h6>
-                <small className="text-muted">Efficiency trends and multi-line comparison</small>
-            </div>
-            <div className="card-body">
-                {/* Controls */}
-                <div className="mb-3">
-                    <div className="row align-items-end">
-                        <div className="col-md-4">
-                            <div className="d-flex align-items-center gap-2 mb-2">
-                                <label className="form-label mb-0">Date</label>
-                                <div className="form-check form-switch">
-                                    <input
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        checked={useRange}
-                                        onChange={(e) => {
-                                            setUseRange(e.target.checked);
-                                            if (e.target.checked) setSingleDate('');
-                                            else { setStartDate(''); setEndDate(''); }
-                                        }}
-                                    />
-                                    <label className="form-check-label small">Range</label>
-                                </div>
-                            </div>
-                            {!useRange ? (
-                                <input
-                                    type="date"
-                                    className="form-control"
-                                    value={singleDate}
-                                    onChange={(e) => setSingleDate(e.target.value)}
-                                />
-                            ) : (
-                                <div className="d-flex gap-2">
-                                    <input
-                                        type="date"
-                                        className="form-control"
-                                        placeholder="Start"
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                    />
-                                    <input
-                                        type="date"
-                                        className="form-control"
-                                        placeholder="End"
-                                        value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                        <div className="col-md-4">
-                            <label className="form-label">PET</label>
-                            <select
-                                className="form-select"
-                                value={selectedPet}
-                                onChange={(e) => setSelectedPet(e.target.value)}
+        <div className="card border-0 shadow-sm">
+            <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                    <div>
+                        <h6 className="mb-0 fw-semibold">Production Summary</h6>
+                        <small className="text-muted">Efficiency trends and multi-line comparison</small>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                        <div className="btn-group">
+                            <button
+                                className={`btn btn-sm ${period === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                onClick={() => setPeriod('week')}
                             >
-                                <option value="">All</option>
-                                {pets.sort((a, b) => {
-                                    const aName = (a.pet_name || '').toLowerCase();
-                                    const bName = (b.pet_name || '').toLowerCase();
-                                    const aIsCan = aName.includes('can');
-                                    const bIsCan = bName.includes('can');
-                                    if (aIsCan && !bIsCan) return 1;
-                                    if (!aIsCan && bIsCan) return -1;
-                                    const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
-                                    const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
-                                    return aNum - bNum;
-                                }).map(pet => (
-                                    <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="col-md-4">
-                            <label className="form-label">Period</label>
-                            <div className="btn-group w-100">
-                                <button 
-                                    className={`btn ${period === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
-                                    onClick={() => setPeriod('week')}
-                                >
-                                    Week
-                                </button>
-                                <button 
-                                    className={`btn ${period === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
-                                    onClick={() => setPeriod('month')}
-                                >
-                                    Month
-                                </button>
-                            </div>
+                                <i className="ti ti-calendar-week me-1"></i>Week
+                            </button>
+                            <button
+                                className={`btn btn-sm ${period === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                onClick={() => setPeriod('month')}
+                            >
+                                <i className="ti ti-calendar-month me-1"></i>Month
+                            </button>
                         </div>
                     </div>
                 </div>
+                {/* Active Filters Display */}
+                <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <span className="badge bg-soft-info text-info">
+                        <i className="ti ti-calendar me-1"></i>
+                        {useRange 
+                            ? `${startDate || 'Start'} - ${endDate || 'End'}`
+                            : singleDate || 'All Time'}
+                    </span>
+                    {selectedPet && (
+                        <span className="badge bg-soft-primary text-primary">
+                            <i className="ti ti-building-factory-2 me-1"></i>
+                            {pets.find(p => p.id === parseInt(selectedPet))?.pet_name || 'Selected PET'}
+                        </span>
+                    )}
+                    <span className="badge bg-soft-secondary text-secondary">
+                        {reports.length} reports loaded
+                    </span>
+                </div>
+            </div>
+            <div className="card-body">
 
                 {/* Summary Stats */}
-                <div className="row mb-4">
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Total Production</small>
-                            <h5 className="mb-0 text-primary">{summary.totalProduction.toLocaleString()}</h5>
+                <div className="row g-3 mb-4">
+                    <div className="col-md-3">
+                        <div className="card border-0 shadow-sm bg-soft-primary">
+                            <div className="card-body text-center">
+                                <div className="avatar bg-primary rounded-circle p-2 mb-2">
+                                    <i className="ti ti-bottle text-white fs-4"></i>
+                                </div>
+                                <small className="text-muted d-block fs-12">Total Production</small>
+                                <h5 className="mb-0 text-primary fw-bold">{summary.totalProduction.toLocaleString()}</h5>
+                                <small className="text-muted fs-11">bottles</small>
+                            </div>
                         </div>
                     </div>
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Avg OEE</small>
-                            <h5 className="mb-0 text-success">{summary.avgOee.toFixed(1)}%</h5>
+                    <div className="col-md-3">
+                        <div className="card border-0 shadow-sm bg-soft-success">
+                            <div className="card-body text-center">
+                                <div className="avatar bg-success rounded-circle p-2 mb-2">
+                                    <i className="ti ti-chart-line text-white fs-4"></i>
+                                </div>
+                                <small className="text-muted d-block fs-12">Avg OEE</small>
+                                <h5 className="mb-0 text-success fw-bold">{summary.avgOee.toFixed(1)}%</h5>
+                                <small className="text-muted fs-11">efficiency</small>
+                            </div>
                         </div>
                     </div>
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Total Downtime</small>
-                            <h5 className="mb-0 text-danger">{Math.round(summary.totalDowntime)}m</h5>
+                    <div className="col-md-3">
+                        <div className="card border-0 shadow-sm bg-soft-danger">
+                            <div className="card-body text-center">
+                                <div className="avatar bg-danger rounded-circle p-2 mb-2">
+                                    <i className="ti ti-clock-stop text-white fs-4"></i>
+                                </div>
+                                <small className="text-muted d-block fs-12">Total Downtime</small>
+                                <h5 className="mb-0 text-danger fw-bold">{Math.round(summary.totalDowntime)}m</h5>
+                                <small className="text-muted fs-11">{Math.round(summary.totalDowntime / 60)}h {Math.round(summary.totalDowntime % 60)}m</small>
+                            </div>
                         </div>
                     </div>
-                    <div className="col-3">
-                        <div className="border rounded p-3 text-center">
-                            <small className="text-muted d-block">Reports</small>
-                            <h5 className="mb-0">{summary.reports}</h5>
+                    <div className="col-md-3">
+                        <div className="card border-0 shadow-sm bg-soft-info">
+                            <div className="card-body text-center">
+                                <div className="avatar bg-info rounded-circle p-2 mb-2">
+                                    <i className="ti ti-file-report text-white fs-4"></i>
+                                </div>
+                                <small className="text-muted d-block fs-12">Reports</small>
+                                <h5 className="mb-0 text-info fw-bold">{summary.reports}</h5>
+                                <small className="text-muted fs-11">in period</small>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Chart */}
                 {loading ? (
-                    <div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>
+                    <div className="text-center py-5">
+                        <div className="spinner-border text-primary" role="status">
+                            <span className="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
                 ) : chartData.series.length === 0 || chartData.dates.length === 0 ? (
-                    <div className="text-center text-muted py-4">No data available for the selected period</div>
+                    <div className="text-center text-muted py-5">
+                        <i className="ti ti-chart-line fs-1 mb-3 d-block"></i>
+                        <p className="mb-0">No data available for the selected period</p>
+                        <small>Try adjusting the date filters or period selection</small>
+                    </div>
                 ) : (
-                    <Suspense fallback={<div className="text-center py-5"><span className="spinner-border spinner-border-sm"></span></div>}>
-                        <ReactApexChart
-                            options={{
-                                chart: { 
-                                    type: 'line', 
-                                    height: 350, 
-                                    toolbar: { show: false },
-                                    zoom: { enabled: false }
-                                },
-                                stroke: { curve: 'smooth', width: 3 },
-                                xaxis: { 
-                                    categories: chartData.dates,
-                                    labels: { rotate: -45 }
-                                },
-                                yaxis: { 
-                                    title: { text: 'OEE (%)' }, 
-                                    min: 0, 
-                                    max: 100,
-                                    labels: { formatter: (val) => val ? val.toFixed(0) : '0' }
-                                },
-                                markers: { size: 5, hover: { size: 7 } },
-                                legend: { position: 'top', horizontalAlign: 'right' },
-                                tooltip: { 
-                                    shared: true,
-                                    intersect: false,
-                                    y: { formatter: (val) => val ? `${val}%` : 'N/A' } 
-                                },
-                                grid: { borderColor: '#e7e7e7' },
-                                colors: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'],
-                                dataLabels: { enabled: false }
-                            }}
-                            series={chartData.series}
-                            type="line"
-                            height={350}
-                        />
+                    <Suspense fallback={
+                        <div className="text-center py-5">
+                            <div className="spinner-border text-primary" role="status">
+                                <span className="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }>
+                        <div className="border rounded p-3 bg-soft-light">
+                            <ReactApexChart
+                                options={{
+                                    chart: {
+                                        type: 'line',
+                                        height: 350,
+                                        toolbar: { show: false },
+                                        zoom: { enabled: false },
+                                        animations: { enabled: true, easing: 'easeinout', speed: 800 }
+                                    },
+                                    stroke: { curve: 'smooth', width: 3 },
+                                    xaxis: {
+                                        categories: chartData.dates,
+                                        labels: { rotate: -45, style: { fontSize: 11 } },
+                                        tooltip: { enabled: false },
+                                        axisBorder: { show: false },
+                                        axisTicks: { show: false }
+                                    },
+                                    yaxis: {
+                                        title: { text: 'OEE (%)', style: { fontSize: 11, color: '#6c757d' } },
+                                        min: 0,
+                                        max: 100,
+                                        labels: { 
+                                            formatter: (val) => val ? val.toFixed(0) + '%' : '0%',
+                                            style: { fontSize: 11 }
+                                        }
+                                    },
+                                    markers: { size: 5, hover: { size: 7 }, strokeColors: '#fff', strokeWidth: 2 },
+                                    legend: { 
+                                        position: 'top', 
+                                        horizontalAlign: 'right',
+                                        fontSize: '12px',
+                                        markers: { radius: 5 }
+                                    },
+                                    tooltip: {
+                                        shared: true,
+                                        intersect: false,
+                                        theme: 'light',
+                                        style: { fontSize: '12px' },
+                                        y: { formatter: (val) => val ? `${val.toFixed(1)}%` : 'N/A' },
+                                        x: { formatter: (val) => val }
+                                    },
+                                    grid: { 
+                                        borderColor: '#e9ecef',
+                                        strokeDashArray: 4,
+                                        xaxis: { lines: { show: true } },
+                                        yaxis: { lines: { show: true } }
+                                    },
+                                    colors: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'],
+                                    dataLabels: {
+                                        enabled: hasActiveFilter,
+                                        formatter: (val) => val > 0 ? `${val}%` : '',
+                                        style: { fontSize: '10px', fontWeight: 600, colors: ['#374151'] },
+                                        background: { enabled: true, borderRadius: 3, padding: 3, foreColor: '#fff', borderWidth: 0, dropShadow: { enabled: false } },
+                                        offsetY: -6
+                                    },
+                                    theme: { mode: 'light' }
+                                }}
+                                series={chartData.series}
+                                type="line"
+                                height={350}
+                            />
+                        </div>
                     </Suspense>
                 )}
             </div>
