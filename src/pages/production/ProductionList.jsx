@@ -52,6 +52,16 @@ const ProductionList = () => {
     // Broad dataset for charts (independent of table pagination/date filters)
     const [chartReports, setChartReports] = useState([]);
     const [chartDataLoading, setChartDataLoading] = useState(true);
+    const [oeeData, setOeeData] = useState([]);
+
+    const extractList = (res) => {
+        const d = res.data;
+        if (Array.isArray(d)) return d;
+        if (d?.data?.results && Array.isArray(d.data.results)) return d.data.results;
+        if (d?.results && Array.isArray(d.results)) return d.results;
+        if (d?.data && Array.isArray(d.data)) return d.data;
+        return [];
+    };
 
     const getReportDate = useCallback((report) => {
         const rawDate = report?.production_date || report?.log_date || '';
@@ -132,16 +142,60 @@ const ProductionList = () => {
         return buildLineChartData(filteredReports);
     }, [chartReports, chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end, applyCardFilters, buildLineChartData]);
 
-    const productionShareChartData = useMemo(() => {
-        const filteredReports = applyCardFilters(chartReports, {
-            period: chart2Filter,
-            singleDate: chart2Date,
-            useRange: useDateRange2,
-            startDate: chart2DateRange.start,
-            endDate: chart2DateRange.end
+    // Build OEE date params from chart2 filters
+    const oeeParams = useMemo(() => {
+        const params = {};
+        if (useDateRange2) {
+            if (chart2DateRange.start) params.start_date = chart2DateRange.start;
+            if (chart2DateRange.end) params.end_date = chart2DateRange.end;
+        } else if (chart2Date) {
+            params.start_date = chart2Date;
+            params.end_date = chart2Date;
+        }
+        if (chart2Filter !== 'all') {
+            const end = new Date();
+            const start = new Date();
+            if (chart2Filter === 'week') start.setDate(end.getDate() - 6);
+            if (chart2Filter === 'month') start.setMonth(end.getMonth() - 1);
+            params.start_date = start.toISOString().split('T')[0];
+            params.end_date = end.toISOString().split('T')[0];
+        }
+        return params;
+    }, [chart2Filter, chart2Date, useDateRange2, chart2DateRange.start, chart2DateRange.end]);
+
+    // Fetch OEE data when chart2 filters change
+    useEffect(() => {
+        let cancelled = false;
+        const fetchOee = async () => {
+            try {
+                const res = await productionApi.getOeeSummary({ page_size: 1000, ...oeeParams });
+                if (!cancelled) setOeeData(extractList(res));
+            } catch (err) {
+                console.error('Failed to fetch OEE data:', err);
+            }
+        };
+        fetchOee();
+        return () => { cancelled = true; };
+    }, [oeeParams]);
+
+    const qualityChartData = useMemo(() => {
+        const grouped = {};
+        oeeData.forEach(entry => {
+            const name = entry.pet_name;
+            if (!name) return;
+            const q = entry.metrics?.quality ?? entry.quality ?? 0;
+            if (!grouped[name]) grouped[name] = { total: 0, count: 0 };
+            grouped[name].total += q;
+            grouped[name].count += 1;
         });
-        return buildLineChartData(filteredReports);
-    }, [chartReports, chart2Filter, chart2Date, useDateRange2, chart2DateRange.start, chart2DateRange.end, applyCardFilters, buildLineChartData]);
+        return Object.entries(grouped)
+            .map(([name, { total, count }]) => ({
+                name,
+                quality: count > 0 ? total / count : 0
+            }))
+            .filter(p => p.quality > 0)
+            .sort((a, b) => b.quality - a.quality);
+    }, [oeeData]);
 
     const fetchReports = async () => {
         setLoading(true);
@@ -241,25 +295,18 @@ const ProductionList = () => {
     const fetchChartData = useCallback(async () => {
         setChartDataLoading(true);
         try {
-            const res = await productionApi.getReports({ page_size: 1000 });
-            const responseData = res.data;
-            let listData = [];
-            if (Array.isArray(responseData)) {
-                listData = responseData;
-            } else if (responseData.data?.results && Array.isArray(responseData.data.results)) {
-                listData = responseData.data.results;
-            } else if (responseData.results && Array.isArray(responseData.results)) {
-                listData = responseData.results;
-            } else if (responseData.data && Array.isArray(responseData.data)) {
-                listData = responseData.data;
-            }
-            setChartReports(listData);
+            const [reportsRes, oeeRes] = await Promise.all([
+                productionApi.getReports({ page_size: 1000 }),
+                productionApi.getOeeSummary({ page_size: 1000, ...oeeParams })
+            ]);
+            setChartReports(extractList(reportsRes));
+            setOeeData(extractList(oeeRes));
         } catch (err) {
             console.error('Failed to fetch chart data:', err);
         } finally {
             setChartDataLoading(false);
         }
-    }, []);
+    }, [oeeParams]);
 
     useEffect(() => {
         fetchChartData();
@@ -666,8 +713,8 @@ const ProductionList = () => {
                         <div className="card-header">
                             <div className="d-flex align-items-center justify-content-between mb-2">
                                 <div>
-                                    <h6 className="mb-0">PET Contribution to Production</h6>
-                                    <small className="text-muted">Production share by line</small>
+                                    <h6 className="mb-0">PET Contribution to Quality</h6>
+                                    <small className="text-muted">Quality performance by line</small>
                                 </div>
                             </div>
                             <div className="d-flex align-items-center justify-content-between gap-3">
@@ -748,41 +795,36 @@ const ProductionList = () => {
                             </div>
                         </div>
                         <div className="card-body">
-                            {loading || productionShareChartData.length === 0 ? (
+                            {loading || qualityChartData.length === 0 ? (
                                 <p className="text-center text-muted py-5 mb-0">No data</p>
                             ) : (
                                 <>
                                     <ResponsiveContainer width="100%" height={250}>
                                         <PieChart>
                                             <Pie 
-                                                data={productionShareChartData.map(l => {
-                                                    const totalProduction = productionShareChartData.reduce((sum, p) => sum + p.bottles, 0);
-                                                    return {
-                                                        name: l.name,
-                                                        value: totalProduction > 0 ? ((l.bottles / totalProduction) * 100) : 0
-                                                    };
-                                                })} 
+                                                data={qualityChartData}
                                                 cx="50%" cy="50%" outerRadius={90}
-                                                paddingAngle={2} dataKey="value" 
-                                                label={(entry) => entry.value > 0 ? `${entry.name}: ${entry.value.toFixed(1)}%` : entry.name}>
-                                                {productionShareChartData.map((entry, idx) => (
+                                                paddingAngle={2} dataKey="quality" 
+                                                label={(entry) => `${entry.name}: ${entry.quality.toFixed(1)}%`}>
+                                                {qualityChartData.map((entry, idx) => (
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip formatter={(v) => [v.toFixed(1) + '%', 'Production Share']} />
+                                            <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}%`, 'Quality']} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="mt-3">
-                                        {productionShareChartData.map((l, idx) => {
-                                            const totalProduction = productionShareChartData.reduce((sum, p) => sum + p.bottles, 0);
-                                            const share = totalProduction > 0 ? ((l.bottles / totalProduction) * 100).toFixed(1) : 0;
+                                        {qualityChartData.map((l, idx) => {
+                                            const qualityBadge = l.quality >= 95 ? 'success' : l.quality >= 85 ? 'warning' : 'danger';
                                             return (
                                                 <div key={l.name} className="d-flex align-items-center justify-content-between mb-2">
                                                     <p className="f-14 fw-medium text-dark mb-0">
                                                         <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
                                                         {l.name}
                                                     </p>
-                                                    <p className="f-14 fw-medium text-dark mb-0">{share}%</p>
+                                                    <span className={`badge bg-soft-${qualityBadge} text-${qualityBadge} fs-10`}>
+                                                        {l.quality.toFixed(1)}%
+                                                    </span>
                                                 </div>
                                             );
                                         })}
