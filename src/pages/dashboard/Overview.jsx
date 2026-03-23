@@ -308,18 +308,9 @@ const Overview = () => {
             const allReportsData = extractList(allReportsRes);
             const shiftReports = extractList(shiftReportsRes);
             
-            // For each report, we need to sum only the production readings within the shift time range
-            // The report's total_bottles_produced is cumulative for the entire report
+            // Convert shift reports to OEE format
+            // Note: production_readings may not be included, so use total from report
             const shiftData = shiftReports.map(report => {
-                // Filter production readings within shift time
-                const readings = report.production_readings || [];
-                const shiftProduction = readings
-                    .filter(reading => {
-                        const readingTime = new Date(reading.created_at || reading.timestamp);
-                        return readingTime >= shiftStart && readingTime <= shiftEnd;
-                    })
-                    .reduce((sum, reading) => sum + (reading.bottles_produced || reading.production_count || 0), 0);
-                
                 return {
                     pet_name: report.pet_name,
                     metrics: {
@@ -328,7 +319,7 @@ const Overview = () => {
                         performance: report.performance || 0,
                         quality: report.quality || 0,
                         details: {
-                            total_output_pcs: shiftProduction || report.total_bottles_produced || 0,
+                            total_output_pcs: report.total_bottles_produced || 0,
                             total_downtime_mins: report.total_downtime_mins || 0,
                             mechanical_downtime_mins: report.mechanical_downtime_mins || 0,
                             planned_downtime_mins: report.planned_downtime_mins || 0,
