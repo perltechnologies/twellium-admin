@@ -173,6 +173,7 @@ const Overview = () => {
     const [rawPets, setRawPets] = useState([]);
     const [rawStoppages, setRawStoppages] = useState([]);
     const [allReports, setAllReports] = useState([]);
+    const [hourlyReports, setHourlyReports] = useState([]);
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -197,17 +198,26 @@ const Overview = () => {
             const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
             const allReportsParams = { page_size: 1000, start_date: startDate, end_date: endDate };
             
-            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes] = await Promise.all([
+            // Fetch last hour data for per-PET gauges
+            const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+            const hourlyParams = { 
+                page_size: 1000, 
+                created_after: oneHourAgo
+            };
+            
+            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, hourlyRes] = await Promise.all([
                 productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
                 productionApi.getStoppages(stoppageParams),
                 productionApi.getOeeSummary(allReportsParams),
+                productionApi.getOeeSummary(hourlyParams),
             ]);
 
             if (controller.signal.aborted) return;
 
             const reports = extractList(oeeSummaryRes);
             const allReportsData = extractList(allReportsRes);
+            const hourlyData = extractList(hourlyRes);
             
             // Sort reports by PET name
             const sortByPet = (arr) => arr.sort((a, b) => {
@@ -230,6 +240,7 @@ const Overview = () => {
             setRawPets(extractList(petsRes));
             setRawStoppages(extractList(stoppagesRes));
             setAllReports(sortByPet(allReportsData));
+            setHourlyReports(sortByPet(hourlyData));
             hasFetched.current = true;
         } catch (err) {
             if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
@@ -413,6 +424,37 @@ const Overview = () => {
         return { stats, oee: displayOee, oeeByLine, downtimeCategories };
     }, [rawReports, rawPets, rawStoppages, selectedPet, selectedDate]);
 
+    /* Hourly OEE by Line for per-PET gauges */
+    const hourlyOeeByLine = useMemo(() => {
+        const lineMap = {};
+        hourlyReports.forEach(r => {
+            const name = r.pet_name;
+            if (!lineMap[name]) {
+                lineMap[name] = { name, reports: 0, oee: 0, production: 0 };
+            }
+            lineMap[name].reports += 1;
+            lineMap[name].oee += r.metrics?.oee || 0;
+            lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
+        });
+
+        return Object.values(lineMap).map(l => ({
+            name: l.name,
+            reports: l.reports,
+            oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
+            production: l.production,
+        })).sort((a, b) => {
+            const aLower = (a.name || '').toLowerCase();
+            const bLower = (b.name || '').toLowerCase();
+            const aIsCanline = aLower.includes('can');
+            const bIsCanline = bLower.includes('can');
+            if (aIsCanline && !bIsCanline) return 1;
+            if (!aIsCanline && bIsCanline) return -1;
+            const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
+            return aNum - bNum;
+        });
+    }, [hourlyReports]);
+
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;
 
@@ -506,6 +548,50 @@ const Overview = () => {
                 </div>
             )}
 
+            {/* Per-PET Metrics (Last Hour) */}
+            {!isLoading && hourlyOeeByLine.length > 0 && (
+            <>
+                {/* Section Header */}
+                <div className="card border-0 shadow-sm mb-3">
+                    <div className="card-body py-2">
+                        <h6 className="mb-0 fw-semibold">
+                            <i className="ti ti-clock-hour-4 me-2"></i>Hourly Production Metrics
+                            <span className="badge bg-soft-info text-info ms-2 fs-11">Last Hour</span>
+                        </h6>
+                    </div>
+                </div>
+                {/* Line 1: Bottles per PET - Stats Cards */}
+                <div className="row g-3 mb-3">
+                    {hourlyOeeByLine.map(line => (
+                        <div key={`bottles-${line.name}`} className="col">
+                            <div className="card border-0 shadow-sm h-100">
+                                <div className="card-body text-center">
+                                    <div className="avatar bg-soft-primary rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
+                                        <i className="ti ti-bottle text-primary fs-5"></i>
+                                    </div>
+                                    <small className="text-muted d-block fs-11">{line.name}</small>
+                                    <h5 className="mb-0 text-primary fw-bold">{formatNum(Math.round(line.production))}</h5>
+                                    <small className="text-muted fs-10">bottles/hr</small>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {/* Line 2: Efficiency per PET - Gauges */}
+                <div className="row g-3 mb-4">
+                    {hourlyOeeByLine.map(line => (
+                        <div key={`efficiency-${line.name}`} className="col d-flex justify-content-center">
+                            <GaugeChart 
+                                value={line.oee} 
+                                label={`${line.name} - ${line.oee.toFixed(1)}%`}
+                                color={line.oee >= 85 ? '#22c55e' : line.oee >= 60 ? '#f59e0b' : '#ef4444'}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </>
+            )}
+
             {/* OEE Gauges */}
             {isLoading ? <SkeletonGauges count={4} /> : (
             <div className="row row-gap-3 mb-4">
@@ -513,7 +599,24 @@ const Overview = () => {
                     <ChartErrorBoundary fallbackMessage="Failed to render OEE gauges">
                     <div className="card">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">Overall Equipment Effectiveness (OEE)</h6>
+                            <h6 className="mb-0">
+                                Overall Equipment Effectiveness (OEE)
+                                {filters.log_date && (
+                                    <span className="badge bg-soft-info text-info ms-2 fs-11">
+                                        <i className="ti ti-calendar me-1"></i>{filters.log_date}
+                                    </span>
+                                )}
+                                {filters.start_date && filters.end_date && (
+                                    <span className="badge bg-soft-info text-info ms-2 fs-11">
+                                        <i className="ti ti-calendar me-1"></i>{filters.start_date} - {filters.end_date}
+                                    </span>
+                                )}
+                                {filters.pet && (
+                                    <span className="badge bg-soft-primary text-primary ms-2 fs-11">
+                                        <i className="ti ti-building-factory-2 me-1"></i>{availablePets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}
+                                    </span>
+                                )}
+                            </h6>
                             <button onClick={() => navigate('/dashboard/formulas')} className="btn btn-outline-light shadow btn-xs">
                                 <i className="ti ti-math-function me-1"></i>View Formulas
                             </button>
