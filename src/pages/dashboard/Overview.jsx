@@ -288,25 +288,44 @@ const Overview = () => {
             // Use actual time range for current shift instance
             const shiftParams = { 
                 page_size: 1000, 
-                production_date_after: shiftStart.toISOString().split('T')[0],
-                production_date_before: shiftEnd.toISOString().split('T')[0],
-                created_after: shiftStart.toISOString(),
-                created_before: shiftEnd.toISOString()
+                log_date: shiftStart.toISOString().split('T')[0],
+                shift: targetShift?.name || currentShift?.name,
+                created_at_after: shiftStart.toISOString(),
+                created_at_before: shiftEnd.toISOString()
             };
             
-            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, shiftRes] = await Promise.all([
+            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, shiftReportsRes] = await Promise.all([
                 productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
                 productionApi.getStoppages(stoppageParams),
                 productionApi.getOeeSummary(allReportsParams),
-                productionApi.getOeeSummary(shiftParams),
+                productionApi.getReports(shiftParams),
             ]);
 
             if (controller.signal.aborted) return;
 
             const reports = extractList(oeeSummaryRes);
             const allReportsData = extractList(allReportsRes);
-            const shiftData = extractList(shiftRes);
+            const shiftReports = extractList(shiftReportsRes);
+            
+            // Convert shift reports to OEE format for consistency
+            const shiftData = shiftReports.map(report => ({
+                pet_name: report.pet_name,
+                metrics: {
+                    oee: report.oee || 0,
+                    availability: report.availability || 0,
+                    performance: report.performance || 0,
+                    quality: report.quality || 0,
+                    details: {
+                        total_output_pcs: report.total_bottles_produced || 0,
+                        total_downtime_mins: report.total_downtime_mins || 0,
+                        mechanical_downtime_mins: report.mechanical_downtime_mins || 0,
+                        planned_downtime_mins: report.planned_downtime_mins || 0,
+                        planned_time_mins: report.planned_time_mins || 0,
+                        rejects_pcs: report.filler_rejects || 0
+                    }
+                }
+            }));
             
             // Sort reports by PET name
             const sortByPet = (arr) => arr.sort((a, b) => {
