@@ -451,11 +451,12 @@ const Overview = () => {
         hourlyReports.forEach(r => {
             const name = r.pet_name;
             if (!lineMap[name]) {
-                lineMap[name] = { name, reports: 0, oee: 0, production: 0 };
+                lineMap[name] = { name, reports: 0, oee: 0, production: 0, downtime: 0 };
             }
             lineMap[name].reports += 1;
             lineMap[name].oee += r.metrics?.oee || 0;
             lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
+            lineMap[name].downtime += r.metrics?.details?.total_downtime_mins || 0;
         });
 
         return Object.values(lineMap).map(l => ({
@@ -463,6 +464,7 @@ const Overview = () => {
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
             production: l.production,
+            downtime: l.downtime,
         })).sort((a, b) => {
             const aLower = (a.name || '').toLowerCase();
             const bLower = (b.name || '').toLowerCase();
@@ -598,7 +600,24 @@ const Overview = () => {
                         </div>
                     ))}
                 </div>
-                {/* Line 2: Efficiency per PET - Gauges */}
+                {/* Line 2: Downtime per PET - Stats Cards */}
+                <div className="row g-3 mb-3">
+                    {hourlyOeeByLine.map(line => (
+                        <div key={`downtime-${line.name}`} className="col">
+                            <div className="card border-0 shadow-sm h-100">
+                                <div className="card-body text-center">
+                                    <div className="avatar bg-soft-danger rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
+                                        <i className="ti ti-clock-stop text-danger fs-5"></i>
+                                    </div>
+                                    <small className="text-muted d-block fs-11">{line.name}</small>
+                                    <h5 className="mb-0 text-danger fw-bold">{formatDuration(line.downtime)}</h5>
+                                    <small className="text-muted fs-10">downtime</small>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {/* Line 3: Efficiency per PET - Gauges */}
                 <div className="row g-3 mb-4">
                     {hourlyOeeByLine.map(line => (
                         <div key={`efficiency-${line.name}`} className="col d-flex justify-content-center">
