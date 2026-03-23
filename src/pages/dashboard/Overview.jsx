@@ -265,24 +265,33 @@ const Overview = () => {
                 }
             }
             
-            // Calculate shift end time
+            // Calculate shift end time - use current time if shift is still ongoing
             const shiftEnd = new Date(now);
             if (targetShift) {
                 const [endHours, endMinutes] = targetShift.end_time.split(':');
-                shiftEnd.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0);
+                const potentialEnd = new Date(now);
+                potentialEnd.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0);
                 
                 // If shift crosses midnight and end time is less than start time, end is tomorrow
                 if (targetShift.start_time > targetShift.end_time) {
-                    shiftEnd.setDate(shiftEnd.getDate() + 1);
+                    potentialEnd.setDate(potentialEnd.getDate() + 1);
+                }
+                
+                // Use current time if shift hasn't ended yet
+                if (potentialEnd > now) {
+                    shiftEnd.setTime(now.getTime());
+                } else {
+                    shiftEnd.setTime(potentialEnd.getTime());
                 }
             }
             
-            // Use production_date and shift for filtering instead of created timestamps
-            const today = new Date().toISOString().split('T')[0];
+            // Use actual time range for current shift instance
             const shiftParams = { 
                 page_size: 1000, 
-                production_date: today,
-                shift: targetShift?.name || currentShift?.name
+                production_date_after: shiftStart.toISOString().split('T')[0],
+                production_date_before: shiftEnd.toISOString().split('T')[0],
+                created_after: shiftStart.toISOString(),
+                created_before: shiftEnd.toISOString()
             };
             
             const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, shiftRes] = await Promise.all([
