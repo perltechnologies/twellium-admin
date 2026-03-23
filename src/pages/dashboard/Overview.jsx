@@ -308,24 +308,36 @@ const Overview = () => {
             const allReportsData = extractList(allReportsRes);
             const shiftReports = extractList(shiftReportsRes);
             
-            // Convert shift reports to OEE format for consistency
-            const shiftData = shiftReports.map(report => ({
-                pet_name: report.pet_name,
-                metrics: {
-                    oee: report.oee || 0,
-                    availability: report.availability || 0,
-                    performance: report.performance || 0,
-                    quality: report.quality || 0,
-                    details: {
-                        total_output_pcs: report.total_bottles_produced || 0,
-                        total_downtime_mins: report.total_downtime_mins || 0,
-                        mechanical_downtime_mins: report.mechanical_downtime_mins || 0,
-                        planned_downtime_mins: report.planned_downtime_mins || 0,
-                        planned_time_mins: report.planned_time_mins || 0,
-                        rejects_pcs: report.filler_rejects || 0
+            // For each report, we need to sum only the production readings within the shift time range
+            // The report's total_bottles_produced is cumulative for the entire report
+            const shiftData = shiftReports.map(report => {
+                // Filter production readings within shift time
+                const readings = report.production_readings || [];
+                const shiftProduction = readings
+                    .filter(reading => {
+                        const readingTime = new Date(reading.created_at || reading.timestamp);
+                        return readingTime >= shiftStart && readingTime <= shiftEnd;
+                    })
+                    .reduce((sum, reading) => sum + (reading.bottles_produced || reading.production_count || 0), 0);
+                
+                return {
+                    pet_name: report.pet_name,
+                    metrics: {
+                        oee: report.oee || 0,
+                        availability: report.availability || 0,
+                        performance: report.performance || 0,
+                        quality: report.quality || 0,
+                        details: {
+                            total_output_pcs: shiftProduction || report.total_bottles_produced || 0,
+                            total_downtime_mins: report.total_downtime_mins || 0,
+                            mechanical_downtime_mins: report.mechanical_downtime_mins || 0,
+                            planned_downtime_mins: report.planned_downtime_mins || 0,
+                            planned_time_mins: report.planned_time_mins || 0,
+                            rejects_pcs: report.filler_rejects || 0
+                        }
                     }
-                }
-            }));
+                };
+            });
             
             // Sort reports by PET name
             const sortByPet = (arr) => arr.sort((a, b) => {
