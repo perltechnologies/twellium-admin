@@ -161,6 +161,7 @@ const Overview = () => {
     const [outputStartDate, setOutputStartDate] = useState('');
     const [outputEndDate, setOutputEndDate] = useState('');
     const [outputPetSelected, setOutputPetSelected] = useState('');
+    const [outputPeriod, setOutputPeriod] = useState(''); // 'week' or 'month'
 
     /* Stale-while-revalidate: separate initial vs refresh state */
     const [initialLoading, setInitialLoading] = useState(true);
@@ -1052,7 +1053,7 @@ const Overview = () => {
                                     <label className="form-label small">Period</label>
                                     <div className="btn-group btn-group-sm w-100">
                                         <button 
-                                            className="btn btn-outline-primary"
+                                            className={`btn ${outputPeriod === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
                                                 const endDate = new Date().toISOString().split('T')[0];
                                                 const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
@@ -1060,12 +1061,13 @@ const Overview = () => {
                                                 setOutputStartDate(startDate);
                                                 setOutputEndDate(endDate);
                                                 setOutputSingleDate('');
+                                                setOutputPeriod('week');
                                             }}
                                         >
                                             Week
                                         </button>
                                         <button 
-                                            className="btn btn-outline-primary"
+                                            className={`btn ${outputPeriod === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
                                                 const endDate = new Date().toISOString().split('T')[0];
                                                 const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
@@ -1073,6 +1075,7 @@ const Overview = () => {
                                                 setOutputStartDate(startDate);
                                                 setOutputEndDate(endDate);
                                                 setOutputSingleDate('');
+                                                setOutputPeriod('month');
                                             }}
                                         >
                                             Month
