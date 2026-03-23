@@ -577,10 +577,18 @@ const Overview = () => {
                 {/* Section Header */}
                 <div className="card border-0 shadow-sm mb-3">
                     <div className="card-body py-2">
-                        <h6 className="mb-0 fw-semibold">
-                            <i className="ti ti-clock-hour-4 me-2"></i>Current Shift Production Metrics
-                            <span className="badge bg-soft-info text-info ms-2 fs-11">This Shift</span>
-                        </h6>
+                        <div className="d-flex align-items-center justify-content-between">
+                            <h6 className="mb-0 fw-semibold">
+                                <i className="ti ti-clock-hour-4 me-2"></i>Current Shift Production Metrics
+                                <span className="badge bg-soft-info text-info ms-2 fs-11">This Shift</span>
+                            </h6>
+                            <button 
+                                onClick={() => navigate('/dashboard/production')} 
+                                className="btn btn-outline-primary btn-sm"
+                            >
+                                <i className="ti ti-list me-1"></i>All Shifts
+                            </button>
+                        </div>
                     </div>
                 </div>
                 {/* Line 1: Bottles per PET - Stats Cards */}
