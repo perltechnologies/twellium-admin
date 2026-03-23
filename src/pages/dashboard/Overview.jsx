@@ -198,26 +198,47 @@ const Overview = () => {
             const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
             const allReportsParams = { page_size: 1000, start_date: startDate, end_date: endDate };
             
-            // Fetch last hour data for per-PET gauges
-            const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
-            const hourlyParams = { 
+            // Fetch current shift data for per-PET gauges
+            const now = new Date();
+            const currentHour = now.getHours();
+            
+            // Determine shift start time (6am, 2pm, or 10pm)
+            let shiftStartHour;
+            if (currentHour >= 6 && currentHour < 14) {
+                shiftStartHour = 6; // Morning shift: 6am-2pm
+            } else if (currentHour >= 14 && currentHour < 22) {
+                shiftStartHour = 14; // Afternoon shift: 2pm-10pm
+            } else {
+                shiftStartHour = 22; // Night shift: 10pm-6am
+            }
+            
+            const shiftStart = new Date(now);
+            if (currentHour < 6) {
+                // If before 6am, shift started yesterday at 10pm
+                shiftStart.setDate(shiftStart.getDate() - 1);
+                shiftStart.setHours(22, 0, 0, 0);
+            } else {
+                shiftStart.setHours(shiftStartHour, 0, 0, 0);
+            }
+            
+            const shiftParams = { 
                 page_size: 1000, 
-                created_after: oneHourAgo
+                created_after: shiftStart.toISOString()
             };
             
-            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, hourlyRes] = await Promise.all([
+            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, shiftRes] = await Promise.all([
                 productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
                 productionApi.getStoppages(stoppageParams),
                 productionApi.getOeeSummary(allReportsParams),
-                productionApi.getOeeSummary(hourlyParams),
+                productionApi.getOeeSummary(shiftParams),
             ]);
 
             if (controller.signal.aborted) return;
 
             const reports = extractList(oeeSummaryRes);
             const allReportsData = extractList(allReportsRes);
-            const hourlyData = extractList(hourlyRes);
+            const shiftData = extractList(shiftRes);
             
             // Sort reports by PET name
             const sortByPet = (arr) => arr.sort((a, b) => {
@@ -240,7 +261,7 @@ const Overview = () => {
             setRawPets(extractList(petsRes));
             setRawStoppages(extractList(stoppagesRes));
             setAllReports(sortByPet(allReportsData));
-            setHourlyReports(sortByPet(hourlyData));
+            setHourlyReports(sortByPet(shiftData));
             hasFetched.current = true;
         } catch (err) {
             if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
@@ -548,15 +569,15 @@ const Overview = () => {
                 </div>
             )}
 
-            {/* Per-PET Metrics (Last Hour) */}
+            {/* Per-PET Metrics (Current Shift) */}
             {!isLoading && hourlyOeeByLine.length > 0 && (
             <>
                 {/* Section Header */}
                 <div className="card border-0 shadow-sm mb-3">
                     <div className="card-body py-2">
                         <h6 className="mb-0 fw-semibold">
-                            <i className="ti ti-clock-hour-4 me-2"></i>Hourly Production Metrics
-                            <span className="badge bg-soft-info text-info ms-2 fs-11">Last Hour</span>
+                            <i className="ti ti-clock-hour-4 me-2"></i>Current Shift Production Metrics
+                            <span className="badge bg-soft-info text-info ms-2 fs-11">This Shift</span>
                         </h6>
                     </div>
                 </div>
@@ -571,7 +592,7 @@ const Overview = () => {
                                     </div>
                                     <small className="text-muted d-block fs-11">{line.name}</small>
                                     <h5 className="mb-0 text-primary fw-bold">{formatNum(Math.round(line.production))}</h5>
-                                    <small className="text-muted fs-10">bottles/hr</small>
+                                    <small className="text-muted fs-10">bottles</small>
                                 </div>
                             </div>
                         </div>
