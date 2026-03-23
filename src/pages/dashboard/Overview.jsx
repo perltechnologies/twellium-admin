@@ -174,6 +174,7 @@ const Overview = () => {
     const [rawStoppages, setRawStoppages] = useState([]);
     const [allReports, setAllReports] = useState([]);
     const [hourlyReports, setHourlyReports] = useState([]);
+    const [shifts, setShifts] = useState([]);
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -198,27 +199,55 @@ const Overview = () => {
             const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
             const allReportsParams = { page_size: 1000, start_date: startDate, end_date: endDate };
             
-            // Fetch current shift data for per-PET gauges
+            // Fetch shifts from API
+            const shiftsRes = await productionApi.getShifts();
+            const shiftsData = shiftsRes.data?.data || shiftsRes.data || [];
+            setShifts(shiftsData);
+            
+            // Determine current shift from API data
             const now = new Date();
-            const currentHour = now.getHours();
+            const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
             
-            // Determine shift start time (6am, 2pm, or 10pm)
-            let shiftStartHour;
-            if (currentHour >= 6 && currentHour < 14) {
-                shiftStartHour = 6; // Morning shift: 6am-2pm
-            } else if (currentHour >= 14 && currentHour < 22) {
-                shiftStartHour = 14; // Afternoon shift: 2pm-10pm
-            } else {
-                shiftStartHour = 22; // Night shift: 10pm-6am
-            }
+            const currentShift = shiftsData.find(shift => {
+                const start = shift.start_time?.slice(0, 5);
+                const end = shift.end_time?.slice(0, 5);
+                if (!start || !end) return false;
+                
+                // Handle shifts that cross midnight
+                if (start > end) {
+                    return currentTime >= start || currentTime < end;
+                }
+                return currentTime >= start && currentTime < end;
+            });
             
-            const shiftStart = new Date(now);
-            if (currentHour < 6) {
-                // If before 6am, shift started yesterday at 10pm
-                shiftStart.setDate(shiftStart.getDate() - 1);
-                shiftStart.setHours(22, 0, 0, 0);
+            // Calculate shift start time
+            let shiftStart = new Date(now);
+            if (currentShift) {
+                const [hours, minutes] = currentShift.start_time.split(':');
+                shiftStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                
+                // If shift crosses midnight and we're before the start time, shift started yesterday
+                if (currentShift.start_time > currentShift.end_time && currentTime < currentShift.start_time) {
+                    shiftStart.setDate(shiftStart.getDate() - 1);
+                }
             } else {
-                shiftStart.setHours(shiftStartHour, 0, 0, 0);
+                // Fallback to hardcoded logic if no shift found
+                const currentHour = now.getHours();
+                let shiftStartHour;
+                if (currentHour >= 6 && currentHour < 14) {
+                    shiftStartHour = 6;
+                } else if (currentHour >= 14 && currentHour < 22) {
+                    shiftStartHour = 14;
+                } else {
+                    shiftStartHour = 22;
+                }
+                
+                if (currentHour < 6) {
+                    shiftStart.setDate(shiftStart.getDate() - 1);
+                    shiftStart.setHours(22, 0, 0, 0);
+                } else {
+                    shiftStart.setHours(shiftStartHour, 0, 0, 0);
+                }
             }
             
             const shiftParams = { 
