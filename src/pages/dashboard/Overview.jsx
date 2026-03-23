@@ -177,6 +177,7 @@ const Overview = () => {
     const [shifts, setShifts] = useState([]);
     const [currentShiftInfo, setCurrentShiftInfo] = useState(null);
     const [selectedShiftId, setSelectedShiftId] = useState(null);
+    const [shiftLoading, setShiftLoading] = useState(false);
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -206,130 +207,17 @@ const Overview = () => {
             const shiftsData = shiftsRes.data?.data || shiftsRes.data || [];
             setShifts(shiftsData);
             
-            // Determine current shift from API data
-            const now = new Date();
-            const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
-            
-            const currentShift = shiftsData.find(shift => {
-                const start = shift.start_time?.slice(0, 5);
-                const end = shift.end_time?.slice(0, 5);
-                if (!start || !end) return false;
-                
-                // Handle shifts that cross midnight
-                if (start > end) {
-                    return currentTime >= start || currentTime < end;
-                }
-                return currentTime >= start && currentTime < end;
-            });
-            
-            // Calculate shift start time based on selected or current shift
-            const targetShift = selectedShiftId 
-                ? shiftsData.find(s => s.id === selectedShiftId) 
-                : currentShift;
-            
-            let shiftStart = new Date(now);
-            if (targetShift) {
-                const [hours, minutes] = targetShift.start_time.split(':');
-                shiftStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                
-                // If shift crosses midnight and we're before the start time, shift started yesterday
-                if (targetShift.start_time > targetShift.end_time && currentTime < targetShift.start_time) {
-                    shiftStart.setDate(shiftStart.getDate() - 1);
-                }
-                
-                // Store shift info for display
-                setCurrentShiftInfo({
-                    id: targetShift.id,
-                    name: targetShift.name,
-                    startTime: shiftStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-                    endTime: targetShift.end_time,
-                    startDateTime: shiftStart.toISOString()
-                });
-            } else {
-                // Fallback to hardcoded logic if no shift found
-                const currentHour = now.getHours();
-                let shiftStartHour;
-                if (currentHour >= 6 && currentHour < 14) {
-                    shiftStartHour = 6;
-                } else if (currentHour >= 14 && currentHour < 22) {
-                    shiftStartHour = 14;
-                } else {
-                    shiftStartHour = 22;
-                }
-                
-                if (currentHour < 6) {
-                    shiftStart.setDate(shiftStart.getDate() - 1);
-                    shiftStart.setHours(22, 0, 0, 0);
-                } else {
-                    shiftStart.setHours(shiftStartHour, 0, 0, 0);
-                }
-            }
-            
-            // Calculate shift end time - use current time if shift is still ongoing
-            const shiftEnd = new Date(now);
-            if (targetShift) {
-                const [endHours, endMinutes] = targetShift.end_time.split(':');
-                const potentialEnd = new Date(now);
-                potentialEnd.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0);
-                
-                // If shift crosses midnight and end time is less than start time, end is tomorrow
-                if (targetShift.start_time > targetShift.end_time) {
-                    potentialEnd.setDate(potentialEnd.getDate() + 1);
-                }
-                
-                // Use current time if shift hasn't ended yet
-                if (potentialEnd > now) {
-                    shiftEnd.setTime(now.getTime());
-                } else {
-                    shiftEnd.setTime(potentialEnd.getTime());
-                }
-            }
-            
-            // Use actual time range for current shift instance
-            const shiftParams = { 
-                page_size: 1000, 
-                log_date: shiftStart.toISOString().split('T')[0],
-                shift: targetShift?.name || currentShift?.name,
-                created_at_after: shiftStart.toISOString(),
-                created_at_before: shiftEnd.toISOString()
-            };
-            
-            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, shiftReportsRes] = await Promise.all([
+            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes] = await Promise.all([
                 productionApi.getOeeSummary(params),
                 productionApi.getPets(params),
                 productionApi.getStoppages(stoppageParams),
                 productionApi.getOeeSummary(allReportsParams),
-                productionApi.getReports(shiftParams),
             ]);
 
             if (controller.signal.aborted) return;
 
             const reports = extractList(oeeSummaryRes);
             const allReportsData = extractList(allReportsRes);
-            const shiftReports = extractList(shiftReportsRes);
-            
-            // Convert shift reports to OEE format
-            // Note: production_readings may not be included, so use total from report
-            const shiftData = shiftReports.map(report => {
-                return {
-                    pet_name: report.pet_name,
-                    metrics: {
-                        oee: report.oee || 0,
-                        availability: report.availability || 0,
-                        performance: report.performance || 0,
-                        quality: report.quality || 0,
-                        details: {
-                            total_output_pcs: report.total_bottles_produced || 0,
-                            total_downtime_mins: report.total_downtime_mins || 0,
-                            mechanical_downtime_mins: report.mechanical_downtime_mins || 0,
-                            planned_downtime_mins: report.planned_downtime_mins || 0,
-                            planned_time_mins: report.planned_time_mins || 0,
-                            rejects_pcs: report.filler_rejects || 0
-                        }
-                    }
-                };
-            });
-            
             // Sort reports by PET name
             const sortByPet = (arr) => arr.sort((a, b) => {
                 const aName = (a.pet_name || '').toLowerCase();
@@ -351,7 +239,6 @@ const Overview = () => {
             setRawPets(extractList(petsRes));
             setRawStoppages(extractList(stoppagesRes));
             setAllReports(sortByPet(allReportsData));
-            setHourlyReports(sortByPet(shiftData));
             hasFetched.current = true;
         } catch (err) {
             if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
@@ -362,13 +249,123 @@ const Overview = () => {
                 setRefreshing(false);
             }
         }
-    }, [filters, selectedShiftId]);
+    }, [filters]);
+
+    /* Load shift data separately */
+    const loadShiftData = useCallback(async () => {
+        if (!shifts.length) return;
+        
+        setShiftLoading(true);
+        try {
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+            
+            const currentShift = shifts.find(shift => {
+                const start = shift.start_time?.slice(0, 5);
+                const end = shift.end_time?.slice(0, 5);
+                if (!start || !end) return false;
+                if (start > end) {
+                    return currentTime >= start || currentTime < end;
+                }
+                return currentTime >= start && currentTime < end;
+            });
+            
+            const targetShift = selectedShiftId 
+                ? shifts.find(s => s.id === selectedShiftId) 
+                : currentShift;
+            
+            if (!targetShift) return;
+            
+            let shiftStart = new Date(now);
+            const [hours, minutes] = targetShift.start_time.split(':');
+            shiftStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+            
+            if (targetShift.start_time > targetShift.end_time && currentTime < targetShift.start_time) {
+                shiftStart.setDate(shiftStart.getDate() - 1);
+            }
+            
+            setCurrentShiftInfo({
+                id: targetShift.id,
+                name: targetShift.name,
+                startTime: shiftStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+                endTime: targetShift.end_time,
+                startDateTime: shiftStart.toISOString()
+            });
+            
+            const shiftEnd = new Date(now);
+            const [endHours, endMinutes] = targetShift.end_time.split(':');
+            const potentialEnd = new Date(now);
+            potentialEnd.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0);
+            
+            if (targetShift.start_time > targetShift.end_time) {
+                potentialEnd.setDate(potentialEnd.getDate() + 1);
+            }
+            
+            if (potentialEnd > now) {
+                shiftEnd.setTime(now.getTime());
+            } else {
+                shiftEnd.setTime(potentialEnd.getTime());
+            }
+            
+            const shiftParams = { 
+                page_size: 1000, 
+                log_date: shiftStart.toISOString().split('T')[0],
+                shift: targetShift.name,
+                created_at_after: shiftStart.toISOString(),
+                created_at_before: shiftEnd.toISOString()
+            };
+            
+            const shiftReportsRes = await productionApi.getReports(shiftParams);
+            const shiftReports = extractList(shiftReportsRes);
+            
+            const shiftData = shiftReports.map(report => ({
+                pet_name: report.pet_name,
+                metrics: {
+                    oee: report.oee || 0,
+                    availability: report.availability || 0,
+                    performance: report.performance || 0,
+                    quality: report.quality || 0,
+                    details: {
+                        total_output_pcs: report.total_bottles_produced || 0,
+                        total_downtime_mins: report.total_downtime_mins || 0,
+                        mechanical_downtime_mins: report.mechanical_downtime_mins || 0,
+                        planned_downtime_mins: report.planned_downtime_mins || 0,
+                        planned_time_mins: report.planned_time_mins || 0,
+                        rejects_pcs: report.filler_rejects || 0
+                    }
+                }
+            }));
+            
+            const sortByPet = (arr) => arr.sort((a, b) => {
+                const aName = (a.pet_name || '').toLowerCase();
+                const bName = (b.pet_name || '').toLowerCase();
+                const aIsCan = aName.includes('can');
+                const bIsCan = bName.includes('can');
+                if (aIsCan && !bIsCan) return 1;
+                if (!aIsCan && bIsCan) return -1;
+                const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                return aNum - bNum;
+            });
+            
+            setHourlyReports(sortByPet(shiftData));
+        } catch (err) {
+            console.error('Failed to load shift data:', err);
+        } finally {
+            setShiftLoading(false);
+        }
+    }, [shifts, selectedShiftId]);
 
     /* Re-fetch whenever filters change */
     useEffect(() => {
         loadData();
         return () => { if (abortRef.current) abortRef.current.abort(); };
     }, [loadData]);
+    
+    /* Load shift data when shifts or selectedShiftId changes */
+    useEffect(() => {
+        loadShiftData();
+    }, [loadShiftData]);
 
     /* PETs available for the selected date (derived from reports) */
     const availablePets = useMemo(() => {
