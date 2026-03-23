@@ -713,16 +713,14 @@ const Overview = () => {
                     ))}
                 </div>
                 {/* Line 3: Efficiency per PET - Gauges */}
-                <div className="row g-3 mb-4">
+                <div className="d-flex gap-3 mb-4 justify-content-center">
                     {hourlyOeeByLine.map(line => (
-                        <div key={`efficiency-${line.name}`} className="col d-flex justify-content-center">
-                            <div style={{ transform: 'scale(0.7)', transformOrigin: 'center' }}>
-                                <GaugeChart 
-                                    value={line.oee} 
-                                    label={`${line.name} - ${line.oee.toFixed(1)}%`}
-                                    color={line.oee >= 85 ? '#22c55e' : line.oee >= 60 ? '#f59e0b' : '#ef4444'}
-                                />
-                            </div>
+                        <div key={`efficiency-${line.name}`} style={{ transform: 'scale(0.7)' }}>
+                            <GaugeChart 
+                                value={line.oee} 
+                                label={`${line.name} - ${line.oee.toFixed(1)}%`}
+                                color={line.oee >= 85 ? '#22c55e' : line.oee >= 60 ? '#f59e0b' : '#ef4444'}
+                            />
                         </div>
                     ))}
                 </div>
