@@ -713,7 +713,7 @@ const Overview = () => {
                     ))}
                 </div>
                 {/* Line 3: Efficiency per PET - Gauges */}
-                <div className="d-flex gap-3 mb-4 justify-content-center">
+                <div className="d-flex gap-1 mb-4 justify-content-center">
                     {hourlyOeeByLine.map(line => (
                         <div key={`efficiency-${line.name}`} style={{ transform: 'scale(0.7)' }}>
                             <GaugeChart 
