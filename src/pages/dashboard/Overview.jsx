@@ -686,7 +686,12 @@ const Overview = () => {
                             </h6>
                             <div className="d-flex align-items-center gap-2">
                                 <div className="btn-group btn-group-sm">
-                                    {shifts.map(shift => (
+                                    {shifts.sort((a, b) => {
+                                        // DAY before NIGHT
+                                        if (a.name === 'DAY') return -1;
+                                        if (b.name === 'DAY') return 1;
+                                        return 0;
+                                    }).map(shift => (
                                         <button
                                             key={shift.id}
                                             className={`btn ${currentShiftInfo?.id === shift.id ? 'btn-primary' : 'btn-outline-primary'}`}
