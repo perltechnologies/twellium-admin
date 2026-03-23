@@ -506,16 +506,27 @@ const Overview = () => {
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
+        // Start with all available PETs
         const lineMap = {};
+        rawPets.forEach(pet => {
+            lineMap[pet.pet_name] = { 
+                name: pet.pet_name, 
+                reports: 0, 
+                oee: 0, 
+                production: 0, 
+                downtime: 0 
+            };
+        });
+        
+        // Add data from hourly reports
         hourlyReports.forEach(r => {
             const name = r.pet_name;
-            if (!lineMap[name]) {
-                lineMap[name] = { name, reports: 0, oee: 0, production: 0, downtime: 0 };
+            if (lineMap[name]) {
+                lineMap[name].reports += 1;
+                lineMap[name].oee += r.metrics?.oee || 0;
+                lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
+                lineMap[name].downtime += r.metrics?.details?.total_downtime_mins || 0;
             }
-            lineMap[name].reports += 1;
-            lineMap[name].oee += r.metrics?.oee || 0;
-            lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
-            lineMap[name].downtime += r.metrics?.details?.total_downtime_mins || 0;
         });
 
         return Object.values(lineMap).map(l => ({
@@ -535,7 +546,7 @@ const Overview = () => {
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [hourlyReports]);
+    }, [hourlyReports, rawPets]);
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;
