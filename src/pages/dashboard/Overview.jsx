@@ -175,6 +175,7 @@ const Overview = () => {
     const [allReports, setAllReports] = useState([]);
     const [hourlyReports, setHourlyReports] = useState([]);
     const [shifts, setShifts] = useState([]);
+    const [currentShiftInfo, setCurrentShiftInfo] = useState(null);
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -230,6 +231,14 @@ const Overview = () => {
                 if (currentShift.start_time > currentShift.end_time && currentTime < currentShift.start_time) {
                     shiftStart.setDate(shiftStart.getDate() - 1);
                 }
+                
+                // Store shift info for display
+                setCurrentShiftInfo({
+                    name: currentShift.shift_name || currentShift.name,
+                    startTime: shiftStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+                    endTime: currentShift.end_time,
+                    startDateTime: shiftStart.toISOString()
+                });
             } else {
                 // Fallback to hardcoded logic if no shift found
                 const currentHour = now.getHours();
@@ -609,7 +618,11 @@ const Overview = () => {
                         <div className="d-flex align-items-center justify-content-between">
                             <h6 className="mb-0 fw-semibold">
                                 <i className="ti ti-clock-hour-4 me-2"></i>Current Shift Production Metrics
-                                <span className="badge bg-soft-info text-info ms-2 fs-11">This Shift</span>
+                                {currentShiftInfo && (
+                                    <span className="badge bg-soft-info text-info ms-2 fs-11">
+                                        {currentShiftInfo.startTime} - {currentShiftInfo.endTime}
+                                    </span>
+                                )}
                             </h6>
                             <button 
                                 onClick={() => navigate('/dashboard/production')} 
