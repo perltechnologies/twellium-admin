@@ -277,10 +277,12 @@ const Overview = () => {
                 }
             }
             
+            // Use production_date and shift for filtering instead of created timestamps
+            const today = new Date().toISOString().split('T')[0];
             const shiftParams = { 
                 page_size: 1000, 
-                created_after: shiftStart.toISOString(),
-                created_before: shiftEnd.toISOString()
+                production_date: today,
+                shift: targetShift?.name || currentShift?.name
             };
             
             const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, shiftRes] = await Promise.all([
