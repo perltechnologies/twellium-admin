@@ -713,9 +713,9 @@ const Overview = () => {
                     ))}
                 </div>
                 {/* Line 3: Efficiency per PET - Gauges */}
-                <div className="row g-3 mb-4">
+                <div className="row g-3 mb-4 flex-nowrap overflow-auto">
                     {hourlyOeeByLine.map(line => (
-                        <div key={`efficiency-${line.name}`} className="col d-flex justify-content-center">
+                        <div key={`efficiency-${line.name}`} className="col-auto d-flex justify-content-center">
                             <GaugeChart 
                                 value={line.oee} 
                                 label={`${line.name} - ${line.oee.toFixed(1)}%`}
