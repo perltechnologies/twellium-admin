@@ -176,6 +176,7 @@ const Overview = () => {
     const [hourlyReports, setHourlyReports] = useState([]);
     const [shifts, setShifts] = useState([]);
     const [currentShiftInfo, setCurrentShiftInfo] = useState(null);
+    const [selectedShiftId, setSelectedShiftId] = useState(null);
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -221,22 +222,27 @@ const Overview = () => {
                 return currentTime >= start && currentTime < end;
             });
             
-            // Calculate shift start time
+            // Calculate shift start time based on selected or current shift
+            const targetShift = selectedShiftId 
+                ? shiftsData.find(s => s.id === selectedShiftId) 
+                : currentShift;
+            
             let shiftStart = new Date(now);
-            if (currentShift) {
-                const [hours, minutes] = currentShift.start_time.split(':');
+            if (targetShift) {
+                const [hours, minutes] = targetShift.start_time.split(':');
                 shiftStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
                 
                 // If shift crosses midnight and we're before the start time, shift started yesterday
-                if (currentShift.start_time > currentShift.end_time && currentTime < currentShift.start_time) {
+                if (targetShift.start_time > targetShift.end_time && currentTime < targetShift.start_time) {
                     shiftStart.setDate(shiftStart.getDate() - 1);
                 }
                 
                 // Store shift info for display
                 setCurrentShiftInfo({
-                    name: currentShift.shift_name || currentShift.name,
+                    id: targetShift.id,
+                    name: targetShift.name,
                     startTime: shiftStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-                    endTime: currentShift.end_time,
+                    endTime: targetShift.end_time,
                     startDateTime: shiftStart.toISOString()
                 });
             } else {
@@ -310,7 +316,7 @@ const Overview = () => {
                 setRefreshing(false);
             }
         }
-    }, [filters]);
+    }, [filters, selectedShiftId]);
 
     /* Re-fetch whenever filters change */
     useEffect(() => {
@@ -615,21 +621,34 @@ const Overview = () => {
                 {/* Section Header */}
                 <div className="card border-0 shadow-sm mb-3">
                     <div className="card-body py-2">
-                        <div className="d-flex align-items-center justify-content-between">
+                        <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0 fw-semibold">
-                                <i className="ti ti-clock-hour-4 me-2"></i>Current Shift Production Metrics
+                                <i className="ti ti-clock-hour-4 me-2"></i>Shift Production Metrics
                                 {currentShiftInfo && (
                                     <span className="badge bg-soft-info text-info ms-2 fs-11">
-                                        {currentShiftInfo.startTime} - {currentShiftInfo.endTime}
+                                        {currentShiftInfo.name}: {currentShiftInfo.startTime} - {currentShiftInfo.endTime}
                                     </span>
                                 )}
                             </h6>
-                            <button 
-                                onClick={() => navigate('/dashboard/production')} 
-                                className="btn btn-outline-primary btn-sm"
-                            >
-                                <i className="ti ti-list me-1"></i>All Shifts
-                            </button>
+                            <div className="d-flex align-items-center gap-2">
+                                <div className="btn-group btn-group-sm">
+                                    {shifts.map(shift => (
+                                        <button
+                                            key={shift.id}
+                                            className={`btn ${currentShiftInfo?.id === shift.id ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            onClick={() => setSelectedShiftId(shift.id)}
+                                        >
+                                            {shift.name}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button 
+                                    onClick={() => navigate('/dashboard/production')} 
+                                    className="btn btn-outline-secondary btn-sm"
+                                >
+                                    <i className="ti ti-list me-1"></i>All Shifts
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
