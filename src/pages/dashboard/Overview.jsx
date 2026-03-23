@@ -259,7 +259,13 @@ const Overview = () => {
         try {
             const now = new Date();
             const currentTime = now.toTimeString().slice(0, 5);
-            
+            const todayStr = now.toISOString().split('T')[0];
+
+            // Use the active date filter as the reference date, falling back to today
+            const refDateStr = filters.log_date || todayStr;
+            const isToday = refDateStr === todayStr;
+
+            // Find which shift the current clock time falls in (for auto-selection)
             const currentShift = shifts.find(shift => {
                 const start = shift.start_time?.slice(0, 5);
                 const end = shift.end_time?.slice(0, 5);
@@ -275,44 +281,49 @@ const Overview = () => {
                 : currentShift;
             
             if (!targetShift) return;
-            
-            let shiftStart = new Date(now);
-            const [hours, minutes] = targetShift.start_time.split(':');
-            shiftStart.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-            
-            if (targetShift.start_time > targetShift.end_time && currentTime < targetShift.start_time) {
+
+            const isOvernight = targetShift.start_time > targetShift.end_time;
+
+            // Build shiftStart from the reference date + shift's start time
+            const [startH, startM] = targetShift.start_time.split(':').map(Number);
+            const shiftStart = new Date(`${refDateStr}T00:00:00`);
+            shiftStart.setHours(startH, startM, 0, 0);
+
+            // For overnight shifts on today: if the clock is still before the shift
+            // start time (e.g. 02:00 < 18:00), the shift began yesterday
+            if (isOvernight && isToday && currentTime < targetShift.start_time.slice(0, 5)) {
                 shiftStart.setDate(shiftStart.getDate() - 1);
             }
-            
+
+            // Build shiftEnd anchored to shiftStart so overnight shifts land on the
+            // correct calendar day (e.g. 18:00 Mar-23 → 06:00 Mar-24)
+            const [endH, endM] = targetShift.end_time.split(':').map(Number);
+            const shiftEnd = new Date(shiftStart);
+            shiftEnd.setHours(endH, endM, 0, 0);
+            if (isOvernight) {
+                shiftEnd.setDate(shiftEnd.getDate() + 1);
+            }
+
+            // Cap the query window at the current time only for today's active shift
+            const effectiveEnd = (isToday && shiftEnd > now) ? now : shiftEnd;
+
+            const formatTime = (d) =>
+                d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
             setCurrentShiftInfo({
                 id: targetShift.id,
                 name: targetShift.name,
-                startTime: shiftStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-                endTime: targetShift.end_time,
+                startTime: formatTime(shiftStart),
+                endTime: formatTime(shiftEnd),   // always show scheduled end, not the capped value
                 startDateTime: shiftStart.toISOString()
             });
-            
-            const shiftEnd = new Date(now);
-            const [endHours, endMinutes] = targetShift.end_time.split(':');
-            const potentialEnd = new Date(now);
-            potentialEnd.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0);
-            
-            if (targetShift.start_time > targetShift.end_time) {
-                potentialEnd.setDate(potentialEnd.getDate() + 1);
-            }
-            
-            if (potentialEnd > now) {
-                shiftEnd.setTime(now.getTime());
-            } else {
-                shiftEnd.setTime(potentialEnd.getTime());
-            }
             
             const shiftParams = { 
                 page_size: 1000, 
                 log_date: shiftStart.toISOString().split('T')[0],
                 shift: targetShift.name,
                 created_at_after: shiftStart.toISOString(),
-                created_at_before: shiftEnd.toISOString()
+                created_at_before: effectiveEnd.toISOString()
             };
             
             const shiftReportsRes = await productionApi.getReports(shiftParams);
@@ -354,7 +365,7 @@ const Overview = () => {
         } finally {
             setShiftLoading(false);
         }
-    }, [shifts, selectedShiftId]);
+    }, [shifts, selectedShiftId, filters]);
 
     /* Re-fetch whenever filters change */
     useEffect(() => {
@@ -557,7 +568,7 @@ const Overview = () => {
             }
         });
 
-        return Object.values(lineMap).map(l => ({
+        return Object.values(lineMap).filter(l => l.reports > 0 || (l.name || '').toLowerCase().includes('can')).map(l => ({
             name: l.name,
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
@@ -1041,20 +1052,27 @@ const Overview = () => {
                                     <label className="form-label small">Period</label>
                                     <div className="btn-group btn-group-sm w-100">
                                         <button 
-                                            className={`btn ${filters.log_date || (!filters.start_date && !filters.end_date) ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            className="btn btn-outline-primary"
                                             onClick={() => {
-                                                const today = new Date().toISOString().split('T')[0];
-                                                updateFilters({ log_date: today, start_date: null, end_date: null });
+                                                const endDate = new Date().toISOString().split('T')[0];
+                                                const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                                                setOutputUseRange(true);
+                                                setOutputStartDate(startDate);
+                                                setOutputEndDate(endDate);
+                                                setOutputSingleDate('');
                                             }}
                                         >
                                             Week
                                         </button>
                                         <button 
-                                            className={`btn ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            className="btn btn-outline-primary"
                                             onClick={() => {
                                                 const endDate = new Date().toISOString().split('T')[0];
                                                 const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
-                                                updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                                                setOutputUseRange(true);
+                                                setOutputStartDate(startDate);
+                                                setOutputEndDate(endDate);
+                                                setOutputSingleDate('');
                                             }}
                                         >
                                             Month
