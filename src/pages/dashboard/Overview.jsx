@@ -265,9 +265,22 @@ const Overview = () => {
                 }
             }
             
+            // Calculate shift end time
+            const shiftEnd = new Date(now);
+            if (targetShift) {
+                const [endHours, endMinutes] = targetShift.end_time.split(':');
+                shiftEnd.setHours(parseInt(endHours), parseInt(endMinutes), 0, 0);
+                
+                // If shift crosses midnight and end time is less than start time, end is tomorrow
+                if (targetShift.start_time > targetShift.end_time) {
+                    shiftEnd.setDate(shiftEnd.getDate() + 1);
+                }
+            }
+            
             const shiftParams = { 
                 page_size: 1000, 
-                created_after: shiftStart.toISOString()
+                created_after: shiftStart.toISOString(),
+                created_before: shiftEnd.toISOString()
             };
             
             const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes, shiftRes] = await Promise.all([
