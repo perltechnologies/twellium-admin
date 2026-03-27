@@ -83,7 +83,9 @@ const formatDuration = (mins) => {
 
 const formatDate = (d) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 /* ── component ───────────────────────────────────── */
@@ -169,8 +171,15 @@ const Overview = () => {
         if (dtFilter !== 'all') {
             const end = new Date();
             const start = new Date();
-            if (dtFilter === 'week') start.setDate(end.getDate() - 6);
-            if (dtFilter === 'month') start.setMonth(end.getMonth() - 1);
+            if (dtFilter === 'week') {
+                const dayOfWeek = end.getDay();
+                start.setDate(end.getDate() - dayOfWeek);
+                end.setDate(start.getDate() + 6);
+            }
+            if (dtFilter === 'month') {
+                start.setDate(1);
+                end.setMonth(end.getMonth() + 1, 0);
+            }
             const startStr = start.toISOString().split('T')[0];
             const endStr = end.toISOString().split('T')[0];
             filtered = filtered.filter(s => {
@@ -1027,7 +1036,7 @@ const Overview = () => {
                                                 {s.downtime_minutes || s.duration || 0} min
                                             </h6>
                                             <p className="fs-13 mb-0 text-muted">
-                                                {formatDate(s.created_at || s.start_time)}
+                                                {formatDate(s.log_date || s.created_at || s.start_time)}
                                             </p>
                                         </div>
                                     </div>

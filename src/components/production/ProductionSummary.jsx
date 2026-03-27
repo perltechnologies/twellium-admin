@@ -4,13 +4,16 @@ import { useFilters } from '../../context/FilterContext';
 const ReactApexChart = lazy(() => import('react-apexcharts'));
 
 const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
-    const { filters, updateFilters } = useFilters();
+    const { filters } = useFilters();
     const [period, setPeriod] = useState('week');
+    const [localStartDate, setLocalStartDate] = useState('');
+    const [localEndDate, setLocalEndDate] = useState('');
+    const [useLocalDates, setUseLocalDates] = useState(false);
 
-    // Use global filters
-    const singleDate = filters.log_date || '';
-    const startDate = filters.start_date || '';
-    const endDate = filters.end_date || '';
+    // Use local dates if week/month clicked, otherwise global filters
+    const singleDate = useLocalDates ? '' : (filters.log_date || '');
+    const startDate = useLocalDates ? localStartDate : (filters.start_date || '');
+    const endDate = useLocalDates ? localEndDate : (filters.end_date || '');
     const useRange = !!startDate || !!endDate;
     const selectedPet = filters.pet || '';
 
@@ -48,18 +51,21 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         let grouped = {};
 
         if (period === 'month') {
-            // Daily for month (last 30 days)
-            for (let i = 29; i >= 0; i--) {
-                const d = new Date(now);
-                d.setDate(now.getDate() - i);
-                dates.push(d.toISOString().split('T')[0]);
+            // Current month: 1st to last day
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            for (let d = new Date(firstDay); d <= lastDay; d = new Date(d.setDate(d.getDate() + 1))) {
+                dates.push(new Date(d).toISOString().split('T')[0]);
             }
         } else {
-            // Daily for week
-            for (let i = 6; i >= 0; i--) {
-                const d = new Date(now);
-                d.setDate(now.getDate() - i);
-                dates.push(d.toISOString().split('T')[0]);
+            // Current week: Sunday to Saturday
+            const dayOfWeek = now.getDay();
+            const sunday = new Date(now);
+            sunday.setDate(now.getDate() - dayOfWeek);
+            const saturday = new Date(sunday);
+            saturday.setDate(sunday.getDate() + 6);
+            for (let d = new Date(sunday); d <= saturday; d = new Date(d.setDate(d.getDate() + 1))) {
+                dates.push(new Date(d).toISOString().split('T')[0]);
             }
         }
 
@@ -140,13 +146,32 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         <div className="btn-group">
                             <button
                                 className={`btn btn-sm ${period === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
-                                onClick={() => setPeriod('week')}
+                                onClick={() => {
+                                    setPeriod('week');
+                                    const today = new Date();
+                                    const dayOfWeek = today.getDay();
+                                    const sunday = new Date(today);
+                                    sunday.setDate(today.getDate() - dayOfWeek);
+                                    const saturday = new Date(sunday);
+                                    saturday.setDate(sunday.getDate() + 6);
+                                    setLocalStartDate(sunday.toISOString().split('T')[0]);
+                                    setLocalEndDate(saturday.toISOString().split('T')[0]);
+                                    setUseLocalDates(true);
+                                }}
                             >
                                 <i className="ti ti-calendar-week me-1"></i>Week
                             </button>
                             <button
                                 className={`btn btn-sm ${period === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
-                                onClick={() => setPeriod('month')}
+                                onClick={() => {
+                                    setPeriod('month');
+                                    const today = new Date();
+                                    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                                    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                                    setLocalStartDate(firstDay.toISOString().split('T')[0]);
+                                    setLocalEndDate(lastDay.toISOString().split('T')[0]);
+                                    setUseLocalDates(true);
+                                }}
                             >
                                 <i className="ti ti-calendar-month me-1"></i>Month
                             </button>
@@ -260,7 +285,18 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                                     stroke: { curve: 'smooth', width: 3 },
                                     xaxis: {
                                         categories: chartData.dates,
-                                        labels: { rotate: -45, style: { fontSize: 11 } },
+                                        labels: { 
+                                            rotate: -45, 
+                                            style: { fontSize: 11 },
+                                            formatter: (val) => {
+                                                if (period === 'week') {
+                                                    const d = new Date(val);
+                                                    const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+                                                    return `${d.getMonth() + 1}/${d.getDate()}\n${day}`;
+                                                }
+                                                return val;
+                                            }
+                                        },
                                         tooltip: { enabled: false },
                                         axisBorder: { show: false },
                                         axisTicks: { show: false }

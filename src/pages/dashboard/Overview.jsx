@@ -179,6 +179,7 @@ const Overview = () => {
     const [currentShiftInfo, setCurrentShiftInfo] = useState(null);
     const [selectedShiftId, setSelectedShiftId] = useState(null);
     const [shiftLoading, setShiftLoading] = useState(false);
+    const [shiftFilterDate, setShiftFilterDate] = useState('');
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -205,7 +206,7 @@ const Overview = () => {
             
             // Fetch shifts from API
             const shiftsRes = await productionApi.getShifts();
-            const shiftsData = shiftsRes.data?.data || shiftsRes.data || [];
+            const shiftsData = shiftsRes?.data?.data || shiftsRes?.data || [];
             setShifts(shiftsData);
             
             const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes] = await Promise.all([
@@ -217,8 +218,8 @@ const Overview = () => {
 
             if (controller.signal.aborted) return;
 
-            const reports = extractList(oeeSummaryRes);
-            const allReportsData = extractList(allReportsRes);
+            const reports = extractList(oeeSummaryRes || {});
+            const allReportsData = extractList(allReportsRes || {});
             // Sort reports by PET name
             const sortByPet = (arr) => arr.sort((a, b) => {
                 const aName = (a.pet_name || '').toLowerCase();
@@ -237,8 +238,8 @@ const Overview = () => {
             });
 
             setRawReports(sortByPet(reports));
-            setRawPets(extractList(petsRes));
-            setRawStoppages(extractList(stoppagesRes));
+            setRawPets(extractList(petsRes || {}));
+            setRawStoppages(extractList(stoppagesRes || {}));
             setAllReports(sortByPet(allReportsData));
             hasFetched.current = true;
         } catch (err) {
@@ -262,8 +263,8 @@ const Overview = () => {
             const currentTime = now.toTimeString().slice(0, 5);
             const todayStr = now.toISOString().split('T')[0];
 
-            // Use the active date filter as the reference date, falling back to today
-            const refDateStr = filters.log_date || todayStr;
+            // Use shiftFilterDate if set, otherwise use today
+            const refDateStr = shiftFilterDate || todayStr;
             const isToday = refDateStr === todayStr;
 
             // Find which shift the current clock time falls in (for auto-selection)
@@ -279,9 +280,12 @@ const Overview = () => {
             
             const targetShift = selectedShiftId 
                 ? shifts.find(s => s.id === selectedShiftId) 
-                : currentShift;
+                : (currentShift || shifts[0]);
             
-            if (!targetShift) return;
+            if (!targetShift) {
+                setShiftLoading(false);
+                return;
+            }
 
             const isOvernight = targetShift.start_time > targetShift.end_time;
 
@@ -306,7 +310,7 @@ const Overview = () => {
             }
 
             // Cap the query window at the current time only for today's active shift
-            const effectiveEnd = (isToday && shiftEnd > now) ? now : shiftEnd;
+            const effectiveEnd = (isToday && shiftEnd > now && !shiftFilterDate) ? now : shiftEnd;
 
             const formatTime = (d) =>
                 d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -315,38 +319,27 @@ const Overview = () => {
                 id: targetShift.id,
                 name: targetShift.name,
                 startTime: formatTime(shiftStart),
-                endTime: formatTime(shiftEnd),   // always show scheduled end, not the capped value
+                endTime: formatTime(shiftEnd),
                 startDateTime: shiftStart.toISOString()
             });
             
+            // Use the new OEE summary endpoint with datetime parameters
             const shiftParams = { 
-                page_size: 1000, 
-                log_date: shiftStart.toISOString().split('T')[0],
-                shift: targetShift.name,
-                created_at_after: shiftStart.toISOString(),
-                created_at_before: effectiveEnd.toISOString()
+                datetime_start_time: shiftStart.toISOString(),
+                datetime_end_time: effectiveEnd.toISOString()
             };
             
-            const shiftReportsRes = await productionApi.getReports(shiftParams);
-            const shiftReports = extractList(shiftReportsRes);
+            // Include PET filter if selected
+            if (filters.pet) {
+                shiftParams.pet_id = filters.pet;
+            }
             
-            const shiftData = shiftReports.map(report => ({
-                pet_name: report.pet_name,
-                metrics: {
-                    oee: report.oee || 0,
-                    availability: report.availability || 0,
-                    performance: report.performance || 0,
-                    quality: report.quality || 0,
-                    details: {
-                        total_output_pcs: report.total_bottles_produced || 0,
-                        total_downtime_mins: report.total_downtime_mins || 0,
-                        mechanical_downtime_mins: report.mechanical_downtime_mins || 0,
-                        planned_downtime_mins: report.planned_downtime_mins || 0,
-                        planned_time_mins: report.planned_time_mins || 0,
-                        rejects_pcs: report.filler_rejects || 0
-                    }
-                }
-            }));
+            console.log('Shift params:', shiftParams);
+            const shiftReportsRes = await productionApi.getShiftOeeSummary(shiftParams);
+            console.log('Shift reports raw response:', shiftReportsRes);
+            console.log('Response data:', shiftReportsRes.data);
+            const shiftReports = extractList(shiftReportsRes);
+            console.log('Extracted shift reports:', shiftReports);
             
             const sortByPet = (arr) => arr.sort((a, b) => {
                 const aName = (a.pet_name || '').toLowerCase();
@@ -360,13 +353,13 @@ const Overview = () => {
                 return aNum - bNum;
             });
             
-            setHourlyReports(sortByPet(shiftData));
+            setHourlyReports(sortByPet(shiftReports));
         } catch (err) {
             console.error('Failed to load shift data:', err);
         } finally {
             setShiftLoading(false);
         }
-    }, [shifts, selectedShiftId, filters]);
+    }, [shifts, selectedShiftId, shiftFilterDate, filters]);
 
     /* Re-fetch whenever filters change */
     useEffect(() => {
@@ -558,18 +551,18 @@ const Overview = () => {
             };
         });
         
-        // Add data from hourly reports
+        // Add data from hourly reports (now from OEE summary endpoint)
         hourlyReports.forEach(r => {
             const name = r.pet_name;
             if (lineMap[name]) {
                 lineMap[name].reports += 1;
                 lineMap[name].oee += r.metrics?.oee || 0;
-                lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
+                lineMap[name].production += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                 lineMap[name].downtime += r.metrics?.details?.total_downtime_mins || 0;
             }
         });
 
-        return Object.values(lineMap).filter(l => l.reports > 0 || (l.name || '').toLowerCase().includes('can')).map(l => ({
+        return Object.values(lineMap).map(l => ({
             name: l.name,
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
@@ -622,9 +615,17 @@ const Overview = () => {
                     </button>
                     <button 
                         onClick={() => {
-                            const endDate = new Date().toISOString().split('T')[0];
-                            const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
-                            updateFilters({ start_date: startDate, end_date: endDate, log_date: null });
+                            const today = new Date();
+                            const dayOfWeek = today.getDay();
+                            const sunday = new Date(today);
+                            sunday.setDate(today.getDate() - dayOfWeek);
+                            const saturday = new Date(sunday);
+                            saturday.setDate(sunday.getDate() + 6);
+                            updateFilters({ 
+                                start_date: sunday.toISOString().split('T')[0], 
+                                end_date: saturday.toISOString().split('T')[0], 
+                                log_date: null 
+                            });
                         }}
                         className={`btn btn-sm ${filters.start_date && filters.end_date ? 'btn-primary' : 'btn-outline-primary'}`}
                     >
@@ -683,10 +684,8 @@ const Overview = () => {
 
             {/* Per-PET Metrics (Current Shift) */}
             {!isLoading && hourlyOeeByLine.length > 0 && (
-            <>
-                {/* Section Header */}
-                <div className="card border-0 shadow-sm mb-3">
-                    <div className="card-body py-2">
+                <div className="card border-0 shadow-sm mb-4">
+                    <div className="card-header">
                         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0 fw-semibold">
                                 <i className="ti ti-clock-hour-4 me-2"></i>Shift Production Metrics
@@ -697,9 +696,16 @@ const Overview = () => {
                                 )}
                             </h6>
                             <div className="d-flex align-items-center gap-2">
+                                <input
+                                    type="date"
+                                    className="form-control form-control-sm"
+                                    style={{ width: '150px' }}
+                                    value={shiftFilterDate}
+                                    onChange={(e) => setShiftFilterDate(e.target.value)}
+                                    max={new Date().toISOString().split('T')[0]}
+                                />
                                 <div className="btn-group btn-group-sm">
                                     {shifts.sort((a, b) => {
-                                        // DAY before NIGHT
                                         if (a.name === 'DAY') return -1;
                                         if (b.name === 'DAY') return 1;
                                         return 0;
@@ -722,54 +728,55 @@ const Overview = () => {
                             </div>
                         </div>
                     </div>
-                </div>
-                {/* Line 1: Bottles per PET - Stats Cards */}
-                <div className="row g-3 mb-3">
-                    {hourlyOeeByLine.map(line => (
-                        <div key={`bottles-${line.name}`} className="col">
-                            <div className="card border-0 shadow-sm h-100">
-                                <div className="card-body text-center">
-                                    <div className="avatar bg-soft-primary rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
-                                        <i className="ti ti-bottle text-primary fs-5"></i>
+                    <div className="card-body">
+                        {/* Line 1: Bottles per PET - Stats Cards */}
+                        <div className="row g-3 mb-3">
+                            {hourlyOeeByLine.map(line => (
+                                <div key={`bottles-${line.name}`} className="col">
+                                    <div className="card border-0 shadow-sm h-100">
+                                        <div className="card-body text-center">
+                                            <div className="avatar bg-soft-primary rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
+                                                <i className="ti ti-bottle text-primary fs-5"></i>
+                                            </div>
+                                            <small className="text-muted d-block fs-11">{line.name}</small>
+                                            <h5 className="mb-0 text-primary fw-bold">{formatNum(Math.round(line.production))}</h5>
+                                            <small className="text-muted fs-10">bottles</small>
+                                        </div>
                                     </div>
-                                    <small className="text-muted d-block fs-11">{line.name}</small>
-                                    <h5 className="mb-0 text-primary fw-bold">{formatNum(Math.round(line.production))}</h5>
-                                    <small className="text-muted fs-10">bottles</small>
                                 </div>
-                            </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
-                {/* Line 2: Downtime per PET - Stats Cards */}
-                <div className="row g-3 mb-3">
-                    {hourlyOeeByLine.map(line => (
-                        <div key={`downtime-${line.name}`} className="col">
-                            <div className="card border-0 shadow-sm h-100">
-                                <div className="card-body text-center">
-                                    <div className="avatar bg-soft-danger rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
-                                        <i className="ti ti-clock-stop text-danger fs-5"></i>
+                        {/* Line 2: Downtime per PET - Stats Cards */}
+                        <div className="row g-3 mb-3">
+                            {hourlyOeeByLine.map(line => (
+                                <div key={`downtime-${line.name}`} className="col">
+                                    <div className="card border-0 shadow-sm h-100">
+                                        <div className="card-body text-center">
+                                            <div className="avatar bg-soft-danger rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
+                                                <i className="ti ti-clock-stop text-danger fs-5"></i>
+                                            </div>
+                                            <small className="text-muted d-block fs-11">{line.name}</small>
+                                            <h5 className="mb-0 text-danger fw-bold">{formatDuration(line.downtime)}</h5>
+                                            <small className="text-muted fs-10">downtime</small>
+                                        </div>
                                     </div>
-                                    <small className="text-muted d-block fs-11">{line.name}</small>
-                                    <h5 className="mb-0 text-danger fw-bold">{formatDuration(line.downtime)}</h5>
-                                    <small className="text-muted fs-10">downtime</small>
                                 </div>
-                            </div>
+                            ))}
                         </div>
-                    ))}
-                </div>
-                {/* Line 3: Efficiency per PET - Gauges */}
-                <div className="d-flex gap-1 mb-4 justify-content-center">
-                    {hourlyOeeByLine.map(line => (
-                        <div key={`efficiency-${line.name}`} style={{ transform: 'scale(0.7)' }}>
-                            <GaugeChart 
-                                value={line.oee} 
-                                label={`${line.name} - ${line.oee.toFixed(1)}%`}
-                                color={line.oee >= 85 ? '#22c55e' : line.oee >= 60 ? '#f59e0b' : '#ef4444'}
-                            />
+                        {/* Line 3: Efficiency per PET - Gauges */}
+                        <div className="d-flex justify-content-center" style={{ gap: '-30px' }}>
+                            {hourlyOeeByLine.map(line => (
+                                <div key={`efficiency-${line.name}`} style={{ transform: 'scale(0.6)', transformOrigin: 'top center', marginLeft: '-40px' }}>
+                                    <GaugeChart 
+                                        value={line.oee} 
+                                        label={`${line.name} - ${line.oee.toFixed(1)}%`}
+                                        color={line.oee >= 85 ? '#22c55e' : line.oee >= 60 ? '#f59e0b' : '#ef4444'}
+                                    />
+                                </div>
+                            ))}
                         </div>
-                    ))}
+                    </div>
                 </div>
-            </>
             )}
 
             {/* OEE Gauges */}
@@ -1055,11 +1062,15 @@ const Overview = () => {
                                         <button 
                                             className={`btn ${outputPeriod === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
-                                                const endDate = new Date().toISOString().split('T')[0];
-                                                const startDate = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                                                const today = new Date();
+                                                const dayOfWeek = today.getDay();
+                                                const sunday = new Date(today);
+                                                sunday.setDate(today.getDate() - dayOfWeek);
+                                                const saturday = new Date(sunday);
+                                                saturday.setDate(sunday.getDate() + 6);
                                                 setOutputUseRange(true);
-                                                setOutputStartDate(startDate);
-                                                setOutputEndDate(endDate);
+                                                setOutputStartDate(sunday.toISOString().split('T')[0]);
+                                                setOutputEndDate(saturday.toISOString().split('T')[0]);
                                                 setOutputSingleDate('');
                                                 setOutputPeriod('week');
                                             }}
@@ -1069,11 +1080,12 @@ const Overview = () => {
                                         <button 
                                             className={`btn ${outputPeriod === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
-                                                const endDate = new Date().toISOString().split('T')[0];
-                                                const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                                                const today = new Date();
+                                                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                                                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
                                                 setOutputUseRange(true);
-                                                setOutputStartDate(startDate);
-                                                setOutputEndDate(endDate);
+                                                setOutputStartDate(firstDay.toISOString().split('T')[0]);
+                                                setOutputEndDate(lastDay.toISOString().split('T')[0]);
                                                 setOutputSingleDate('');
                                                 setOutputPeriod('month');
                                             }}
@@ -1176,7 +1188,12 @@ const Overview = () => {
                                                         rotate: -45,
                                                         formatter: (val) => {
                                                             const d = new Date(val);
-                                                            return `${d.getMonth() + 1}/${d.getDate()}`;
+                                                            const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+                                                            if (outputPeriod === 'week') {
+                                                                const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+                                                                return `${dateStr}\n${day}`;
+                                                            }
+                                                            return dateStr;
                                                         }
                                                     }
                                                 },

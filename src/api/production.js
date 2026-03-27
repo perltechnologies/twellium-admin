@@ -4,6 +4,7 @@ export const productionApi = {
     getLines: () => api.get('/production/lines/'),
     getShifts: () => api.get('/production/shifts/'),
     getOeeSummary: (params) => api.get('/production/reports/oee_summary/', { params }),
+    getShiftOeeSummary: (params) => api.get('/production/reports/oee_summary/', { params }),
 
     getReports: (params) => api.get('/production/reports/', { params }),
     getReport: (id) => api.get(`/production/reports/${id}/`),

@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 const Sidebar = () => {
     const location = useLocation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [openSubmenus, setOpenSubmenus] = useState({ production: true, configs: false, definitions: false });
+    const [openSubmenus, setOpenSubmenus] = useState({ production: true, configs: false, definitions: false, reporting: false });
 
     const toggleSubmenu = (key) => {
         setOpenSubmenus(prev => ({ ...prev, [key]: !prev[key] }));
@@ -34,6 +34,21 @@ const Sidebar = () => {
                         { name: 'Meter Readings', path: '/dashboard/production/meters' },
                         { name: 'Pets / Lines', path: '/dashboard/production/pets' },
                         { name: 'Shifts', path: '/dashboard/production/shifts' },
+                    ],
+                },
+            ],
+        },
+        {
+            section: 'Reporting',
+            items: [
+                {
+                    name: 'Reports',
+                    icon: 'ti-file-analytics',
+                    key: 'reporting',
+                    submenu: [
+                        { name: 'Production Reports', path: '/dashboard/reports/production' },
+                        { name: 'OEE Reports', path: '/dashboard/reports/oee' },
+                        { name: 'Downtime Reports', path: '/dashboard/reports/downtime' },
                     ],
                 },
             ],
