@@ -126,10 +126,6 @@ const MaterialsView = ({ materials }) => {
                     {group.material_type === 'Petline' && (
                         <PetlineMaterialsGroup items={group.data} />
                     )}
-
-                    {group.material_type === 'Canline' && (
-                        <CanlineMaterialsGroup items={group.data} />
-                    )}
                 </div>
             ))}
         </div>
@@ -234,24 +230,6 @@ const PetlineMaterialsGroup = ({ items }) => {
     );
 };
 
-const CanlineMaterialsGroup = ({ items }) => {
-    return (
-        <div className="bg-light rounded p-3 border">
-            <h6 className="text-muted text-uppercase small fw-bold mb-3">Usage Records</h6>
-            <DataTable
-                columns={[
-                    { header: 'Date', accessor: 'date_created', render: r => new Date(r.date_created).toLocaleString() },
-                    { header: 'Empty Cans', accessor: 'empty_quantity' },
-                    { header: 'Lids', accessor: 'lid_quantity' },
-                    { header: 'Cartons', accessor: 'carton_quantity' },
-                ]}
-                data={items}
-                isLoading={false}
-                pagination={null}
-            />
-        </div>
-    );
-};
 
 const StoppageLogsView = ({ logs }) => {
     if (!logs || logs.length === 0) return <div className="text-muted text-center py-5">No stoppage logs recorded</div>;

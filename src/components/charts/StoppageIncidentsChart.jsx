@@ -45,7 +45,8 @@ const StoppageIncidentsChart = () => {
                 
                 const res = await productionApi.getStoppages(params);
                 const data = res.data?.data || res.data?.results || res.data || [];
-                setStoppages(Array.isArray(data) ? data : []);
+                const filtered = (Array.isArray(data) ? data : []).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
+                setStoppages(filtered);
             } catch (err) {
                 console.error('Failed to fetch stoppages:', err);
                 setStoppages([]);
@@ -60,12 +61,6 @@ const StoppageIncidentsChart = () => {
     const availablePets = useMemo(() => {
         const pets = [...new Set(stoppages.map(s => s.pet_name || s.line_name).filter(Boolean))];
         return pets.sort((a, b) => {
-            const aLower = a.toLowerCase();
-            const bLower = b.toLowerCase();
-            const aIsCan = aLower.includes('can');
-            const bIsCan = bLower.includes('can');
-            if (aIsCan && !bIsCan) return 1;
-            if (!aIsCan && bIsCan) return -1;
             const aNum = parseInt(a.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;

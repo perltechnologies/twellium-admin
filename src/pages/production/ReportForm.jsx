@@ -51,7 +51,7 @@ const ReportForm = () => {
                     return [];
                 };
 
-                setPets(getResults(petsRes));
+                setPets(getResults(petsRes).filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
                 setShifts(getResults(shiftsRes));
                 setUsers(getResults(usersRes));
 
@@ -215,10 +215,6 @@ const ReportForm = () => {
                                 >
                                     <option value="">Select PET Line</option>
                                     {pets.sort((a, b) => {
-                                        const aName = (a.pet_name || '').toLowerCase();
-                                        const bName = (b.pet_name || '').toLowerCase();
-                                        if (aName.includes('can') && !bName.includes('can')) return 1;
-                                        if (!aName.includes('can') && bName.includes('can')) return -1;
                                         const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
                                         const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
                                         return aNum - bNum;

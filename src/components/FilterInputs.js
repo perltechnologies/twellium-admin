@@ -9,7 +9,7 @@ const FilterInputs = ({ showPageSize = false }) => {
 
   useEffect(() => {
     productionApi.getPets({ page_size: 1000 })
-      .then(res => setPets(res.data.data || []))
+      .then(res => setPets((res.data.data || []).filter(pet => !pet.pet_name?.toLowerCase().includes('can'))))
       .catch(err => console.error('Failed to load pets:', err));
   }, []);
 
@@ -73,17 +73,7 @@ const FilterInputs = ({ showPageSize = false }) => {
           onChange={(e) => updateFilters({ pet: e.target.value || null })}
         >
           <option value="">All PET Lines</option>
-          {pets.sort((a, b) => {
-            const aName = (a.pet_name || '').toLowerCase();
-            const bName = (b.pet_name || '').toLowerCase();
-
-            // Canline always last
-            const aIsCan = aName.includes('can');
-            const bIsCan = bName.includes('can');
-            if (aIsCan && !bIsCan) return 1;
-            if (!aIsCan && bIsCan) return -1;
-
-            // Extract numbers and sort
+          {pets.filter(pet => !pet.pet_name?.toLowerCase().includes('can')).sort((a, b) => {
             const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;

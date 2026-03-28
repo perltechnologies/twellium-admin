@@ -134,10 +134,6 @@ export const productionApi = {
     deleteCapBoxQuantity: (id) => api.delete(`/production/cap-box-quantities/${id}/`),
 
 
-    getCanLines: (params) => api.get('/production/can-lines/', { params }),
-    createCanLine: (data) => api.post('/production/can-lines/', data),
-
-
     getProductionRanges: (params) => api.get('/production/production-ranges/', { params }),
     createProductionRange: (data) => api.post('/production/production-ranges/', data),
     updateProductionRange: (id, data) => api.patch(`/production/production-ranges/${id}/`, data),

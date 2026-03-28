@@ -115,16 +115,6 @@ const ProductionList = () => {
         });
         
         return Object.values(lineMap).sort((a, b) => {
-            const aName = (a.name || '').toLowerCase();
-            const bName = (b.name || '').toLowerCase();
-            
-            // Canline always last
-            const aIsCan = aName.includes('can');
-            const bIsCan = bName.includes('can');
-            if (aIsCan && !bIsCan) return 1;
-            if (!aIsCan && bIsCan) return -1;
-            
-            // Extract numbers and sort
             const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
@@ -244,6 +234,9 @@ const ProductionList = () => {
                 previous = responseData.data.previous;
             }
 
+            // Filter out canlines
+            listData = listData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+
             setReports(listData);
             setTotalCount(count);
             setPaginationLinks({ next, previous });
@@ -270,7 +263,7 @@ const ProductionList = () => {
                 productionApi.getPets({ page_size: 100 })
                     .then(petsRes => {
                         const petsData = Array.isArray(petsRes.data) ? petsRes.data : petsRes.data?.results || [];
-                        setPets(petsData);
+                        setPets(petsData.filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
                     })
                     .catch(err => console.error('Failed to load pets:', err));
             }
@@ -299,8 +292,8 @@ const ProductionList = () => {
                 productionApi.getReports({ page_size: 1000 }),
                 productionApi.getOeeSummary({ page_size: 1000, ...oeeParams })
             ]);
-            setChartReports(extractList(reportsRes));
-            setOeeData(extractList(oeeRes));
+            setChartReports(extractList(reportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can')));
+            setOeeData(extractList(oeeRes).filter(r => !r.pet_name?.toLowerCase().includes('can')));
         } catch (err) {
             console.error('Failed to fetch chart data:', err);
         } finally {
@@ -475,16 +468,6 @@ const ProductionList = () => {
                             >
                                 <option value="">All Lines</option>
                                 {pets.sort((a, b) => {
-                                    const aName = (a.pet_name || '').toLowerCase();
-                                    const bName = (b.pet_name || '').toLowerCase();
-                                    
-                                    // Canline always last
-                                    const aIsCan = aName.includes('can');
-                                    const bIsCan = bName.includes('can');
-                                    if (aIsCan && !bIsCan) return 1;
-                                    if (!aIsCan && bIsCan) return -1;
-                                    
-                                    // Extract numbers and sort
                                     const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
                                     const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
                                     return aNum - bNum;

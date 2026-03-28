@@ -218,28 +218,18 @@ const Overview = () => {
 
             if (controller.signal.aborted) return;
 
-            const reports = extractList(oeeSummaryRes || {});
-            const allReportsData = extractList(allReportsRes || {});
+            const reports = extractList(oeeSummaryRes || {}).filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            const allReportsData = extractList(allReportsRes || {}).filter(r => !r.pet_name?.toLowerCase().includes('can'));
             // Sort reports by PET name
             const sortByPet = (arr) => arr.sort((a, b) => {
-                const aName = (a.pet_name || '').toLowerCase();
-                const bName = (b.pet_name || '').toLowerCase();
-                
-                // Canline always last
-                const aIsCan = aName.includes('can');
-                const bIsCan = bName.includes('can');
-                if (aIsCan && !bIsCan) return 1;
-                if (!aIsCan && bIsCan) return -1;
-                
-                // Extract numbers and sort
                 const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
                 const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
             });
 
             setRawReports(sortByPet(reports));
-            setRawPets(extractList(petsRes || {}));
-            setRawStoppages(extractList(stoppagesRes || {}));
+            setRawPets(extractList(petsRes || {}).filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
+            setRawStoppages(extractList(stoppagesRes || {}).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can')));
             setAllReports(sortByPet(allReportsData));
             hasFetched.current = true;
         } catch (err) {
@@ -338,16 +328,10 @@ const Overview = () => {
             const shiftReportsRes = await productionApi.getShiftOeeSummary(shiftParams);
             console.log('Shift reports raw response:', shiftReportsRes);
             console.log('Response data:', shiftReportsRes.data);
-            const shiftReports = extractList(shiftReportsRes);
+            const shiftReports = extractList(shiftReportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
             console.log('Extracted shift reports:', shiftReports);
             
             const sortByPet = (arr) => arr.sort((a, b) => {
-                const aName = (a.pet_name || '').toLowerCase();
-                const bName = (b.pet_name || '').toLowerCase();
-                const aIsCan = aName.includes('can');
-                const bIsCan = bName.includes('can');
-                if (aIsCan && !bIsCan) return 1;
-                if (!aIsCan && bIsCan) return -1;
                 const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
                 const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
@@ -456,21 +440,8 @@ const Overview = () => {
             oee: clamp(l.oee / l.reports),
             production: l.production,
         })).sort((a, b) => {
-            const aLower = (a.name || '').toLowerCase();
-            const bLower = (b.name || '').toLowerCase();
-            
-            // Canline always last
-            const aIsCanline = aLower.includes('can');
-            const bIsCanline = bLower.includes('can');
-            if (aIsCanline && !bIsCanline) return 1;
-            if (!aIsCanline && bIsCanline) return -1;
-            
-            // Extract numbers from PET names
-            const aMatch = a.name?.match(/(\d+)/);
-            const bMatch = b.name?.match(/(\d+)/);
-            const aNum = aMatch ? parseInt(aMatch[0]) : 999;
-            const bNum = bMatch ? parseInt(bMatch[0]) : 999;
-            
+            const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
 
@@ -569,12 +540,6 @@ const Overview = () => {
             production: l.production,
             downtime: l.downtime,
         })).sort((a, b) => {
-            const aLower = (a.name || '').toLowerCase();
-            const bLower = (b.name || '').toLowerCase();
-            const aIsCanline = aLower.includes('can');
-            const bIsCanline = bLower.includes('can');
-            if (aIsCanline && !bIsCanline) return 1;
-            if (!aIsCanline && bIsCanline) return -1;
             const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
@@ -1042,12 +1007,6 @@ const Overview = () => {
                                     >
                                         <option value="">All</option>
                                         {availablePets.sort((a, b) => {
-                                            const aName = (a.pet_name || '').toLowerCase();
-                                            const bName = (b.pet_name || '').toLowerCase();
-                                            const aIsCan = aName.includes('can');
-                                            const bIsCan = bName.includes('can');
-                                            if (aIsCan && !bIsCan) return 1;
-                                            if (!aIsCan && bIsCan) return -1;
                                             const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
                                             const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
                                             return aNum - bNum;
@@ -1153,12 +1112,6 @@ const Overview = () => {
 
                                 // Create series for each PET
                                 const petNames = [...new Set(filteredReports.map(r => r.pet_name))].sort((a, b) => {
-                                    const aName = (a || '').toLowerCase();
-                                    const bName = (b || '').toLowerCase();
-                                    const aIsCan = aName.includes('can');
-                                    const bIsCan = bName.includes('can');
-                                    if (aIsCan && !bIsCan) return 1;
-                                    if (!aIsCan && bIsCan) return -1;
                                     const aNum = parseInt(a?.match(/(\d+)/)?.[0] || '999');
                                     const bNum = parseInt(b?.match(/(\d+)/)?.[0] || '999');
                                     return aNum - bNum;

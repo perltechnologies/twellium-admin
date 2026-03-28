@@ -150,7 +150,7 @@ const Overview = () => {
     // Fetch all stoppages once for downtime chart
     useEffect(() => {
         productionApi.getStoppages({ page_size: 1000 })
-            .then(res => setAllStoppages(extractList(res)))
+            .then(res => setAllStoppages(extractList(res).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'))))
             .catch(err => console.error('Failed to fetch all stoppages:', err));
     }, []);
 
@@ -203,14 +203,8 @@ const Overview = () => {
         return Object.values(lineMap)
             .filter(l => l.Mechanical + l.Planned > 0)
             .sort((a, b) => {
-                const aName = a.name.toLowerCase();
-                const bName = b.name.toLowerCase();
-                const aIsCan = aName.includes('can');
-                const bIsCan = bName.includes('can');
-                if (aIsCan && !bIsCan) return 1;
-                if (!aIsCan && bIsCan) return -1;
-                const aNum = parseInt(aName.match(/(\d+)/)?.[0] || '999');
-                const bNum = parseInt(bName.match(/(\d+)/)?.[0] || '999');
+                const aNum = parseInt(a.name.match(/(\d+)/)?.[0] || '999');
+                const bNum = parseInt(b.name.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
             });
     }, [allStoppages, dtFilter, dtDate, dtUseRange, dtDateRange.start, dtDateRange.end]);
@@ -263,9 +257,9 @@ const Overview = () => {
 
             if (controller.signal.aborted) return;
 
-            const reports = extractList(reportsRes);
-            const stoppages = extractList(stoppagesRes);
-            const oeeData = extractList(oeeRes);
+            const reports = extractList(reportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            const stoppages = extractList(stoppagesRes).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
+            const oeeData = extractList(oeeRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
 
             console.log('OEE Summary Response:', oeeRes);
             console.log('OEE Data (extracted):', oeeData);
@@ -396,7 +390,7 @@ const Overview = () => {
     /* Fetch pets for ProductionSummary */
     useEffect(() => {
         productionApi.getPets({ page_size: 1000 })
-            .then(res => setPets(res.data.data || []))
+            .then(res => setPets((res.data.data || []).filter(pet => !pet.pet_name?.toLowerCase().includes('can'))))
             .catch(err => console.error('Failed to load pets:', err));
     }, []);
 
