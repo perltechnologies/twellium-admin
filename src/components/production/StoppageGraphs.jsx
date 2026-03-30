@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
-import { Card } from '../ui';
+import { ChartWrapper } from '../ui';
 
 const StoppageGraphs = ({ stoppages }) => {
     const graphData = useMemo(() => {
@@ -58,23 +58,21 @@ const StoppageGraphs = ({ stoppages }) => {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="p-6">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Daily Downtime Trend</h3>
+            <ChartWrapper title="Daily Downtime Trend" chartId="daily-downtime-trend">
                 <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={graphData.dailyData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="date" stroke="#64748b" />
                         <YAxis stroke="#64748b" />
-                        <Tooltip contentStyle={{ backgroundColor: '#065468', color: '#ffffff', border: 'none', borderRadius: '8px' }} />
+                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', color: '#ffffff', border: 'none', borderRadius: '8px' }} />
                         <Legend />
                         <Line type="monotone" dataKey="downtime" stroke="#ef4444" strokeWidth={2} name="Downtime (min)" />
                         <Line type="monotone" dataKey="stoppages" stroke="#f59e0b" strokeWidth={2} name="Stoppages" />
                     </LineChart>
                 </ResponsiveContainer>
-            </Card>
+            </ChartWrapper>
 
-            <Card className="p-6">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Efficiency Distribution</h3>
+            <ChartWrapper title="Efficiency Distribution" chartId="efficiency-distribution">
                 <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                         <Pie
@@ -93,8 +91,8 @@ const StoppageGraphs = ({ stoppages }) => {
                         </Pie>
                         <Tooltip 
                             contentStyle={{ 
-                                backgroundColor: '#8fabd6',
-                                border: '1px solid orange',
+                                backgroundColor: '#1e293b',
+                                border: 'none',
                                 borderRadius: '8px',
                                 color: '#f1f5f9'
                             }}
@@ -107,10 +105,9 @@ const StoppageGraphs = ({ stoppages }) => {
                         />
                     </PieChart>
                 </ResponsiveContainer>
-            </Card>
+            </ChartWrapper>
 
-            <Card className="p-6 lg:col-span-2">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Downtime by PET</h3>
+            <ChartWrapper title="Downtime by PET" chartId="downtime-by-pet" className="lg:col-span-2">
                 <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={graphData.downtimeByPet}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -127,7 +124,7 @@ const StoppageGraphs = ({ stoppages }) => {
                         </Bar>
                     </BarChart>
                 </ResponsiveContainer>
-            </Card>
+            </ChartWrapper>
         </div>
     );
 };

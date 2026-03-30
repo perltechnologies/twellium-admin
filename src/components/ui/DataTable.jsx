@@ -6,10 +6,12 @@ import {
     Edit,
     Trash2,
     Eye,
-    MoreVertical
+    Download,
+    FileSpreadsheet,
+    FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn, Button, Input, Card } from './base';
+import { Button, Input, Card } from './base';
 
 export const DataTable = ({
     columns = [],
@@ -24,9 +26,13 @@ export const DataTable = ({
     searchPlaceholder = "Search...",
     filters = [],
     onFilterChange,
-    activeFilters = {}
+    activeFilters = {},
+    enableExport = false,
+    exportFilename = 'export',
+    onExport
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
+    const [showExportMenu, setShowExportMenu] = useState(false);
 
     React.useEffect(() => {
         const timer = setTimeout(() => {
@@ -85,6 +91,55 @@ export const DataTable = ({
                         )}
                     </div>
                 ))}
+
+                {/* Export Button */}
+                {enableExport && (
+                    <div className="relative ml-auto">
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowExportMenu(!showExportMenu)}
+                            className="flex items-center gap-2"
+                        >
+                            <Download className="h-4 w-4" />
+                            Export
+                        </Button>
+                        <AnimatePresence>
+                            {showExportMenu && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 overflow-hidden"
+                                >
+                                    <button
+                                        onClick={() => {
+                                            if (onExport) {
+                                                onExport('excel');
+                                            }
+                                            setShowExportMenu(false);
+                                        }}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                                    >
+                                        <FileSpreadsheet className="h-4 w-4 text-green-600" />
+                                        Excel
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (onExport) {
+                                                onExport('csv');
+                                            }
+                                            setShowExportMenu(false);
+                                        }}
+                                        className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                                    >
+                                        <FileText className="h-4 w-4 text-blue-600" />
+                                        CSV
+                                    </button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                )}
             </div>
 
             {/* Table Container */}

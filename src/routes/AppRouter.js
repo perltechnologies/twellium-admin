@@ -11,6 +11,8 @@ const DashboardOverview = React.lazy(() => import('../pages/dashboard/Overview')
 const ProductionOverview = React.lazy(() => import('../pages/dashboard/ProductionOverview'));
 const Formulas = React.lazy(() => import('../pages/dashboard/Formulas'));
 const ProductionReports = React.lazy(() => import('../pages/reports/ProductionReports'));
+const OeeAnalytics = React.lazy(() => import('../pages/reports/OeeAnalytics'));
+const ProductionAnalytics = React.lazy(() => import('../pages/reports/ProductionAnalytics'));
 const ProductionList = React.lazy(() => import('../pages/production/ProductionList'));
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
 const ReportDetails = React.lazy(() => import('../pages/production/ReportDetails'));
@@ -74,6 +76,12 @@ export const AppRouter = () => {
                             {/* Reporting Routes */}
                             <Route path="reports">
                                 <Route path="production" element={<ProductionReports />} />
+                            </Route>
+
+                            {/* Analytics Routes */}
+                            <Route path="analytics">
+                                <Route path="oee" element={<OeeAnalytics />} />
+                                <Route path="production" element={<ProductionAnalytics />} />
                             </Route>
 
                             {/* Production Routes */}

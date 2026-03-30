@@ -12,6 +12,8 @@ import {
     SkeletonStatCards, SkeletonGauges, SkeletonChart,
     SkeletonTable, SkeletonDowntimeList
 } from '../../components/ui/Skeletons';
+import CorporateStatCard from '../../components/production/CorporateStatCard';
+import CorporateGaugeChart from '../../components/charts/CorporateGaugeChart';
 
 const ReactApexChart = lazy(() => import('react-apexcharts'));
 
@@ -608,24 +610,6 @@ const Overview = () => {
             {/* Filters */}
             <FilterInputs />
 
-            {/* Active Filters Alert */}
-            {(filters.log_date || filters.start_date || filters.pet) && (
-                <div className="alert alert-info d-flex align-items-center mb-4">
-                    <i className="ti ti-filter fs-4 me-2"></i>
-                    <div className="flex-grow-1">
-                        <strong>Active Filters:</strong>
-                        {filters.start_date && filters.end_date ? (
-                            <span className="ms-2">Date Range: {filters.start_date} to {filters.end_date}</span>
-                        ) : filters.log_date ? (
-                            <span className="ms-2">Date: {filters.log_date}</span>
-                        ) : null}
-                        {filters.pet && (
-                            <span className="ms-2">• PET: {availablePets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}</span>
-                        )}
-                    </div>
-                </div>
-            )}
-
             {/* Error State */}
             {error && (
                 <div className="alert alert-danger d-flex align-items-center mb-4">
@@ -637,39 +621,37 @@ const Overview = () => {
                 </div>
             )}
 
-            {/* No Data Alert */}
-            {!isLoading && !error && rawReports.length === 0 && (
-                <div className="alert alert-warning d-flex align-items-center mb-4">
-                    <i className="ti ti-alert-circle fs-4 me-2"></i>
-                    <div>
-                        <strong>No data available</strong> for the selected date{selectedPet ? ' and PET' : ''}. Please adjust your filters.
-                    </div>
-                </div>
-            )}
-
             {/* Per-PET Metrics (Current Shift) */}
             {!isLoading && hourlyOeeByLine.length > 0 && (
-                <div className="card border-0 shadow-sm mb-4">
-                    <div className="card-header">
+                <div className="card border mb-4">
+                    <div className="card-header bg-light border-bottom py-3">
                         <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0 fw-semibold">
-                                <i className="ti ti-clock-hour-4 me-2"></i>Shift Production Metrics
+                            <div>
+                                <h6 className="mb-0 fw-semibold">
+                                    <i className="ti ti-clock-hour-4 me-2"></i>
+                                    Shift Production Metrics
+                                </h6>
                                 {currentShiftInfo && (
-                                    <span className="badge bg-soft-info text-info ms-2 fs-11">
-                                        {currentShiftInfo.name}: {currentShiftInfo.startTime} - {currentShiftInfo.endTime}
-                                    </span>
+                                    <div className="d-flex align-items-center gap-2 mt-1">
+                                        <span className="badge bg-light text-dark border">
+                                            {currentShiftInfo.name}
+                                        </span>
+                                        <span className="text-muted" style={{ fontSize: '0.85rem' }}>
+                                            {currentShiftInfo.startTime} - {currentShiftInfo.endTime}
+                                        </span>
+                                    </div>
                                 )}
-                            </h6>
+                            </div>
                             <div className="d-flex align-items-center gap-2">
                                 <input
                                     type="date"
                                     className="form-control form-control-sm"
-                                    style={{ width: '150px' }}
+                                    style={{ width: '140px' }}
                                     value={shiftFilterDate}
                                     onChange={(e) => setShiftFilterDate(e.target.value)}
                                     max={new Date().toISOString().split('T')[0]}
                                 />
-                                <div className="btn-group btn-group-sm">
+                                <div className="btn-group btn-group-sm" role="group">
                                     {shifts.sort((a, b) => {
                                         if (a.name === 'DAY') return -1;
                                         if (b.name === 'DAY') return 1;
@@ -684,8 +666,8 @@ const Overview = () => {
                                         </button>
                                     ))}
                                 </div>
-                                <button 
-                                    onClick={() => navigate('/dashboard/production')} 
+                                <button
+                                    onClick={() => navigate('/dashboard/production')}
                                     className="btn btn-outline-secondary btn-sm"
                                 >
                                     <i className="ti ti-list me-1"></i>All Shifts
@@ -694,48 +676,109 @@ const Overview = () => {
                         </div>
                     </div>
                     <div className="card-body">
-                        {/* Line 1: Bottles per PET - Stats Cards */}
-                        <div className="row g-3 mb-3">
-                            {hourlyOeeByLine.map(line => (
-                                <div key={`bottles-${line.name}`} className="col">
-                                    <div className="card border-0 shadow-sm h-100">
-                                        <div className="card-body text-center">
-                                            <div className="avatar bg-soft-primary rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
-                                                <i className="ti ti-bottle text-primary fs-5"></i>
+                        {/* Summary Stats Row */}
+                        <div className="row g-3 mb-4">
+                            {(() => {
+                                const totalProduction = hourlyOeeByLine.reduce((sum, line) => sum + line.production, 0);
+                                const totalDowntime = hourlyOeeByLine.reduce((sum, line) => sum + line.downtime, 0);
+                                const avgOEE = hourlyOeeByLine.length > 0
+                                    ? (hourlyOeeByLine.reduce((sum, line) => sum + line.oee, 0) / hourlyOeeByLine.length).toFixed(1)
+                                    : 0;
+                                const bestPerformer = [...hourlyOeeByLine].sort((a, b) => b.oee - a.oee)[0];
+
+                                return (
+                                    <>
+                                        <div className="col-6 col-lg-3">
+                                            <div className="border rounded p-3 bg-light">
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Production</div>
+                                                <div className="fw-bold" style={{ fontSize: '1.25rem' }}>
+                                                    {formatNum(Math.round(totalProduction))}
+                                                </div>
+                                                <div className="text-muted" style={{ fontSize: '0.75rem' }}>bottles</div>
                                             </div>
-                                            <small className="text-muted d-block fs-11">{line.name}</small>
-                                            <h5 className="mb-0 text-primary fw-bold">{formatNum(Math.round(line.production))}</h5>
-                                            <small className="text-muted fs-10">bottles</small>
                                         </div>
-                                    </div>
+                                        <div className="col-6 col-lg-3">
+                                            <div className="border rounded p-3 bg-light">
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Downtime</div>
+                                                <div className={`fw-bold ${totalDowntime <= 60 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
+                                                    {formatDuration(totalDowntime)}
+                                                </div>
+                                                <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                                    {totalDowntime <= 60 ? 'On target' : 'Above target'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="col-6 col-lg-3">
+                                            <div className="border rounded p-3 bg-light">
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Average OEE</div>
+                                                <div className={`fw-bold ${avgOEE >= 85 ? 'text-success' : avgOEE >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
+                                                    {avgOEE}%
+                                                </div>
+                                                <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                                    {avgOEE >= 85 ? 'Excellent' : avgOEE >= 60 ? 'Acceptable' : 'Needs improvement'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="col-6 col-lg-3">
+                                            <div className="border rounded p-3 bg-light">
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Best Performer</div>
+                                                <div className="fw-bold text-dark" style={{ fontSize: '1.25rem' }}>
+                                                    {bestPerformer?.name || 'N/A'}
+                                                </div>
+                                                <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                                    {bestPerformer?.oee.toFixed(1) || 0}% OEE
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        {/* Production Output by PET */}
+                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>Production Output by PET</h6>
+                        <div className="row g-3 mb-4">
+                            {hourlyOeeByLine.map((line) => (
+                                <div key={`output-${line.name}`} className="col-6 col-lg-4 col-xl">
+                                    <CorporateStatCard
+                                        title={line.name}
+                                        value={Math.round(line.production)}
+                                        unit="bottles"
+                                        icon="bottle"
+                                    />
                                 </div>
                             ))}
                         </div>
-                        {/* Line 2: Downtime per PET - Stats Cards */}
-                        <div className="row g-3 mb-3">
-                            {hourlyOeeByLine.map(line => (
-                                <div key={`downtime-${line.name}`} className="col">
-                                    <div className="card border-0 shadow-sm h-100">
-                                        <div className="card-body text-center">
-                                            <div className="avatar bg-soft-danger rounded-circle p-2 mb-2 mx-auto" style={{ width: 40, height: 40 }}>
-                                                <i className="ti ti-clock-stop text-danger fs-5"></i>
-                                            </div>
-                                            <small className="text-muted d-block fs-11">{line.name}</small>
-                                            <h5 className="mb-0 text-danger fw-bold">{formatDuration(line.downtime)}</h5>
-                                            <small className="text-muted fs-10">downtime</small>
-                                        </div>
+
+                        {/* Downtime by PET */}
+                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>Downtime by PET</h6>
+                        <div className="row g-3 mb-4">
+                            {hourlyOeeByLine.map((line) => {
+                                const targetDowntime = 30;
+                                const downtimeStatus = line.downtime <= targetDowntime ? 'Within Target' : 'Exceeds Target';
+                                return (
+                                    <div key={`downtime-${line.name}`} className="col-6 col-lg-4 col-xl">
+                                        <CorporateStatCard
+                                            title={line.name}
+                                            value={Math.round(line.downtime)}
+                                            unit="min"
+                                            icon="clock-pause"
+                                            subtitle={downtimeStatus}
+                                        />
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
-                        {/* Line 3: Efficiency per PET - Gauges */}
-                        <div className="d-flex justify-content-center" style={{ gap: '-30px' }}>
-                            {hourlyOeeByLine.map(line => (
-                                <div key={`efficiency-${line.name}`} style={{ transform: 'scale(0.6)', transformOrigin: 'top center', marginLeft: '-40px' }}>
-                                    <GaugeChart 
-                                        value={line.oee} 
-                                        label={`${line.name} - ${line.oee.toFixed(1)}%`}
-                                        color={line.oee >= 85 ? '#22c55e' : line.oee >= 60 ? '#f59e0b' : '#ef4444'}
+
+                        {/* OEE Efficiency by PET */}
+                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>OEE Efficiency by PET</h6>
+                        <div className="row g-3">
+                            {hourlyOeeByLine.map((line) => (
+                                <div key={`oee-${line.name}`} className="col">
+                                    <CorporateGaugeChart
+                                        value={line.oee}
+                                        label={line.name}
+                                        size={160}
                                     />
                                 </div>
                             ))}
@@ -774,6 +817,24 @@ const Overview = () => {
                             </button>
                         </div>
                         <div className="card-body">
+                                {!error && rawReports.length === 0 ? (
+                                    <div className="alert alert-warning d-flex align-items-center">
+                                        <i className="ti ti-alert-circle fs-4 me-2"></i>
+                                        <div>
+                                            <strong>Active Filters:</strong>
+                                            {filters.start_date && filters.end_date ? (
+                                                <span className="ms-2">Date Range: {filters.start_date} to {filters.end_date}</span>
+                                            ) : filters.log_date ? (
+                                                <span className="ms-2">Date: {filters.log_date}</span>
+                                            ) : null}
+                                            {filters.pet && (
+                                                <span className="ms-2">• PET: {availablePets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}</span>
+                                            )}
+                                            <br />
+                                            <strong>No data available</strong> for the selected date. Please adjust your filters.
+                                        </div>
+                                    </div>
+                                ) : (
                                 <div className="row g-3">
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
                                         <GaugeChart 
@@ -832,6 +893,7 @@ const Overview = () => {
                                         />
                                     </div>
                                 </div>
+                                )}
                         </div>
                     </div>
                     </ChartErrorBoundary>

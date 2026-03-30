@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
-import { Card } from '../ui';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { ChartWrapper } from '../ui';
 
 const ProductionGraphs = ({ reports }) => {
     const graphData = useMemo(() => {
@@ -73,8 +73,7 @@ const ProductionGraphs = ({ reports }) => {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="p-6">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Daily Production Trend</h3>
+            <ChartWrapper title="Daily Production Trend" chartId="daily-production-trend">
                 <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={graphData.dailyData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -102,10 +101,9 @@ const ProductionGraphs = ({ reports }) => {
                         <Line yAxisId="right" type="monotone" dataKey="completed" stroke="#8b5cf6" strokeWidth={2} name="Completed" dot={{ r: 4 }} />
                     </LineChart>
                 </ResponsiveContainer>
-            </Card>
+            </ChartWrapper>
 
-            <Card className="p-6">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Status Distribution</h3>
+            <ChartWrapper title="Status Distribution" chartId="status-distribution">
                 <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                         <Pie
@@ -123,7 +121,7 @@ const ProductionGraphs = ({ reports }) => {
                             ))}
                         </Pie>
                         <Tooltip 
-                            contentStyle={{ backgroundColor: '#99b1d8', border: 'none', borderRadius: '8px', color: '#f1f5f9' }}
+                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#f1f5f9' }}
                             formatter={(value, name) => [`${value} reports`, name]}
                         />
                         <Legend 
@@ -133,10 +131,9 @@ const ProductionGraphs = ({ reports }) => {
                         />
                     </PieChart>
                 </ResponsiveContainer>
-            </Card>
+            </ChartWrapper>
 
-            <Card className="p-6 lg:col-span-2">
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-4">Total Output per PET per Day</h3>
+            <ChartWrapper title="Total Output per PET per Day" chartId="pet-output-chart" className="lg:col-span-2">
                 <ResponsiveContainer width="100%" height={350}>
                     <BarChart data={graphData.outputByPetDay} margin={{ left: 20 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -145,10 +142,10 @@ const ProductionGraphs = ({ reports }) => {
                             stroke="#64748b" 
                             width={60} 
                             tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value}
-                            label={{ value: 'Bottles Produced', angle: -90, position: 'insideLeft', offset: -5, style: { fill: '#3b4e73', color: '#ffffff' } }}
+                            label={{ value: 'Bottles Produced', angle: -90, position: 'insideLeft', offset: -5, style: { fill: '#64748b' } }}
                         />
                         <Tooltip 
-                            contentStyle={{ backgroundColor: '#21385c', border: 'none', borderRadius: '8px', color: '#f1f5f9' }}
+                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#f1f5f9' }}
                             formatter={(value) => value.toLocaleString()}
                         />
                         <Legend />
@@ -162,7 +159,7 @@ const ProductionGraphs = ({ reports }) => {
                         ))}
                     </BarChart>
                 </ResponsiveContainer>
-            </Card>
+            </ChartWrapper>
         </div>
     );
 };

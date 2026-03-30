@@ -46,9 +46,8 @@ const Sidebar = () => {
                     icon: 'ti-file-analytics',
                     key: 'reporting',
                     submenu: [
-                        { name: 'Production Analytics', path: '/dashboard/reports/production' },
-                        { name: 'OEE Analytics', path: '/dashboard/reports/oee' },
-                        { name: 'Downtime Analytics', path: '/dashboard/reports/downtime' },
+                        { name: 'OEE Analytics', path: '/dashboard/analytics/oee' },
+                        { name: 'Production Analytics', path: '/dashboard/analytics/production' },
                     ],
                 },
             ],
