@@ -5,6 +5,7 @@ import { LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, Cartesia
 import { PieChart, Pie, Cell } from 'recharts';
 import { exportToExcel, exportChartToPDF } from '../../utils/exportUtils';
 import { useFilters } from '../../context/FilterContext';
+import { buildFilterParams } from '../../utils/filterParams';
 
 const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 const SHIFT_COLORS = { 'Morning': '#f59e0b', 'Afternoon': '#3b82f6', 'Night': '#8b5cf6', 'Day': '#22c55e' };
@@ -52,38 +53,53 @@ const ProductionAnalytics = () => {
         setLoading(true);
         try {
             const params = { page_size: 1000 };
-            if (filters.pet) params.pet = filters.pet;
+            const oeeParams = { page_size: 1000 };
             
-            const now = new Date();
-            let startDate, endDate;
-            
-            if (timeRange === 'week') {
-                const dayOfWeek = now.getDay();
-                startDate = new Date(now);
-                startDate.setDate(now.getDate() - dayOfWeek);
-                startDate.setHours(0, 0, 0, 0);
-                endDate = new Date(startDate);
-                endDate.setDate(startDate.getDate() + 6);
-                endDate.setHours(23, 59, 59, 999);
-            } else if (timeRange === 'month') {
-                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-            } else if (timeRange === 'quarter') {
-                const currentQuarter = Math.floor(now.getMonth() / 3);
-                startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
-                endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999);
-            } else {
-                startDate = null;
-                endDate = null;
+            if (filters.pet) {
+                params.pet = filters.pet;
+                oeeParams.pet = filters.pet;
             }
             
-            if (startDate && endDate) {
-                params.start_date = startDate.toISOString().split('T')[0];
-                params.end_date = endDate.toISOString().split('T')[0];
+            // Always use timeRange for data fetching if set, ignore manual date filters for fetching
+            if (timeRange && timeRange !== 'all') {
+                const now = new Date();
+                let startDate, endDate;
+                
+                if (timeRange === 'week') {
+                    const dayOfWeek = now.getDay();
+                    startDate = new Date(now);
+                    startDate.setDate(now.getDate() - dayOfWeek);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(startDate);
+                    endDate.setDate(startDate.getDate() + 6);
+                    endDate.setHours(23, 59, 59, 999);
+                } else if (timeRange === 'month') {
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                } else if (timeRange === 'quarter') {
+                    const currentQuarter = Math.floor(now.getMonth() / 3);
+                    startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+                    endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999);
+                }
+                
+                if (startDate && endDate) {
+                    params.production_date_after = startDate.toISOString().split('T')[0];
+                    params.production_date_before = endDate.toISOString().split('T')[0];
+                    oeeParams.production_date_after = startDate.toISOString().split('T')[0];
+                    oeeParams.production_date_before = endDate.toISOString().split('T')[0];
+                }
+            } else if (filters.log_date) {
+                params.production_date = filters.log_date;
+                oeeParams.production_date = filters.log_date;
+            } else if (filters.start_date && filters.end_date) {
+                params.production_date_after = filters.start_date;
+                params.production_date_before = filters.end_date;
+                oeeParams.production_date_after = filters.start_date;
+                oeeParams.production_date_before = filters.end_date;
             }
             
             const [oeeRes, reportsRes] = await Promise.all([
-                productionApi.getOeeSummary(params),
+                productionApi.getOeeSummary(oeeParams),
                 productionApi.getReports(params)
             ]);
             
@@ -92,6 +108,8 @@ const ProductionAnalytics = () => {
             
             oeeList = oeeList.filter(r => !r.pet_name?.toLowerCase().includes('can'));
             reportsList = reportsList.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            
+            // Don't filter by date when timeRange is active - let the chart show all dates with 0 for missing data
             
             oeeList.sort((a, b) => new Date(a.production_date) - new Date(b.production_date));
             reportsList.sort((a, b) => new Date(b.production_date) - new Date(a.production_date));
@@ -103,11 +121,18 @@ const ProductionAnalytics = () => {
         } finally {
             setLoading(false);
         }
-    }, [filters.pet, timeRange]);
+    }, [filters.pet, filters.log_date, filters.start_date, filters.end_date, timeRange]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    useEffect(() => {
+        // Reset timeRange when manual date filters are cleared
+        if (!filters.log_date && !filters.start_date && !filters.end_date && timeRange === 'all') {
+            setTimeRange('month');
+        }
+    }, [filters.log_date, filters.start_date, filters.end_date, timeRange]);
 
     const weekRange = useMemo(() => {
         if (timeRange !== 'week') return null;
@@ -125,12 +150,20 @@ const ProductionAnalytics = () => {
     }, [reports, oeeData, weekRange]);
 
     const stats = useMemo(() => {
-        if (!reports.length) return { totalOutput: 0, avgOutput: 0, reportCount: 0, avgOee: 0, totalDowntime: 0, uniqueLines: 0, oeeStatus: null };
+        if (!reports.length) return { totalOutput: 0, avgOutput: 0, reportCount: 0, avgOee: 0, totalDowntime: 0, uniqueLines: 0, oeeStatus: null, isSingleDate: false, avgAvail: 0, avgQuality: 0, avgPerf: 0 };
+        
+        const allDates = [...reports.map(r => r.production_date), ...oeeData.map(r => r.production_date)].filter(Boolean);
+        const uniqueDates = new Set(allDates.map(d => d?.slice(0, 10))).size;
+        const isSingleDate = uniqueDates === 1 || filters.log_date;
         
         const totalOutput = reports.reduce((sum, r) => sum + (r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
         const totalDowntime = oeeData.reduce((sum, r) => sum + (r.metrics?.details?.total_downtime_mins || 0), 0);
         const totalOee = oeeData.reduce((sum, r) => sum + (r.metrics?.oee || 0), 0);
         const avgOee = oeeData.length > 0 ? totalOee / oeeData.length : 0;
+        
+        const totalAvail = oeeData.reduce((sum, r) => sum + (r.metrics?.availability || 0), 0);
+        const totalQuality = oeeData.reduce((sum, r) => sum + (r.metrics?.quality || 0), 0);
+        const totalPerf = oeeData.reduce((sum, r) => sum + (r.metrics?.performance || 0), 0);
         
         return {
             totalOutput,
@@ -139,9 +172,13 @@ const ProductionAnalytics = () => {
             avgOee,
             totalDowntime,
             uniqueLines: new Set([...reports.map(r => r.pet_name), ...oeeData.map(r => r.pet_name)]).size,
-            oeeStatus: getStatusConfig(avgOee)
+            oeeStatus: getStatusConfig(avgOee),
+            isSingleDate,
+            avgAvail: oeeData.length > 0 ? totalAvail / oeeData.length : 0,
+            avgQuality: oeeData.length > 0 ? totalQuality / oeeData.length : 0,
+            avgPerf: oeeData.length > 0 ? totalPerf / oeeData.length : 0
         };
-    }, [reports, oeeData]);
+    }, [reports, oeeData, filters.log_date]);
 
     const outputByPet = useMemo(() => {
         const grouped = {};
@@ -176,27 +213,26 @@ const ProductionAnalytics = () => {
         // Determine date range
         let minDate, maxDate;
         
-        if (!filters.log_date && !filters.start_date && !filters.end_date) {
+        if (timeRange === 'week') {
+            // Show full week from Sunday to Saturday
             const now = new Date();
-            if (timeRange === 'week') {
-                // Show full week from Sunday to Saturday
-                const dayOfWeek = now.getDay();
-                minDate = new Date(now);
-                minDate.setDate(now.getDate() - dayOfWeek);
-                minDate.setHours(0, 0, 0, 0);
-                maxDate = new Date(minDate);
-                maxDate.setDate(minDate.getDate() + 6);
-            } else if (timeRange === 'month') {
-                // Show full month
-                minDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                maxDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            } else {
-                // Use actual data range
-                const dates = allData.map(r => r.production_date).filter(Boolean);
-                if (!dates.length) return [];
-                minDate = new Date(Math.min(...dates.map(d => new Date(d))));
-                maxDate = new Date(Math.max(...dates.map(d => new Date(d))));
-            }
+            const dayOfWeek = now.getDay();
+            minDate = new Date(now);
+            minDate.setDate(now.getDate() - dayOfWeek);
+            minDate.setHours(0, 0, 0, 0);
+            maxDate = new Date(minDate);
+            maxDate.setDate(minDate.getDate() + 6);
+        } else if (timeRange === 'month') {
+            // Show full month
+            const now = new Date();
+            minDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            maxDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (timeRange === 'quarter') {
+            // Show full quarter
+            const now = new Date();
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            minDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+            maxDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0);
         } else {
             // Use actual data range
             const dates = allData.map(r => r.production_date).filter(Boolean);
@@ -236,7 +272,7 @@ const ProductionAnalytics = () => {
         let minDate, maxDate;
         
         if (timeRange === 'week') {
-            // Always show full week from Sunday to Saturday when week is selected
+            // Show full week from Sunday to Saturday
             const now = new Date();
             const dayOfWeek = now.getDay();
             minDate = new Date(now);
@@ -244,19 +280,17 @@ const ProductionAnalytics = () => {
             minDate.setHours(0, 0, 0, 0);
             maxDate = new Date(minDate);
             maxDate.setDate(minDate.getDate() + 6);
-        } else if (!filters.log_date && !filters.start_date && !filters.end_date) {
+        } else if (timeRange === 'month') {
+            // Show full month
             const now = new Date();
-            if (timeRange === 'month') {
-                // Show full month
-                minDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                maxDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            } else {
-                // Use actual data range
-                const dates = oeeData.map(r => r.production_date).filter(Boolean);
-                if (!dates.length) return [];
-                minDate = new Date(Math.min(...dates.map(d => new Date(d))));
-                maxDate = new Date(Math.max(...dates.map(d => new Date(d))));
-            }
+            minDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            maxDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (timeRange === 'quarter') {
+            // Show full quarter
+            const now = new Date();
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            minDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+            maxDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0);
         } else {
             // Use actual data range
             const dates = oeeData.map(r => r.production_date).filter(Boolean);
@@ -405,7 +439,6 @@ const ProductionAnalytics = () => {
                         <button type="button" className={`btn ${timeRange === 'week' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('week')}>Week</button>
                         <button type="button" className={`btn ${timeRange === 'month' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('month')}>Month</button>
                         <button type="button" className={`btn ${timeRange === 'quarter' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('quarter')}>Quarter</button>
-                        <button type="button" className={`btn ${timeRange === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('all')}>All</button>
                     </div>
                     <button className="btn btn-outline-secondary btn-sm" onClick={fetchData}>
                         <i className="ti ti-refresh me-1"></i>Refresh
@@ -432,62 +465,139 @@ const ProductionAnalytics = () => {
 
             <FilterInputs />
 
+            {(filters.pet || filters.log_date || filters.start_date || filters.end_date) && (
+                <div className="alert alert-info d-flex align-items-center mb-3" role="alert">
+                    <i className="ti ti-filter me-2"></i>
+                    <span>
+                        Filtered by: {filters.pet && <strong>PET Line: {pets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}</strong>}
+                        {filters.pet && (filters.log_date || filters.start_date) && ' | '}
+                        {filters.log_date && <strong>Date: {filters.log_date}</strong>}
+                        {filters.start_date && filters.end_date && <strong>Date Range: {filters.start_date} to {filters.end_date}</strong>}
+                    </span>
+                </div>
+            )}
+
             <div className="row row-gap-3 mb-4">
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card border-top border-primary border-3 mb-0 h-100">
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Total Output</p>
-                                <span className="badge bg-primary-subtle text-primary">Output</span>
-                            </div>
-                            <h2 className="mb-1 fs-16 fw-bold">{stats.totalOutput.toLocaleString()}</h2>
-                            <small className="text-muted">{stats.reportCount} reports</small>
-                        </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card border-top border-success border-3 mb-0 h-100">
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Average Output</p>
-                                <span className="badge bg-success-subtle text-success">Per Report</span>
-                            </div>
-                            <h2 className="mb-1 fs-16 fw-bold">{stats.avgOutput.toLocaleString()}</h2>
-                            <small className="text-muted">pcs per report</small>
-                        </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className={`card border-top border-${stats.oeeStatus?.color === 'success' ? 'success' : stats.oeeStatus?.color === 'warning' ? 'warning' : 'danger'} border-3 mb-0 h-100`}>
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Average OEE</p>
-                                <span className={`badge bg-${stats.oeeStatus?.bgClass?.replace('bg-', '')} text-${stats.oeeStatus?.color}`}>
-                                    {stats.oeeStatus?.label || 'N/A'}
-                                </span>
-                            </div>
-                            <div className="d-flex align-items-center gap-2">
-                                <h2 className="mb-1 fs-16 fw-bold">{stats.avgOee.toFixed(1)}%</h2>
-                                <div className="progress w-50" style={{ height: 6 }} title={`Target: ${OEE_TARGET}%`}>
-                                    <div className={`progress-bar bg-${stats.oeeStatus?.color}`} role="progressbar" style={{ width: `${Math.min(stats.avgOee, 100)}%` }} />
+                {loading ? (
+                    <>
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className="col-xl-3 col-sm-6">
+                                <div className="card border-top border-secondary border-3 mb-0 h-100">
+                                    <div className="card-body d-flex align-items-center justify-content-center" style={{ minHeight: 120 }}>
+                                        <span className="spinner-border text-primary" role="status" />
+                                    </div>
                                 </div>
                             </div>
-                            <small className="text-muted">Target: {OEE_TARGET}%</small>
-                        </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card border-top border-info border-3 mb-0 h-100">
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Total Downtime</p>
-                                <span className="badge bg-info-subtle text-info">{stats.uniqueLines} Lines</span>
+                        ))}
+                    </>
+                ) : (
+                    <>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-primary border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Total Output</p>
+                                        <span className="badge bg-primary-subtle text-primary">Output</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.totalOutput.toLocaleString()}</h2>
+                                    <small className="text-muted">{stats.reportCount} reports</small>
+                                </div>
                             </div>
-                            <h2 className="mb-1 fs-16 fw-bold">{stats.totalDowntime.toLocaleString()} min</h2>
-                            <small className="text-muted">{(stats.totalDowntime / Math.max(stats.reportCount, 1)).toFixed(1)} min avg</small>
                         </div>
-                    </div>
-                </div>
+                {stats.isSingleDate ? (
+                    <>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-success border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Availability</p>
+                                        <span className="badge bg-success-subtle text-success">A</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.avgAvail.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-success" role="progressbar" style={{ width: `${Math.min(stats.avgAvail, 100)}%` }} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-warning border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Performance</p>
+                                        <span className="badge bg-warning-subtle text-warning">P</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.avgPerf.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-warning" role="progressbar" style={{ width: `${Math.min(stats.avgPerf, 100)}%` }} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-info border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Quality</p>
+                                        <span className="badge bg-info-subtle text-info">Q</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.avgQuality.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-info" role="progressbar" style={{ width: `${Math.min(stats.avgQuality, 100)}%` }} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-success border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Average Output</p>
+                                        <span className="badge bg-success-subtle text-success">Per Report</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.avgOutput.toLocaleString()}</h2>
+                                    <small className="text-muted">pcs per report</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className={`card border-top border-${stats.oeeStatus?.color === 'success' ? 'success' : stats.oeeStatus?.color === 'warning' ? 'warning' : 'danger'} border-3 mb-0 h-100`}>
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Average OEE</p>
+                                        <span className={`badge bg-${stats.oeeStatus?.bgClass?.replace('bg-', '')} text-${stats.oeeStatus?.color}`}>
+                                            {stats.oeeStatus?.label || 'N/A'}
+                                        </span>
+                                    </div>
+                                    <div className="d-flex align-items-center gap-2">
+                                        <h2 className="mb-1 fs-16 fw-bold">{stats.avgOee.toFixed(1)}%</h2>
+                                        <div className="progress w-50" style={{ height: 6 }} title={`Target: ${OEE_TARGET}%`}>
+                                            <div className={`progress-bar bg-${stats.oeeStatus?.color}`} role="progressbar" style={{ width: `${Math.min(stats.avgOee, 100)}%` }} />
+                                        </div>
+                                    </div>
+                                    <small className="text-muted">Target: {OEE_TARGET}%</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-info border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Total Downtime</p>
+                                        <span className="badge bg-info-subtle text-info">{stats.uniqueLines} Lines</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.totalDowntime.toLocaleString()} min</h2>
+                                    <small className="text-muted">{(stats.totalDowntime / Math.max(stats.reportCount, 1)).toFixed(1)} min avg</small>
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
+                </>
+            )}
             </div>
 
             {viewMode === 'chart' ? (

@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, User } from 'lucide-react';
-import { Button, Input, Card } from '../../components/ui';
 import { usersApi } from '../../api/users';
 import { productionApi } from '../../api/production';
 
@@ -120,75 +118,93 @@ const UserForm = () => {
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-slate-500">Loading user details...</div>;
+    if (loading) return (
+        <div className="container-fluid">
+            <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px' }}>
+                <div className="text-center">
+                    <span className="spinner-border text-primary" role="status"></span>
+                    <p className="mt-3 text-muted">Loading user details...</p>
+                </div>
+            </div>
+        </div>
+    );
 
     return (
-        <div className="space-y-6 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center gap-4">
-                <Button variant="ghost" onClick={() => navigate('/dashboard/users')}>
-                    <ArrowLeft className="h-4 w-4 mr-2" />
+        <div className="container-fluid">
+            <div className="d-flex align-items-center gap-3 mb-4">
+                <button className="btn btn-outline-secondary" onClick={() => navigate('/dashboard/users')}>
+                    <i className="ti ti-arrow-left me-2"></i>
                     Back
-                </Button>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+                </button>
+                <h4 className="mb-0">
                     {isEditMode ? 'Edit User' : 'Create New User'}
-                </h1>
+                </h4>
             </div>
 
-            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 gap-6">
+            <div className="card">
+                <div className="card-body">
+                    <form onSubmit={handleSubmit}>
+                        <div className="row g-3">
+                            <div className="col-md-6">
+                                <label className="form-label">Username <span className="text-danger">*</span></label>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    name="username"
+                                    value={formData.username}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
+                            <div className="col-md-6">
+                                <label className="form-label">Email <span className="text-danger">*</span></label>
+                                <input
+                                    type="email"
+                                    className="form-control"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <Input
-                                label="Username"
-                                name="username"
-                                value={formData.username}
-                                onChange={handleChange}
-                                required
-                            />
-                            <Input
-                                label="Email"
-                                type="email"
-                                name="email"
-                                value={formData.email}
-                                onChange={handleChange}
-                                required
-                            />
-                        </div>
+                            <div className="col-12">
+                                <label className="form-label">Full Name <span className="text-danger">*</span></label>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    name="full_name"
+                                    value={formData.full_name}
+                                    onChange={handleChange}
+                                    required
+                                />
+                            </div>
 
-                        <Input
-                            label="Full Name"
-                            name="full_name"
-                            value={formData.full_name}
-                            onChange={handleChange}
-                            required
-                        />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Role</label>
+                            <div className="col-md-6">
+                                <label className="form-label">Role <span className="text-danger">*</span></label>
                                 <select
                                     name="role"
                                     value={formData.role}
                                     onChange={handleChange}
-                                    className="w-full px-4 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-900 dark:text-slate-200"
+                                    className="form-select"
+                                    required
                                 >
-                                    <option value="OPERATOR">OPERATOR</option>
-                                    <option value="SUPERVISOR">SUPERVISOR</option>
-                                    <option value="QUALITY_CONTROL">QUALITY_CONTROL</option>
-                                    <option value="LOGISTICS_MANAGER">LOGISTICS_MANAGER</option>
-                                    <option value="ADMIN">ADMIN</option>
+                                    <option value="OPERATOR">Operator</option>
+                                    <option value="SUPERVISOR">Supervisor</option>
+                                    <option value="QUALITY_CONTROL">Quality Control</option>
+                                    <option value="LOGISTICS_MANAGER">Logistics Manager</option>
+                                    <option value="ADMIN">Admin</option>
                                 </select>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Company</label>
+                            <div className="col-md-6">
+                                <label className="form-label">Company <span className="text-danger">*</span></label>
                                 <select
                                     name="company"
                                     value={formData.company}
                                     onChange={handleChange}
+                                    className="form-select"
                                     required
-                                    className="w-full px-4 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-900 dark:text-slate-200"
                                 >
                                     <option value="">Select Company</option>
                                     {companies.map(c => (
@@ -198,16 +214,14 @@ const UserForm = () => {
                                     ))}
                                 </select>
                             </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-700 dark:text-slate-400">Pet (Optional)</label>
+                            <div className="col-md-6">
+                                <label className="form-label">PET Line (Optional)</label>
                                 <select
                                     name="pet"
                                     value={formData.pet}
                                     onChange={handleChange}
-                                    className="w-full px-4 py-2 bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 text-slate-900 dark:text-slate-200"
+                                    className="form-select"
                                 >
                                     <option value="">None</option>
                                     {pets.map(p => (
@@ -218,37 +232,51 @@ const UserForm = () => {
                                 </select>
                             </div>
 
-                            <Input
-                                label={isEditMode ? "Password (leave blank to keep)" : "Password"}
-                                type="password"
-                                name="password"
-                                value={formData.password}
-                                onChange={handleChange}
-                                required={!isEditMode}
-                            />
+                            <div className="col-md-6">
+                                <label className="form-label">
+                                    Password {!isEditMode && <span className="text-danger">*</span>}
+                                    {isEditMode && <small className="text-muted"> (leave blank to keep current)</small>}
+                                </label>
+                                <input
+                                    type="password"
+                                    className="form-control"
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    required={!isEditMode}
+                                />
+                            </div>
                         </div>
 
-                    </div>
-
-                    <div className="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => navigate('/dashboard/users')}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            type="submit"
-                            className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
-                            disabled={submitting}
-                        >
-                            {submitting ? <span className="animate-spin mr-2">⟳</span> : <Save className="h-4 w-4 mr-2" />}
-                            {isEditMode ? 'Update User' : 'Create User'}
-                        </Button>
-                    </div>
-                </form>
-            </Card>
+                        <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => navigate('/dashboard/users')}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="btn btn-primary"
+                                disabled={submitting}
+                            >
+                                {submitting ? (
+                                    <>
+                                        <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="ti ti-device-floppy me-2"></i>
+                                        {isEditMode ? 'Update User' : 'Create User'}
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     );
 };

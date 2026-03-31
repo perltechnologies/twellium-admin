@@ -52,37 +52,44 @@ const OeeAnalytics = () => {
             const params = { page_size: 1000 };
             if (filters.pet) params.pet = filters.pet;
             
-            const now = new Date();
-            let startDate, endDate;
-            
-            if (timeRange === 'week') {
-                const dayOfWeek = now.getDay();
-                startDate = new Date(now);
-                startDate.setDate(now.getDate() - dayOfWeek);
-                startDate.setHours(0, 0, 0, 0);
-                endDate = new Date(startDate);
-                endDate.setDate(startDate.getDate() + 6);
-                endDate.setHours(23, 59, 59, 999);
-            } else if (timeRange === 'month') {
-                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-            } else if (timeRange === 'quarter') {
-                const currentQuarter = Math.floor(now.getMonth() / 3);
-                startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
-                endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999);
-            } else {
-                startDate = null;
-                endDate = null;
-            }
-            
-            if (startDate && endDate) {
-                params.start_date = startDate.toISOString().split('T')[0];
-                params.end_date = endDate.toISOString().split('T')[0];
+            // Always use timeRange for data fetching if set, ignore manual date filters for fetching
+            if (timeRange && timeRange !== 'all') {
+                const now = new Date();
+                let startDate, endDate;
+                
+                if (timeRange === 'week') {
+                    const dayOfWeek = now.getDay();
+                    startDate = new Date(now);
+                    startDate.setDate(now.getDate() - dayOfWeek);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(startDate);
+                    endDate.setDate(startDate.getDate() + 6);
+                    endDate.setHours(23, 59, 59, 999);
+                } else if (timeRange === 'month') {
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                } else if (timeRange === 'quarter') {
+                    const currentQuarter = Math.floor(now.getMonth() / 3);
+                    startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+                    endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999);
+                }
+                
+                if (startDate && endDate) {
+                    params.production_date_after = startDate.toISOString().split('T')[0];
+                    params.production_date_before = endDate.toISOString().split('T')[0];
+                }
+            } else if (filters.log_date) {
+                params.production_date = filters.log_date;
+            } else if (filters.start_date && filters.end_date) {
+                params.production_date_after = filters.start_date;
+                params.production_date_before = filters.end_date;
             }
             
             const res = await productionApi.getOeeSummary(params);
             let reportData = Array.isArray(res.data) ? res.data : res.data?.results || res.data?.data || [];
             reportData = reportData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            
+            // Don't filter by date when timeRange is active - let the chart show all dates with 0 for missing data
             
             reportData.sort((a, b) => new Date(a.production_date) - new Date(b.production_date));
             
@@ -92,7 +99,18 @@ const OeeAnalytics = () => {
         } finally {
             setLoading(false);
         }
-    }, [filters.pet, timeRange]);
+    }, [filters.pet, filters.log_date, filters.start_date, filters.end_date, timeRange]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    useEffect(() => {
+        // Reset timeRange when manual date filters are cleared
+        if (!filters.log_date && !filters.start_date && !filters.end_date && timeRange === 'all') {
+            setTimeRange('month');
+        }
+    }, [filters.log_date, filters.start_date, filters.end_date, timeRange]);
 
     const weekRange = useMemo(() => {
         if (timeRange !== 'week') return null;
@@ -121,7 +139,10 @@ const OeeAnalytics = () => {
     }, [filters.pet, pets]);
 
     const stats = useMemo(() => {
-        if (!data.length) return { avgOee: 0, avgAvail: 0, avgQuality: 0, avgPerf: 0, bestOee: 0, worstOee: 0, totalOutput: 0, totalDowntime: 0, oeeStatus: null };
+        if (!data.length) return { avgOee: 0, avgAvail: 0, avgQuality: 0, avgPerf: 0, bestOee: 0, worstOee: 0, totalOutput: 0, totalDowntime: 0, oeeStatus: null, isSingleDate: false };
+        
+        const uniqueDates = new Set(data.map(d => d.production_date?.slice(0, 10))).size;
+        const isSingleDate = uniqueDates === 1 || filters.log_date;
         
         const oees = data.map(d => d.metrics?.oee || 0);
         const avails = data.map(d => d.metrics?.availability || 0);
@@ -138,9 +159,11 @@ const OeeAnalytics = () => {
             worstOee: Math.min(...oees),
             totalOutput: data.reduce((sum, d) => sum + (d.metrics?.details?.total_output_pcs || 0), 0),
             totalDowntime: data.reduce((sum, d) => sum + (d.metrics?.details?.total_downtime_mins || 0), 0),
-            oeeStatus: getStatusConfig(avgOee)
+            oeeStatus: getStatusConfig(avgOee),
+            isSingleDate,
+            reportCount: data.length
         };
-    }, [data]);
+    }, [data, filters.log_date]);
 
     const trendData = useMemo(() => {
         if (!data.length) return [];
@@ -155,21 +178,15 @@ const OeeAnalytics = () => {
             minDate.setHours(0, 0, 0, 0);
             maxDate = new Date(minDate);
             maxDate.setDate(minDate.getDate() + 6);
-        } else if (!filters.log_date && !filters.start_date && !filters.end_date) {
+        } else if (timeRange === 'month') {
             const now = new Date();
-            if (timeRange === 'month') {
-                minDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                maxDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            } else if (timeRange === 'quarter') {
-                const currentQuarter = Math.floor(now.getMonth() / 3);
-                minDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
-                maxDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0);
-            } else {
-                const dates = data.map(d => d.production_date).filter(Boolean);
-                if (!dates.length) return [];
-                minDate = new Date(Math.min(...dates.map(d => new Date(d))));
-                maxDate = new Date(Math.max(...dates.map(d => new Date(d))));
-            }
+            minDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            maxDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else if (timeRange === 'quarter') {
+            const now = new Date();
+            const currentQuarter = Math.floor(now.getMonth() / 3);
+            minDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
+            maxDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0);
         } else {
             const dates = data.map(d => d.production_date).filter(Boolean);
             if (!dates.length) return [];
@@ -204,24 +221,31 @@ const OeeAnalytics = () => {
     }, [data, timeRange, filters]);
 
     const byPetData = useMemo(() => {
-        const grouped = {};
+        // Start with all available PETs
+        const allPets = {};
+        pets.forEach(pet => {
+            allPets[pet.pet_name] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0 };
+        });
+        
+        // Add data for PETs that have records
         data.forEach(d => {
             const pet = d.pet_name || 'Unknown';
-            if (!grouped[pet]) grouped[pet] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0 };
-            grouped[pet].oee += d.metrics?.oee || 0;
-            grouped[pet].avail += d.metrics?.availability || 0;
-            grouped[pet].quality += d.metrics?.quality || 0;
-            grouped[pet].perf += d.metrics?.performance || 0;
-            grouped[pet].count += 1;
+            if (!allPets[pet]) allPets[pet] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0 };
+            allPets[pet].oee += d.metrics?.oee || 0;
+            allPets[pet].avail += d.metrics?.availability || 0;
+            allPets[pet].quality += d.metrics?.quality || 0;
+            allPets[pet].perf += d.metrics?.performance || 0;
+            allPets[pet].count += 1;
         });
-        return Object.entries(grouped).map(([name, vals]) => ({
+        
+        return Object.entries(allPets).map(([name, vals]) => ({
             name,
-            oee: (vals.oee / vals.count).toFixed(1),
-            availability: (vals.avail / vals.count).toFixed(1),
-            quality: (vals.quality / vals.count).toFixed(1),
-            performance: (vals.perf / vals.count).toFixed(1)
+            oee: vals.count > 0 ? (vals.oee / vals.count).toFixed(1) : '0.0',
+            availability: vals.count > 0 ? (vals.avail / vals.count).toFixed(1) : '0.0',
+            quality: vals.count > 0 ? (vals.quality / vals.count).toFixed(1) : '0.0',
+            performance: vals.count > 0 ? (vals.perf / vals.count).toFixed(1) : '0.0'
         })).sort((a, b) => parseFloat(b.oee) - parseFloat(a.oee));
-    }, [data]);
+    }, [data, pets]);
 
     const radarData = useMemo(() => {
         return [
@@ -397,7 +421,6 @@ const OeeAnalytics = () => {
                         <button type="button" className={`btn ${timeRange === 'week' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('week')}>Week</button>
                         <button type="button" className={`btn ${timeRange === 'month' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('month')}>Month</button>
                         <button type="button" className={`btn ${timeRange === 'quarter' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('quarter')}>Quarter</button>
-                        <button type="button" className={`btn ${timeRange === 'all' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('all')}>All</button>
                     </div>
                     <button className="btn btn-outline-secondary btn-sm" onClick={fetchData}>
                         <i className="ti ti-refresh me-1"></i>Refresh
@@ -424,68 +447,145 @@ const OeeAnalytics = () => {
 
             <FilterInputs />
 
+            {(filters.pet || filters.log_date || filters.start_date || filters.end_date) && (
+                <div className="alert alert-info d-flex align-items-center mb-3" role="alert">
+                    <i className="ti ti-filter me-2"></i>
+                    <span>
+                        Filtered by: {filters.pet && <strong>PET Line: {pets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}</strong>}
+                        {filters.pet && (filters.log_date || filters.start_date) && ' | '}
+                        {filters.log_date && <strong>Date: {filters.log_date}</strong>}
+                        {filters.start_date && filters.end_date && <strong>Date Range: {filters.start_date} to {filters.end_date}</strong>}
+                    </span>
+                </div>
+            )}
+
             <div className="row row-gap-3 mb-4">
-                <div className="col-xl-3 col-sm-6">
-                    <div className={`card border-top border-${stats.oeeStatus?.color === 'success' ? 'success' : stats.oeeStatus?.color === 'warning' ? 'warning' : 'danger'} border-3 mb-0 h-100`}>
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Average OEE</p>
-                                <span className={`badge bg-${stats.oeeStatus?.bgClass?.replace('bg-', '')} text-${stats.oeeStatus?.color}`}>
-                                    {stats.oeeStatus?.label || 'N/A'}
-                                </span>
-                            </div>
-                            <div className="d-flex align-items-center gap-2">
-                                <h2 className="mb-1 fs-16 fw-bold">{stats.avgOee.toFixed(1)}%</h2>
-                                <div className="progress w-50" style={{ height: 6 }} title={`Target: ${OEE_TARGET}%`}>
-                                    <div className={`progress-bar bg-${stats.oeeStatus?.color}`} role="progressbar" style={{ width: `${Math.min(stats.avgOee, 100)}%` }} />
+                {loading ? (
+                    <>
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className="col-xl-3 col-sm-6">
+                                <div className="card border-top border-secondary border-3 mb-0 h-100">
+                                    <div className="card-body d-flex align-items-center justify-content-center" style={{ minHeight: 120 }}>
+                                        <span className="spinner-border text-primary" role="status" />
+                                    </div>
                                 </div>
                             </div>
-                            <small className="text-muted">{selectedPetName || `Target: ${OEE_TARGET}%`}</small>
+                        ))}
+                    </>
+                ) : (
+                    <>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className={`card border-top border-${stats.oeeStatus?.color === 'success' ? 'success' : stats.oeeStatus?.color === 'warning' ? 'warning' : 'danger'} border-3 mb-0 h-100`}>
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Average OEE</p>
+                                        <span className={`badge bg-${stats.oeeStatus?.bgClass?.replace('bg-', '')} text-${stats.oeeStatus?.color}`}>
+                                            {stats.oeeStatus?.label || 'N/A'}
+                                        </span>
+                                    </div>
+                                    <div className="d-flex align-items-center gap-2">
+                                        <h2 className="mb-1 fs-16 fw-bold">{stats.avgOee.toFixed(1)}%</h2>
+                                        <div className="progress w-50" style={{ height: 6 }} title={`Target: ${OEE_TARGET}%`}>
+                                            <div className={`progress-bar bg-${stats.oeeStatus?.color}`} role="progressbar" style={{ width: `${Math.min(stats.avgOee, 100)}%` }} />
+                                        </div>
+                                    </div>
+                                    <small className="text-muted">{selectedPetName || `Target: ${OEE_TARGET}%`}</small>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card border-top border-success border-3 mb-0 h-100">
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Best OEE</p>
-                                <span className="badge bg-success-subtle text-success">Peak</span>
+                {stats.isSingleDate ? (
+                    <>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-primary border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Availability</p>
+                                        <span className="badge bg-primary-subtle text-primary">A</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.avgAvail.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-primary" role="progressbar" style={{ width: `${Math.min(stats.avgAvail, 100)}%` }} />
+                                    </div>
+                                </div>
                             </div>
-                            <h2 className="mb-1 fs-16 fw-bold">{stats.bestOee.toFixed(1)}%</h2>
-                            <div className="progress" style={{ height: 4, width: 80 }}>
-                                <div className="progress-bar bg-success" role="progressbar" style={{ width: `${Math.min(stats.bestOee, 100)}%` }} />
-                            </div>
-                            {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
                         </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card border-top border-warning border-3 mb-0 h-100">
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Worst OEE</p>
-                                <span className="badge bg-warning-subtle text-warning">Attention</span>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-success border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Performance</p>
+                                        <span className="badge bg-success-subtle text-success">P</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.avgPerf.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-success" role="progressbar" style={{ width: `${Math.min(stats.avgPerf, 100)}%` }} />
+                                    </div>
+                                </div>
                             </div>
-                            <h2 className="mb-1 fs-16 fw-bold">{stats.worstOee.toFixed(1)}%</h2>
-                            <div className="progress" style={{ height: 4, width: 80 }}>
-                                <div className="progress-bar bg-warning" role="progressbar" style={{ width: `${Math.min(stats.worstOee, 100)}%` }} />
-                            </div>
-                            {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
                         </div>
-                    </div>
-                </div>
-                <div className="col-xl-3 col-sm-6">
-                    <div className="card border-top border-info border-3 mb-0 h-100">
-                        <div className="card-body d-flex flex-column">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <p className="text-muted fs-14 mb-0">Total Output</p>
-                                <span className="badge bg-info-subtle text-info">{data.length} Reports</span>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-warning border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Quality</p>
+                                        <span className="badge bg-warning-subtle text-warning">Q</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.avgQuality.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-warning" role="progressbar" style={{ width: `${Math.min(stats.avgQuality, 100)}%` }} />
+                                    </div>
+                                </div>
                             </div>
-                            <h2 className="mb-1 fs-16 fw-bold">{stats.totalOutput.toLocaleString()}</h2>
-                            <small className="text-muted">{selectedPetName || 'pcs produced'}</small>
                         </div>
-                    </div>
-                </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-success border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Best OEE</p>
+                                        <span className="badge bg-success-subtle text-success">Peak</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.bestOee.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-success" role="progressbar" style={{ width: `${Math.min(stats.bestOee, 100)}%` }} />
+                                    </div>
+                                    {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-warning border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Worst OEE</p>
+                                        <span className="badge bg-warning-subtle text-warning">Attention</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.worstOee.toFixed(1)}%</h2>
+                                    <div className="progress" style={{ height: 4, width: 80 }}>
+                                        <div className="progress-bar bg-warning" role="progressbar" style={{ width: `${Math.min(stats.worstOee, 100)}%` }} />
+                                    </div>
+                                    {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-xl-3 col-sm-6">
+                            <div className="card border-top border-info border-3 mb-0 h-100">
+                                <div className="card-body d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <p className="text-muted fs-14 mb-0">Total Output</p>
+                                        <span className="badge bg-info-subtle text-info">{data.length} Reports</span>
+                                    </div>
+                                    <h2 className="mb-1 fs-16 fw-bold">{stats.totalOutput.toLocaleString()}</h2>
+                                    <small className="text-muted">{selectedPetName || 'pcs produced'}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
+                </>
+            )}
             </div>
 
             {viewMode === 'chart' ? (

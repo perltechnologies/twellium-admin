@@ -1,8 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../../api/users';
-import { Users, Shield, UserCog, User, Search, RefreshCw, X, Plus, Edit, Trash2 } from 'lucide-react';
-import { Button, Input, Card, CardHeader, CardBody, Badge } from '../../components/ui';
 
 const UserList = () => {
     const navigate = useNavigate();
@@ -12,19 +10,12 @@ const UserList = () => {
         search: '',
         role: '',
         page: 1,
-        page_size: 15
+        page_size: 10
     });
     const [totalCount, setTotalCount] = React.useState(0);
-    const [paginationLinks, setPaginationLinks] = React.useState({ next: null, previous: null });
     const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
     const [itemToDelete, setItemToDelete] = React.useState(null);
     const [deleting, setDeleting] = React.useState(false);
-    const [stats, setStats] = React.useState({
-        totalUsers: 0,
-        adminCount: 0,
-        managerCount: 0,
-        userCount: 0
-    });
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -39,43 +30,20 @@ const UserList = () => {
             const responseData = res.data;
             let listData = [];
             let count = 0;
-            let next = null;
-            let previous = null;
 
             if (Array.isArray(responseData)) {
                 listData = responseData;
                 count = responseData.length;
-            } else if (responseData.results && Array.isArray(responseData.results)) {
+            } else if (responseData.results) {
                 listData = responseData.results;
                 count = responseData.count || responseData.results.length;
-                next = responseData.next;
-                previous = responseData.previous;
-            } else if (responseData.data && Array.isArray(responseData.data)) {
-                listData = responseData.data;
-                count = responseData.count || responseData.total || responseData.data.length;
-                next = responseData.next;
-                previous = responseData.previous;
-            } else if (responseData.data?.results && Array.isArray(responseData.data.results)) {
-                listData = responseData.data.results;
-                count = responseData.data.count || responseData.data.results.length;
-                next = responseData.data.next;
-                previous = responseData.data.previous;
+            } else if (responseData.data) {
+                listData = responseData.data.results || responseData.data;
+                count = responseData.data.count || responseData.count || listData.length;
             }
 
             setUsers(listData);
             setTotalCount(count);
-            setPaginationLinks({ next, previous });
-
-            const adminCount = listData.filter(u => u.role?.toLowerCase() === 'admin').length;
-            const managerCount = listData.filter(u => u.role?.toLowerCase() === 'manager').length;
-            const userCount = listData.filter(u => u.role?.toLowerCase() === 'user').length;
-
-            setStats({
-                totalUsers: count,
-                adminCount,
-                managerCount,
-                userCount
-            });
         } catch (error) {
             console.error("Failed to fetch users", error);
         } finally {
@@ -92,10 +60,6 @@ const UserList = () => {
 
     const handlePageChange = (newPage) => {
         setFilters(prev => ({ ...prev, page: newPage }));
-    };
-
-    const handleSearch = (e) => {
-        setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }));
     };
 
     const handleDelete = (item) => {
@@ -119,162 +83,134 @@ const UserList = () => {
     };
 
     const totalPages = Math.ceil(totalCount / filters.page_size);
-
-    const StatCard = ({ title, value, icon: Icon, color }) => (
-        <div className="col-xl-3 col-sm-6">
-            <Card hover className="h-100">
-                <CardBody>
-                    <div className="d-flex align-items-start justify-content-between">
-                        <div>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{title}</p>
-                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-0">
-                                {loading ? <span className="animate-pulse">...</span> : value}
-                            </h2>
-                        </div>
-                        <div className={`p-3 rounded-xl bg-${color}-100 dark:bg-${color}-900/20`}>
-                            <Icon className={`h-6 w-6 text-${color}-600 dark:text-${color}-400`} />
-                        </div>
-                    </div>
-                </CardBody>
-            </Card>
-        </div>
-    );
+    const getRoleBadge = (role) => {
+        const roleMap = {
+            'ADMIN': 'danger',
+            'SUPERVISOR': 'warning',
+            'OPERATOR': 'primary',
+            'QUALITY_CONTROL': 'info',
+            'LOGISTICS_MANAGER': 'success'
+        };
+        return roleMap[role] || 'secondary';
+    };
 
     return (
         <>
-            {/* Page Header */}
-            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2 animate__animated animate__fadeInDown">
+            <div className="d-flex align-items-center justify-content-between mb-4">
                 <div>
-                    <h4 className="mb-1 text-slate-900 dark:text-white">User Management</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-0">Manage system users and their permissions</p>
+                    <h4 className="mb-1">User Management</h4>
+                    <p className="text-muted mb-0">Manage system users and their permissions</p>
                 </div>
-                <Button onClick={() => navigate('/dashboard/users/new')}>
-                    <Plus className="h-4 w-4 mr-2" />
+                <button className="btn btn-primary" onClick={() => navigate('/dashboard/users/new')}>
+                    <i className="ti ti-plus me-2"></i>
                     Add New User
-                </Button>
+                </button>
             </div>
 
-            {/* Stats Cards */}
-            <div className="row row-gap-3 mb-4 animate__animated animate__fadeInUp">
-                <StatCard title="Total Users" value={stats.totalUsers} icon={Users} color="blue" />
-                <StatCard title="Admins" value={stats.adminCount} icon={Shield} color="red" />
-                <StatCard title="Managers" value={stats.managerCount} icon={UserCog} color="amber" />
-                <StatCard title="Users" value={stats.userCount} icon={User} color="green" />
-            </div>
-
-            {/* Filters */}
-            <Card className="mb-4 animate__animated animate__fadeInUp">
-                <CardBody>
+            <div className="card mb-4">
+                <div className="card-body">
                     <div className="row g-3">
-                        <div className="col-md-5">
-                            <label className="form-label text-sm fw-medium">Search</label>
+                        <div className="col-md-6">
+                            <label className="form-label">Search</label>
                             <div className="input-group">
-                                <span className="input-group-text bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
-                                    <Search className="h-4 w-4 text-slate-400" />
+                                <span className="input-group-text">
+                                    <i className="ti ti-search"></i>
                                 </span>
                                 <input
                                     type="text"
-                                    className="form-control border-slate-200 dark:border-slate-700"
+                                    className="form-control"
                                     placeholder="Search by username, name, or email..."
                                     value={filters.search}
-                                    onChange={handleSearch}
+                                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
                                 />
                             </div>
                         </div>
                         <div className="col-md-3">
-                            <label className="form-label text-sm fw-medium">Role</label>
+                            <label className="form-label">Role</label>
                             <select
-                                className="form-select border-slate-200 dark:border-slate-700"
+                                className="form-select"
                                 value={filters.role}
                                 onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value, page: 1 }))}
                             >
                                 <option value="">All Roles</option>
-                                <option value="admin">Admin</option>
-                                <option value="manager">Manager</option>
-                                <option value="user">User</option>
+                                <option value="ADMIN">Admin</option>
+                                <option value="SUPERVISOR">Supervisor</option>
+                                <option value="OPERATOR">Operator</option>
+                                <option value="QUALITY_CONTROL">Quality Control</option>
+                                <option value="LOGISTICS_MANAGER">Logistics Manager</option>
                             </select>
                         </div>
-                        <div className="col-md-2 d-flex align-items-end">
-                            <Button variant="secondary" className="w-100" onClick={fetchUsers}>
-                                <RefreshCw className={`h-4 w-4 mr-2${loading ? ' spin' : ''}`} />
+                        <div className="col-md-3 d-flex align-items-end gap-2">
+                            <button className="btn btn-outline-secondary flex-fill" onClick={fetchUsers}>
+                                <i className="ti ti-refresh me-2"></i>
                                 Refresh
-                            </Button>
-                        </div>
-                        <div className="col-md-2 d-flex align-items-end">
-                            <Button variant="ghost" className="w-100 text-danger" onClick={() => setFilters({ search: '', role: '', page: 1, page_size: 15 })}>
-                                <X className="h-4 w-4 mr-2" />
-                                Clear
-                            </Button>
+                            </button>
+                            <button className="btn btn-outline-danger" onClick={() => setFilters({ search: '', role: '', page: 1, page_size: 10 })}>
+                                <i className="ti ti-x"></i>
+                            </button>
                         </div>
                     </div>
-                </CardBody>
-            </Card>
+                </div>
+            </div>
 
-            {/* Table Card */}
-            <Card className="animate__animated animate__fadeInUp">
-                <CardHeader>
+            <div className="card">
+                <div className="card-header d-flex align-items-center justify-content-between">
                     <h6 className="mb-0">All Users ({totalCount})</h6>
-                </CardHeader>
-                <CardBody className="p-0">
+                    <div className="text-muted small">
+                        Page {filters.page} of {totalPages}
+                    </div>
+                </div>
+                <div className="card-body p-0">
                     {loading ? (
                         <div className="text-center py-5">
-                            <div className="spinner-border text-primary" role="status">
-                                <span className="visually-hidden">Loading...</span>
-                            </div>
+                            <span className="spinner-border text-primary" role="status"></span>
+                            <p className="mt-3 text-muted">Loading users...</p>
                         </div>
                     ) : users.length === 0 ? (
                         <div className="text-center py-5">
-                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                                <User className="h-8 w-8 text-slate-400" />
-                            </div>
-                            <p className="text-slate-500 dark:text-slate-400 mb-0">No users found</p>
+                            <i className="ti ti-users" style={{ fontSize: '3rem', color: '#ccc' }}></i>
+                            <p className="text-muted mt-3 mb-0">No users found</p>
                         </div>
                     ) : (
                         <div className="table-responsive">
                             <table className="table table-hover mb-0">
-                                <thead className="bg-slate-50 dark:bg-slate-800/50">
+                                <thead className="table-light">
                                     <tr>
-                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">ID</th>
-                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Username</th>
-                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Full Name</th>
-                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Email</th>
-                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Role</th>
-                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Company</th>
-                                        <th className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide text-end">Actions</th>
+                                        <th>Username</th>
+                                        <th>Full Name</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Company</th>
+                                        <th className="text-end">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                                    {users.map((row, idx) => (
-                                        <tr key={row.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                            <td className="text-slate-600 dark:text-slate-300">{row.id}</td>
-                                            <td><span className="fw-medium text-slate-900 dark:text-white">{row.username}</span></td>
-                                            <td className="text-slate-600 dark:text-slate-300">{row.full_name}</td>
-                                            <td className="text-slate-600 dark:text-slate-300">{row.email}</td>
+                                <tbody>
+                                    {users.map((row) => (
+                                        <tr key={row.id}>
+                                            <td className="fw-medium">{row.username}</td>
+                                            <td>{row.full_name}</td>
+                                            <td>{row.email}</td>
                                             <td>
-                                                <Badge variant={
-                                                    row.role?.toLowerCase() === 'admin' ? 'danger' :
-                                                    row.role?.toLowerCase() === 'manager' ? 'warning' :
-                                                    'success'
-                                                }>
+                                                <span className={`badge bg-${getRoleBadge(row.role)}`}>
                                                     {row.role}
-                                                </Badge>
+                                                </span>
                                             </td>
-                                            <td className="text-slate-600 dark:text-slate-300">{row.company_name || '-'}</td>
+                                            <td>{row.company_name || '-'}</td>
                                             <td className="text-end">
-                                                <div className="d-flex gap-2 justify-content-end opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="btn-group btn-group-sm">
                                                     <button
-                                                        className="btn btn-sm btn-icon btn-outline-info rounded-lg"
+                                                        className="btn btn-outline-primary"
                                                         onClick={() => navigate(`/dashboard/users/${row.id}/edit`)}
                                                         title="Edit"
                                                     >
-                                                        <Edit className="h-4 w-4" />
+                                                        <i className="ti ti-edit"></i>
                                                     </button>
                                                     <button
-                                                        className="btn btn-sm btn-icon btn-outline-danger rounded-lg"
+                                                        className="btn btn-outline-danger"
                                                         onClick={() => handleDelete(row)}
                                                         title="Delete"
                                                     >
-                                                        <Trash2 className="h-4 w-4" />
+                                                        <i className="ti ti-trash"></i>
                                                     </button>
                                                 </div>
                                             </td>
@@ -284,69 +220,73 @@ const UserList = () => {
                             </table>
                         </div>
                     )}
-                </CardBody>
+                </div>
                 {totalPages > 1 && (
-                    <div className="card-footer d-flex align-items-center justify-content-between bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
-                        <p className="mb-0 text-sm text-slate-500 dark:text-slate-400">
-                            Showing <span className="font-medium text-slate-700 dark:text-slate-300">{((filters.page - 1) * filters.page_size) + 1}</span> to <span className="font-medium text-slate-700 dark:text-slate-300">{Math.min(filters.page * filters.page_size, totalCount)}</span> of <span className="font-medium text-slate-700 dark:text-slate-300">{totalCount}</span> entries
-                        </p>
+                    <div className="card-footer d-flex align-items-center justify-content-between">
+                        <div className="text-muted small">
+                            Showing {((filters.page - 1) * filters.page_size) + 1} to {Math.min(filters.page * filters.page_size, totalCount)} of {totalCount} entries
+                        </div>
                         <nav>
-                            <ul className="pagination mb-0 gap-1">
-                                <li className={`page-item ${!paginationLinks.previous ? 'disabled' : ''}`}>
-                                    <button className="page-link rounded-lg" onClick={() => handlePageChange(filters.page - 1)} disabled={!paginationLinks.previous}>
-                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                            <ul className="pagination pagination-sm mb-0">
+                                <li className={`page-item ${filters.page === 1 ? 'disabled' : ''}`}>
+                                    <button className="page-link" onClick={() => handlePageChange(filters.page - 1)} disabled={filters.page === 1}>
+                                        <i className="ti ti-chevron-left"></i>
                                     </button>
                                 </li>
-                                {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                                {[...Array(totalPages)].map((_, i) => {
                                     const pageNum = i + 1;
-                                    return (
-                                        <li key={pageNum} className={`page-item ${filters.page === pageNum ? 'active' : ''}`}>
-                                            <button className="page-link" onClick={() => handlePageChange(pageNum)}>
-                                                {pageNum}
-                                            </button>
-                                        </li>
-                                    );
+                                    if (pageNum === 1 || pageNum === totalPages || (pageNum >= filters.page - 1 && pageNum <= filters.page + 1)) {
+                                        return (
+                                            <li key={pageNum} className={`page-item ${filters.page === pageNum ? 'active' : ''}`}>
+                                                <button className="page-link" onClick={() => handlePageChange(pageNum)}>
+                                                    {pageNum}
+                                                </button>
+                                            </li>
+                                        );
+                                    } else if (pageNum === filters.page - 2 || pageNum === filters.page + 2) {
+                                        return <li key={pageNum} className="page-item disabled"><span className="page-link">...</span></li>;
+                                    }
+                                    return null;
                                 })}
-                                <li className={`page-item ${!paginationLinks.next ? 'disabled' : ''}`}>
-                                    <button className="page-link rounded-lg" onClick={() => handlePageChange(filters.page + 1)} disabled={!paginationLinks.next}>
-                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                <li className={`page-item ${filters.page === totalPages ? 'disabled' : ''}`}>
+                                    <button className="page-link" onClick={() => handlePageChange(filters.page + 1)} disabled={filters.page === totalPages}>
+                                        <i className="ti ti-chevron-right"></i>
                                     </button>
                                 </li>
                             </ul>
                         </nav>
                     </div>
                 )}
-            </Card>
+            </div>
 
-            {/* Delete Modal */}
             {deleteModalOpen && (
                 <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setDeleteModalOpen(false)}>
                     <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-content border-0 shadow-xl">
-                            <div className="modal-header border-slate-200 dark:border-slate-700">
+                        <div className="modal-content">
+                            <div className="modal-header">
                                 <h5 className="modal-title">Delete User</h5>
                                 <button type="button" className="btn-close" onClick={() => setDeleteModalOpen(false)}></button>
                             </div>
-                            <div className="modal-body py-4">
-                                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-3">
-                                    <Trash2 className="h-6 w-6 text-red-600 dark:text-red-400" />
+                            <div className="modal-body">
+                                <div className="text-center mb-3">
+                                    <i className="ti ti-alert-circle text-danger" style={{ fontSize: '3rem' }}></i>
                                 </div>
-                                <p className="text-slate-600 dark:text-slate-300 mb-0">Are you sure you want to delete this user? This action cannot be undone.</p>
+                                <p className="text-center mb-0">Are you sure you want to delete user <strong>{itemToDelete?.username}</strong>? This action cannot be undone.</p>
                             </div>
-                            <div className="modal-footer border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                                <Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
-                                <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                            <div className="modal-footer">
+                                <button className="btn btn-secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</button>
+                                <button className="btn btn-danger" onClick={confirmDelete} disabled={deleting}>
                                     {deleting ? (
                                         <>
                                             <span className="spinner-border spinner-border-sm me-2"></span>Deleting...
                                         </>
                                     ) : (
                                         <>
-                                            <Trash2 className="h-4 w-4 mr-2" />
+                                            <i className="ti ti-trash me-2"></i>
                                             Delete
                                         </>
                                     )}
-                                </Button>
+                                </button>
                             </div>
                         </div>
                     </div>
