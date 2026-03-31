@@ -114,6 +114,12 @@ const OeeAnalytics = () => {
         fetchData();
     }, [fetchData]);
 
+    const selectedPetName = useMemo(() => {
+        if (!filters.pet || !pets.length) return null;
+        const pet = pets.find(p => p.id === parseInt(filters.pet));
+        return pet?.pet_name || null;
+    }, [filters.pet, pets]);
+
     const stats = useMemo(() => {
         if (!data.length) return { avgOee: 0, avgAvail: 0, avgQuality: 0, avgPerf: 0, bestOee: 0, worstOee: 0, totalOutput: 0, totalDowntime: 0, oeeStatus: null };
         
@@ -434,7 +440,7 @@ const OeeAnalytics = () => {
                                     <div className={`progress-bar bg-${stats.oeeStatus?.color}`} role="progressbar" style={{ width: `${Math.min(stats.avgOee, 100)}%` }} />
                                 </div>
                             </div>
-                            <small className="text-muted">Target: {OEE_TARGET}%</small>
+                            <small className="text-muted">{selectedPetName || `Target: ${OEE_TARGET}%`}</small>
                         </div>
                     </div>
                 </div>
@@ -449,6 +455,7 @@ const OeeAnalytics = () => {
                             <div className="progress" style={{ height: 4, width: 80 }}>
                                 <div className="progress-bar bg-success" role="progressbar" style={{ width: `${Math.min(stats.bestOee, 100)}%` }} />
                             </div>
+                            {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
                         </div>
                     </div>
                 </div>
@@ -463,6 +470,7 @@ const OeeAnalytics = () => {
                             <div className="progress" style={{ height: 4, width: 80 }}>
                                 <div className="progress-bar bg-warning" role="progressbar" style={{ width: `${Math.min(stats.worstOee, 100)}%` }} />
                             </div>
+                            {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
                         </div>
                     </div>
                 </div>
@@ -474,7 +482,7 @@ const OeeAnalytics = () => {
                                 <span className="badge bg-info-subtle text-info">{data.length} Reports</span>
                             </div>
                             <h2 className="mb-1 fs-16 fw-bold">{stats.totalOutput.toLocaleString()}</h2>
-                            <small className="text-muted">pcs produced</small>
+                            <small className="text-muted">{selectedPetName || 'pcs produced'}</small>
                         </div>
                     </div>
                 </div>
