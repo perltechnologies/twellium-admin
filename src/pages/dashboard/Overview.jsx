@@ -257,7 +257,6 @@ const Overview = () => {
 
             // Use shiftFilterDate if set, otherwise use today
             const refDateStr = shiftFilterDate || todayStr;
-            const isToday = refDateStr === todayStr;
 
             // Find which shift the current clock time falls in (for auto-selection)
             const currentShift = shifts.find(shift => {
@@ -279,30 +278,9 @@ const Overview = () => {
                 return;
             }
 
-            const isOvernight = targetShift.start_time > targetShift.end_time;
-
-            // Build shiftStart from the reference date + shift's start time
-            const [startH, startM] = targetShift.start_time.split(':').map(Number);
-            const shiftStart = new Date(`${refDateStr}T00:00:00`);
-            shiftStart.setHours(startH, startM, 0, 0);
-
-            // For overnight shifts on today: if the clock is still before the shift
-            // start time (e.g. 02:00 < 18:00), the shift began yesterday
-            if (isOvernight && isToday && currentTime < targetShift.start_time.slice(0, 5)) {
-                shiftStart.setDate(shiftStart.getDate() - 1);
-            }
-
-            // Build shiftEnd anchored to shiftStart so overnight shifts land on the
-            // correct calendar day (e.g. 18:00 Mar-23 → 06:00 Mar-24)
-            const [endH, endM] = targetShift.end_time.split(':').map(Number);
-            const shiftEnd = new Date(shiftStart);
-            shiftEnd.setHours(endH, endM, 0, 0);
-            if (isOvernight) {
-                shiftEnd.setDate(shiftEnd.getDate() + 1);
-            }
-
-            // Cap the query window at the current time only for today's active shift
-            const effectiveEnd = (isToday && shiftEnd > now && !shiftFilterDate) ? now : shiftEnd;
+            // Fixed time range: 00:00:00 to 11:59:59 PM on the same date
+            const shiftStart = new Date(`${refDateStr}T00:00:00Z`);
+            const shiftEnd = new Date(`${refDateStr}T23:59:59Z`);
 
             const formatTime = (d) =>
                 d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -315,10 +293,11 @@ const Overview = () => {
                 startDateTime: shiftStart.toISOString()
             });
             
-            // Use the new OEE summary endpoint with datetime parameters
+            // Use the OEE summary endpoint with fixed time range and shift_name parameter
             const shiftParams = { 
                 datetime_start_time: shiftStart.toISOString(),
-                datetime_end_time: effectiveEnd.toISOString()
+                datetime_end_time: shiftEnd.toISOString(),
+                shift_name: targetShift.name
             };
             
             // Include PET filter if selected
@@ -326,12 +305,8 @@ const Overview = () => {
                 shiftParams.pet_id = filters.pet;
             }
             
-            console.log('Shift params:', shiftParams);
             const shiftReportsRes = await productionApi.getShiftOeeSummary(shiftParams);
-            console.log('Shift reports raw response:', shiftReportsRes);
-            console.log('Response data:', shiftReportsRes.data);
             const shiftReports = extractList(shiftReportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            console.log('Extracted shift reports:', shiftReports);
             
             const sortByPet = (arr) => arr.sort((a, b) => {
                 const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
@@ -630,17 +605,12 @@ const Overview = () => {
                                 <h6 className="mb-0 fw-semibold">
                                     <i className="ti ti-clock-hour-4 me-2"></i>
                                     Shift Production Metrics
-                                </h6>
-                                {currentShiftInfo && (
-                                    <div className="d-flex align-items-center gap-2 mt-1">
-                                        <span className="badge bg-light text-dark border">
+                                    {currentShiftInfo && (
+                                        <span className="badge bg-primary text-white ms-2" style={{ fontSize: '0.9rem', padding: '0.4rem 0.8rem' }}>
                                             {currentShiftInfo.name}
                                         </span>
-                                        <span className="text-muted" style={{ fontSize: '0.85rem' }}>
-                                            {currentShiftInfo.startTime} - {currentShiftInfo.endTime}
-                                        </span>
-                                    </div>
-                                )}
+                                    )}
+                                </h6>
                             </div>
                             <div className="d-flex align-items-center gap-2">
                                 <input
