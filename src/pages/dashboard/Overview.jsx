@@ -282,15 +282,10 @@ const Overview = () => {
             const shiftStart = new Date(`${refDateStr}T00:00:00Z`);
             const shiftEnd = new Date(`${refDateStr}T23:59:59Z`);
 
-            const formatTime = (d) =>
-                d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-
             setCurrentShiftInfo({
                 id: targetShift.id,
                 name: targetShift.name,
-                startTime: formatTime(shiftStart),
-                endTime: formatTime(shiftEnd),
-                startDateTime: shiftStart.toISOString()
+                lastUpdated: null
             });
             
             // Use the OEE summary endpoint with fixed time range and shift_name parameter
@@ -307,6 +302,28 @@ const Overview = () => {
             
             const shiftReportsRes = await productionApi.getShiftOeeSummary(shiftParams);
             const shiftReports = extractList(shiftReportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            
+            // Get the latest production_start_time from the reports
+            const latestTime = shiftReports.reduce((latest, report) => {
+                if (report.production_start_time) {
+                    const time = new Date(report.production_start_time);
+                    return !latest || time > latest ? time : latest;
+                }
+                return latest;
+            }, null);
+            
+            if (latestTime) {
+                setCurrentShiftInfo(prev => ({
+                    ...prev,
+                    lastUpdated: latestTime.toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        hour12: true 
+                    })
+                }));
+            }
             
             const sortByPet = (arr) => arr.sort((a, b) => {
                 const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
@@ -611,6 +628,11 @@ const Overview = () => {
                                         </span>
                                     )}
                                 </h6>
+                                {currentShiftInfo?.lastUpdated && (
+                                    <div className="text-muted mt-1" style={{ fontSize: '0.85rem' }}>
+                                        Last Updated: {currentShiftInfo.lastUpdated}
+                                    </div>
+                                )}
                             </div>
                             <div className="d-flex align-items-center gap-2">
                                 <input
