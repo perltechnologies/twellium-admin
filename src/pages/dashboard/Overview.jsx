@@ -587,14 +587,9 @@ const Overview = () => {
                     <button 
                         onClick={() => {
                             const today = new Date();
-                            const dayOfWeek = today.getDay();
-                            const sunday = new Date(today);
-                            sunday.setDate(today.getDate() - dayOfWeek);
-                            const saturday = new Date(sunday);
-                            saturday.setDate(sunday.getDate() + 6);
                             updateFilters({ 
-                                start_date: sunday.toISOString().split('T')[0], 
-                                end_date: saturday.toISOString().split('T')[0], 
+                                start_date: today.toISOString().split('T')[0], 
+                                end_date: today.toISOString().split('T')[0], 
                                 log_date: null 
                             });
                         }}
@@ -1088,14 +1083,9 @@ const Overview = () => {
                                             className={`btn ${outputPeriod === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
                                                 const today = new Date();
-                                                const dayOfWeek = today.getDay();
-                                                const sunday = new Date(today);
-                                                sunday.setDate(today.getDate() - dayOfWeek);
-                                                const saturday = new Date(sunday);
-                                                saturday.setDate(sunday.getDate() + 6);
                                                 setOutputUseRange(true);
-                                                setOutputStartDate(sunday.toISOString().split('T')[0]);
-                                                setOutputEndDate(saturday.toISOString().split('T')[0]);
+                                                setOutputStartDate(today.toISOString().split('T')[0]);
+                                                setOutputEndDate(today.toISOString().split('T')[0]);
                                                 setOutputSingleDate('');
                                                 setOutputPeriod('week');
                                             }}
@@ -1106,11 +1096,9 @@ const Overview = () => {
                                             className={`btn ${outputPeriod === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
                                                 const today = new Date();
-                                                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                                                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
                                                 setOutputUseRange(true);
-                                                setOutputStartDate(firstDay.toISOString().split('T')[0]);
-                                                setOutputEndDate(lastDay.toISOString().split('T')[0]);
+                                                setOutputStartDate(today.toISOString().split('T')[0]);
+                                                setOutputEndDate(today.toISOString().split('T')[0]);
                                                 setOutputSingleDate('');
                                                 setOutputPeriod('month');
                                             }}
