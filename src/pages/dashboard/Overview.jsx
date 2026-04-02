@@ -300,11 +300,11 @@ const Overview = () => {
                 lastUpdated: null
             });
             
-            // Use the stoppages summary endpoint with fixed time range and shift_name parameter
+            // Use the stoppages summary endpoint with fixed time range and shift parameter
             const shiftParams = { 
                 start_datetime: shiftStart.toISOString(),
                 end_datetime: shiftEnd.toISOString(),
-                shift_name: targetShift.name
+                shift: targetShift.id
             };
             
             // Include PET filter if selected
