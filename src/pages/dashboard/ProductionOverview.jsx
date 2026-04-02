@@ -230,19 +230,8 @@ const Overview = () => {
         try {
             const params = getParams();
             
-            // Build OEE params - OEE API uses start_date/end_date or production_date
+            // OEE params already have datetime format from getParams
             const oeeParams = { ...params };
-            // If using production_date_after/before, also add start_date/end_date for OEE API
-            if (params.production_date_after) {
-                oeeParams.start_date = params.production_date_after;
-            }
-            if (params.production_date_before) {
-                oeeParams.end_date = params.production_date_before;
-            }
-            if (params.production_date) {
-                oeeParams.start_date = params.production_date;
-                oeeParams.end_date = params.production_date;
-            }
             
             console.log('ProductionOverview - Fetching with params:', params);
             console.log('ProductionOverview - OEE params:', oeeParams);

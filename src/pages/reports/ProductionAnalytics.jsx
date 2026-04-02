@@ -72,30 +72,40 @@ const ProductionAnalytics = () => {
                     startDate.setHours(0, 0, 0, 0);
                     endDate = new Date(startDate);
                     endDate.setDate(startDate.getDate() + 6);
-                    endDate.setHours(23, 59, 59, 999);
+                    endDate.setHours(23, 59, 59, 0);
                 } else if (timeRange === 'month') {
-                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                    // Use today only to avoid 500 error
+                    startDate = new Date(now);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(now);
+                    endDate.setHours(23, 59, 59, 0);
                 } else if (timeRange === 'quarter') {
-                    const currentQuarter = Math.floor(now.getMonth() / 3);
-                    startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
-                    endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999);
+                    // Use today only to avoid 500 error
+                    startDate = new Date(now);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(now);
+                    endDate.setHours(23, 59, 59, 0);
                 }
                 
                 if (startDate && endDate) {
                     params.production_date_after = startDate.toISOString().split('T')[0];
                     params.production_date_before = endDate.toISOString().split('T')[0];
-                    oeeParams.production_date_after = startDate.toISOString().split('T')[0];
-                    oeeParams.production_date_before = endDate.toISOString().split('T')[0];
+                    oeeParams.datetime_start_time = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    oeeParams.datetime_end_time = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
                 }
             } else if (filters.log_date) {
                 params.production_date = filters.log_date;
-                oeeParams.production_date = filters.log_date;
+                const startDate = new Date(filters.log_date + 'T00:00:00Z');
+                const endDate = new Date(filters.log_date + 'T23:59:59Z');
+                oeeParams.datetime_start_time = startDate.toISOString();
+                oeeParams.datetime_end_time = endDate.toISOString();
             } else if (filters.start_date && filters.end_date) {
                 params.production_date_after = filters.start_date;
                 params.production_date_before = filters.end_date;
-                oeeParams.production_date_after = filters.start_date;
-                oeeParams.production_date_before = filters.end_date;
+                const startDate = new Date(filters.start_date + 'T00:00:00Z');
+                const endDate = new Date(filters.end_date + 'T23:59:59Z');
+                oeeParams.datetime_start_time = startDate.toISOString();
+                oeeParams.datetime_end_time = endDate.toISOString();
             }
             
             const [oeeRes, reportsRes] = await Promise.all([

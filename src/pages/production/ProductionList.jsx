@@ -158,7 +158,7 @@ const ProductionList = () => {
         let cancelled = false;
         const fetchOee = async () => {
             try {
-                const res = await productionApi.getOeeSummary({ page_size: 1000, ...oeeParams });
+                const res = await productionApi.getOeeSummary(oeeParams);
                 if (!cancelled) setOeeData(extractList(res));
             } catch (err) {
                 console.error('Failed to fetch OEE data:', err);
@@ -290,7 +290,7 @@ const ProductionList = () => {
         try {
             const [reportsRes, oeeRes] = await Promise.all([
                 productionApi.getReports({ page_size: 1000 }),
-                productionApi.getOeeSummary({ page_size: 1000, ...oeeParams })
+                productionApi.getOeeSummary(oeeParams)
             ]);
             setChartReports(extractList(reportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can')));
             setOeeData(extractList(oeeRes).filter(r => !r.pet_name?.toLowerCase().includes('can')));

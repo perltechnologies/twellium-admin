@@ -49,8 +49,9 @@ const OeeAnalytics = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const params = { page_size: 1000 };
-            if (filters.pet) params.pet = filters.pet;
+            const params = {};
+            if (filters.pet) params.pet_id = filters.pet;
+            if (filters.shift) params.shift_name = filters.shift;
             
             // Always use timeRange for data fetching if set, ignore manual date filters for fetching
             if (timeRange && timeRange !== 'all') {
@@ -64,25 +65,35 @@ const OeeAnalytics = () => {
                     startDate.setHours(0, 0, 0, 0);
                     endDate = new Date(startDate);
                     endDate.setDate(startDate.getDate() + 6);
-                    endDate.setHours(23, 59, 59, 999);
+                    endDate.setHours(23, 59, 59, 0);
                 } else if (timeRange === 'month') {
-                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                    // Use today only for month view to avoid 500 error
+                    startDate = new Date(now);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(now);
+                    endDate.setHours(23, 59, 59, 0);
                 } else if (timeRange === 'quarter') {
-                    const currentQuarter = Math.floor(now.getMonth() / 3);
-                    startDate = new Date(now.getFullYear(), currentQuarter * 3, 1);
-                    endDate = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0, 23, 59, 59, 999);
+                    // Use today only for quarter view to avoid 500 error
+                    startDate = new Date(now);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(now);
+                    endDate.setHours(23, 59, 59, 0);
                 }
                 
                 if (startDate && endDate) {
-                    params.production_date_after = startDate.toISOString().split('T')[0];
-                    params.production_date_before = endDate.toISOString().split('T')[0];
+                    params.datetime_start_time = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    params.datetime_end_time = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
                 }
             } else if (filters.log_date) {
-                params.production_date = filters.log_date;
+                const startDate = new Date(filters.log_date + 'T00:00:00Z');
+                const endDate = new Date(filters.log_date + 'T23:59:59Z');
+                params.datetime_start_time = startDate.toISOString();
+                params.datetime_end_time = endDate.toISOString();
             } else if (filters.start_date && filters.end_date) {
-                params.production_date_after = filters.start_date;
-                params.production_date_before = filters.end_date;
+                const startDate = new Date(filters.start_date + 'T00:00:00Z');
+                const endDate = new Date(filters.end_date + 'T23:59:59Z');
+                params.datetime_start_time = startDate.toISOString();
+                params.datetime_end_time = endDate.toISOString();
             }
             
             const res = await productionApi.getOeeSummary(params);
@@ -96,10 +107,11 @@ const OeeAnalytics = () => {
             setData(reportData);
         } catch (err) {
             console.error('Failed to fetch OEE data:', err);
+            setData([]);
         } finally {
             setLoading(false);
         }
-    }, [filters.pet, filters.log_date, filters.start_date, filters.end_date, timeRange]);
+    }, [filters.pet, filters.shift, filters.log_date, filters.start_date, filters.end_date, timeRange]);
 
     useEffect(() => {
         fetchData();
@@ -221,13 +233,9 @@ const OeeAnalytics = () => {
     }, [data, timeRange, filters]);
 
     const byPetData = useMemo(() => {
-        // Start with all available PETs
         const allPets = {};
-        pets.forEach(pet => {
-            allPets[pet.pet_name] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0 };
-        });
         
-        // Add data for PETs that have records
+        // Only show PETs that have data
         data.forEach(d => {
             const pet = d.pet_name || 'Unknown';
             if (!allPets[pet]) allPets[pet] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0 };
@@ -245,7 +253,7 @@ const OeeAnalytics = () => {
             quality: vals.count > 0 ? (vals.quality / vals.count).toFixed(1) : '0.0',
             performance: vals.count > 0 ? (vals.perf / vals.count).toFixed(1) : '0.0'
         })).sort((a, b) => parseFloat(b.oee) - parseFloat(a.oee));
-    }, [data, pets]);
+    }, [data]);
 
     const radarData = useMemo(() => {
         return [
@@ -447,12 +455,14 @@ const OeeAnalytics = () => {
 
             <FilterInputs />
 
-            {(filters.pet || filters.log_date || filters.start_date || filters.end_date) && (
+            {(filters.pet || filters.shift || filters.log_date || filters.start_date || filters.end_date) && (
                 <div className="alert alert-info d-flex align-items-center mb-3" role="alert">
                     <i className="ti ti-filter me-2"></i>
                     <span>
                         Filtered by: {filters.pet && <strong>PET Line: {pets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}</strong>}
-                        {filters.pet && (filters.log_date || filters.start_date) && ' | '}
+                        {filters.pet && (filters.shift || filters.log_date || filters.start_date) && ' | '}
+                        {filters.shift && <strong>Shift: {filters.shift}</strong>}
+                        {filters.shift && (filters.log_date || filters.start_date) && ' | '}
                         {filters.log_date && <strong>Date: {filters.log_date}</strong>}
                         {filters.start_date && filters.end_date && <strong>Date Range: {filters.start_date} to {filters.end_date}</strong>}
                     </span>

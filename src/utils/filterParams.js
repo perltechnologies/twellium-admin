@@ -12,16 +12,18 @@ export const buildFilterParams = (filters = {}, forStoppages = false) => {
       params.end_date = filters.end_date;
     }
   } else {
-    // Reports API uses production_date
+    // Reports API uses datetime format
     if (filters.start_date && filters.end_date) {
-      params.production_date_after = filters.start_date;
-      params.production_date_before = filters.end_date;
+      params.datetime_start_time = new Date(filters.start_date + 'T00:00:00Z').toISOString();
+      params.datetime_end_time = new Date(filters.end_date + 'T23:59:59Z').toISOString();
     } else if (filters.log_date) {
-      params.production_date = filters.log_date;
+      params.datetime_start_time = new Date(filters.log_date + 'T00:00:00Z').toISOString();
+      params.datetime_end_time = new Date(filters.log_date + 'T23:59:59Z').toISOString();
     }
   }
   
   if (filters.pet) params.pet_id = filters.pet;
+  if (filters.shift) params.shift_name = filters.shift;
   
   return params;
 };

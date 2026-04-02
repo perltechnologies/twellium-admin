@@ -76,7 +76,14 @@ const ProductionReports = () => {
     const fetchOeeTrend = useCallback(async () => {
         setOeeTrendLoading(true);
         try {
-            const res = await productionApi.getOeeSummary({ page_size: 1000 });
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date();
+            todayEnd.setHours(23, 59, 59, 0);
+            const res = await productionApi.getOeeSummary({ 
+                datetime_start_time: todayStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+                datetime_end_time: todayEnd.toISOString().replace(/\.\d{3}Z$/, 'Z')
+            });
             const trendData = Array.isArray(res.data) ? res.data : res.data?.results || res.data?.data || [];
             const sortedData = [...trendData].sort((a, b) => 
                 new Date(a.production_date) - new Date(b.production_date)

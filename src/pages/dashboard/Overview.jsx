@@ -201,10 +201,22 @@ const Overview = () => {
             const params = getParams();
             const stoppageParams = getParams({}, true);
             
-            // Fetch last 30 days for chart data
-            const endDate = new Date().toISOString().split('T')[0];
-            const startDate = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
-            const allReportsParams = { page_size: 1000, start_date: startDate, end_date: endDate };
+            // Ensure datetime parameters are always set for OEE summary
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date();
+            todayEnd.setHours(23, 59, 59, 0);
+            
+            const oeeSummaryParams = {
+                ...params,
+                datetime_start_time: params.datetime_start_time || todayStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+                datetime_end_time: params.datetime_end_time || todayEnd.toISOString().replace(/\.\d{3}Z$/, 'Z')
+            };
+            
+            const allReportsParams = { 
+                datetime_start_time: todayStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+                datetime_end_time: todayEnd.toISOString().replace(/\.\d{3}Z$/, 'Z')
+            };
             
             // Fetch shifts from API
             const shiftsRes = await productionApi.getShifts();
@@ -212,7 +224,7 @@ const Overview = () => {
             setShifts(shiftsData);
             
             const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes] = await Promise.all([
-                productionApi.getOeeSummary(params),
+                productionApi.getOeeSummary(oeeSummaryParams),
                 productionApi.getPets(params),
                 productionApi.getStoppages(stoppageParams),
                 productionApi.getOeeSummary(allReportsParams),
