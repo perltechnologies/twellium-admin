@@ -26,6 +26,7 @@ export const productionApi = {
 
 
     getStoppages: (params) => api.get('/production/stoppages/', { params }),
+    getStoppagesSummary: (params) => api.get('/production/stoppages/stoppages_summary/', { params }),
     getStoppage: (id) => api.get(`/production/stoppages/${id}/`),
     createStoppage: (data) => api.post('/production/stoppages/', data),
     updateStoppage: (id, data) => api.patch(`/production/stoppages/${id}/`, data),

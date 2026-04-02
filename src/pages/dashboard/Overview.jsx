@@ -300,10 +300,10 @@ const Overview = () => {
                 lastUpdated: null
             });
             
-            // Use the OEE summary endpoint with fixed time range and shift_name parameter
+            // Use the stoppages summary endpoint with fixed time range and shift_name parameter
             const shiftParams = { 
-                datetime_start_time: shiftStart.toISOString(),
-                datetime_end_time: shiftEnd.toISOString(),
+                start_datetime: shiftStart.toISOString(),
+                end_datetime: shiftEnd.toISOString(),
                 shift_name: targetShift.name
             };
             
@@ -312,7 +312,7 @@ const Overview = () => {
                 shiftParams.pet_id = filters.pet;
             }
             
-            const shiftReportsRes = await productionApi.getShiftOeeSummary(shiftParams);
+            const shiftReportsRes = await productionApi.getStoppagesSummary(shiftParams);
             const shiftReports = extractList(shiftReportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
             
             // Get the latest production_start_time from the reports
