@@ -692,7 +692,22 @@ const Overview = () => {
                                 )}
                                 {currentShiftInfo?.start_time && currentShiftInfo?.end_time && (
                                     <div className="text-muted" style={{ fontSize: '0.8rem' }}>
-                                        Shift Time: {currentShiftInfo.start_time.slice(0, 5)} - {currentShiftInfo.end_time.slice(0, 5)}
+                                        Shift Time: {(() => {
+                                            const refDate = shiftFilterDate || new Date().toISOString().split('T')[0];
+                                            const startTime = currentShiftInfo.start_time.slice(0, 5);
+                                            const endTime = currentShiftInfo.end_time.slice(0, 5);
+                                            
+                                            // Check if shift crosses midnight
+                                            if (startTime > endTime) {
+                                                const startDate = new Date(refDate);
+                                                const endDate = new Date(refDate);
+                                                endDate.setDate(endDate.getDate() + 1);
+                                                
+                                                return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${startTime} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${endTime}`;
+                                            }
+                                            
+                                            return `${new Date(refDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${startTime} - ${endTime}`;
+                                        })()}
                                     </div>
                                 )}
                             </div>
