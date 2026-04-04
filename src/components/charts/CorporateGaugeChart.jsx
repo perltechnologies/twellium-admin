@@ -7,7 +7,8 @@ import React from 'react';
 const CorporateGaugeChart = ({ 
     value, 
     label,
-    size = 160
+    size = 160,
+    lastUpdated = null
 }) => {
     const pct = Math.min(100, Math.max(0, value));
     const cx = size / 2;
@@ -142,6 +143,14 @@ const CorporateGaugeChart = ({
                         </span>
                     )}
                 </div>
+                
+                {/* Last updated */}
+                {lastUpdated && (
+                    <div className="text-muted mt-2" style={{ fontSize: '0.65rem' }}>
+                        <i className="ti ti-clock me-1"></i>
+                        {lastUpdated}
+                    </div>
+                )}
             </div>
         </div>
     );

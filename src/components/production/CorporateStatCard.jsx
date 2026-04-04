@@ -10,7 +10,8 @@ const CorporateStatCard = ({
     unit, 
     icon, 
     trend = null,
-    subtitle = null
+    subtitle = null,
+    lastUpdated = null
 }) => {
     return (
         <div className="card h-100 border">
@@ -52,6 +53,12 @@ const CorporateStatCard = ({
                     {subtitle && (
                         <p className="text-muted mb-0 mt-2" style={{ fontSize: '0.75rem' }}>
                             {subtitle}
+                        </p>
+                    )}
+                    {lastUpdated && (
+                        <p className="text-muted mb-0 mt-2" style={{ fontSize: '0.65rem' }}>
+                            <i className="ti ti-clock me-1"></i>
+                            {lastUpdated}
                         </p>
                     )}
                 </div>

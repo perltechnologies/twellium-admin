@@ -570,6 +570,14 @@ const Overview = () => {
                 lineMap[name].oee += parseFloat(r.efficiency) || r.metrics?.oee || 0;
                 lineMap[name].production += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                 lineMap[name].downtime += r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
+                
+                // Track last updated time
+                if (r.log_time) {
+                    const time = new Date(r.log_date + 'T' + r.log_time);
+                    if (!lineMap[name].lastUpdated || time > lineMap[name].lastUpdated) {
+                        lineMap[name].lastUpdated = time;
+                    }
+                }
             }
         });
 
@@ -579,6 +587,14 @@ const Overview = () => {
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
             production: l.production,
             downtime: l.downtime,
+            lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            }) : null,
         })).sort((a, b) => {
             const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
@@ -853,6 +869,7 @@ const Overview = () => {
                                         value={Math.round(line.production)}
                                         unit="bottles"
                                         icon="bottle"
+                                        lastUpdated={line.lastUpdated}
                                     />
                                 </div>
                             ))}
@@ -872,6 +889,7 @@ const Overview = () => {
                                             unit="min"
                                             icon="clock-pause"
                                             subtitle={downtimeStatus}
+                                            lastUpdated={line.lastUpdated}
                                         />
                                     </div>
                                 );
@@ -887,6 +905,7 @@ const Overview = () => {
                                         value={line.oee}
                                         label={line.name}
                                         size={160}
+                                        lastUpdated={line.lastUpdated}
                                     />
                                 </div>
                             ))}
