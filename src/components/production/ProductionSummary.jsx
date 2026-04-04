@@ -78,7 +78,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             if (!grouped[date][petName]) {
                 grouped[date][petName] = { oee: 0, count: 0 };
             }
-            grouped[date][petName].oee += r.metrics?.oee || r.oee || 0;
+            grouped[date][petName].oee += parseFloat(r.efficiency) || r.metrics?.oee || r.oee || 0;
             grouped[date][petName].count += 1;
         });
 
@@ -123,11 +123,11 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             }
         }
 
-        const totalProduction = filtered.reduce((s, r) => s + (r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
+        const totalProduction = filtered.reduce((s, r) => s + (r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
         const avgOee = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (r.metrics?.oee || r.oee || 0), 0) / filtered.length
+            ? filtered.reduce((s, r) => s + (parseFloat(r.efficiency) || r.metrics?.oee || r.oee || 0), 0) / filtered.length
             : 0;
-        const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || r.total_downtime_mins || 0), 0);
+        const totalDowntime = filtered.reduce((s, r) => s + (r.downtime_minutes || r.metrics?.details?.total_downtime_mins || r.total_downtime_mins || 0), 0);
 
         return { totalProduction, avgOee, totalDowntime, reports: filtered.length };
     }, [reports, useRange, singleDate, startDate, endDate, selectedPet, pets]);

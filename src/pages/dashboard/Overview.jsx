@@ -21,6 +21,7 @@ const ReactApexChart = lazy(() => import('react-apexcharts'));
 const extractList = (res) => {
     const d = res.data;
     if (Array.isArray(d)) return d;
+    if (d?.data?.data && Array.isArray(d.data.data)) return d.data.data;
     if (d?.data?.results && Array.isArray(d.data.results)) return d.data.results;
     if (d?.results && Array.isArray(d.results)) return d.results;
     if (d?.data && Array.isArray(d.data)) return d.data;
@@ -182,6 +183,8 @@ const Overview = () => {
     const [selectedShiftId, setSelectedShiftId] = useState(null);
     const [shiftLoading, setShiftLoading] = useState(false);
     const [shiftFilterDate, setShiftFilterDate] = useState('');
+    const [shiftComparisonData, setShiftComparisonData] = useState({});
+    const [showShiftComparison, setShowShiftComparison] = useState(false);
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -260,7 +263,7 @@ const Overview = () => {
     /* Load shift data separately */
     const loadShiftData = useCallback(async () => {
         if (!shifts.length) return;
-        
+
         setShiftLoading(true);
         try {
             const now = new Date();
@@ -280,11 +283,11 @@ const Overview = () => {
                 }
                 return currentTime >= start && currentTime < end;
             });
-            
-            const targetShift = selectedShiftId 
-                ? shifts.find(s => s.id === selectedShiftId) 
+
+            const targetShift = selectedShiftId
+                ? shifts.find(s => s.id === selectedShiftId)
                 : (currentShift || shifts[0]);
-            
+
             if (!targetShift) {
                 setShiftLoading(false);
                 return;
@@ -297,53 +300,82 @@ const Overview = () => {
             setCurrentShiftInfo({
                 id: targetShift.id,
                 name: targetShift.name,
+                start_time: targetShift.start_time,
+                end_time: targetShift.end_time,
                 lastUpdated: null
             });
-            
+
             // Use the stoppages summary endpoint with fixed time range and shift parameter
-            const shiftParams = { 
-                start_datetime: shiftStart.toISOString(),
-                end_datetime: shiftEnd.toISOString(),
+            const shiftParams = {
+                start_datetime: shiftStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+                end_datetime: shiftEnd.toISOString().replace(/\.\d{3}Z$/, 'Z'),
                 shift: targetShift.id
             };
-            
+
             // Include PET filter if selected
             if (filters.pet) {
-                shiftParams.pet_id = filters.pet;
+                shiftParams.pet = filters.pet;
             }
-            
+
             const shiftReportsRes = await productionApi.getStoppagesSummary(shiftParams);
             const shiftReports = extractList(shiftReportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            
-            // Get the latest production_start_time from the reports
+
+            // Extract comprehensive stoppages summary data - handle nested structure
+            const responseData = shiftReportsRes?.data?.data || shiftReportsRes?.data || {};
+            const overallTotals = responseData.overall_totals || {};
+            const stoppagesSummary = {
+                total_production: overallTotals.bottles_produced || shiftReports.reduce((sum, r) => sum + (r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0),
+                total_downtime: overallTotals.downtime_minutes || shiftReports.reduce((sum, r) => sum + (r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0), 0),
+                total_stoppages: responseData.total_stoppages || responseData.count || 0,
+                avg_efficiency: parseFloat(overallTotals.efficiency) || responseData.avg_efficiency || 0,
+                downtime_breakdown: responseData.downtime_breakdown || {},
+                top_stoppage_reasons: responseData.top_stoppage_reasons || [],
+                shift_start_time: responseData.shift_start_time,
+                shift_end_time: responseData.shift_end_time,
+            };
+
+            // Get the latest log_time from the reports
             const latestTime = shiftReports.reduce((latest, report) => {
-                if (report.production_start_time) {
-                    const time = new Date(report.production_start_time);
+                if (report.log_time) {
+                    const time = new Date(report.log_date + 'T' + report.log_time);
                     return !latest || time > latest ? time : latest;
                 }
                 return latest;
             }, null);
-            
+
             if (latestTime) {
                 setCurrentShiftInfo(prev => ({
                     ...prev,
-                    lastUpdated: latestTime.toLocaleString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric', 
-                        hour: '2-digit', 
-                        minute: '2-digit', 
-                        hour12: true 
+                    lastUpdated: latestTime.toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
                     })
                 }));
             }
-            
+
             const sortByPet = (arr) => arr.sort((a, b) => {
                 const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
                 const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
             });
-            
+
             setHourlyReports(sortByPet(shiftReports));
+            
+            // Store comparison data for shift comparison feature
+            setShiftComparisonData(prev => ({
+                ...prev,
+                [`${refDateStr}_${targetShift.id}`]: {
+                    date: refDateStr,
+                    shift: targetShift,
+                    reports: shiftReports,
+                    summary: stoppagesSummary,
+                    timestamp: new Date().toISOString()
+                }
+            }));
         } catch (err) {
             console.error('Failed to load shift data:', err);
         } finally {
@@ -524,18 +556,20 @@ const Overview = () => {
                 reports: 0, 
                 oee: 0, 
                 production: 0, 
-                downtime: 0 
+                downtime: 0,
+                efficiency: 0
             };
         });
         
-        // Add data from hourly reports (now from OEE summary endpoint)
+        // Add data from hourly reports (from stoppages summary endpoint)
         hourlyReports.forEach(r => {
             const name = r.pet_name;
             if (lineMap[name]) {
                 lineMap[name].reports += 1;
-                lineMap[name].oee += r.metrics?.oee || 0;
-                lineMap[name].production += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
-                lineMap[name].downtime += r.metrics?.details?.total_downtime_mins || 0;
+                // Use efficiency from API response, fallback to OEE from metrics
+                lineMap[name].oee += parseFloat(r.efficiency) || r.metrics?.oee || 0;
+                lineMap[name].production += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+                lineMap[name].downtime += r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
             }
         });
 
@@ -640,6 +674,11 @@ const Overview = () => {
                                         Last Updated: {currentShiftInfo.lastUpdated}
                                     </div>
                                 )}
+                                {currentShiftInfo?.start_time && currentShiftInfo?.end_time && (
+                                    <div className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                        Shift Time: {currentShiftInfo.start_time.slice(0, 5)} - {currentShiftInfo.end_time.slice(0, 5)}
+                                    </div>
+                                )}
                             </div>
                             <div className="d-flex align-items-center gap-2">
                                 <input
@@ -687,7 +726,7 @@ const Overview = () => {
 
                                 return (
                                     <>
-                                        <div className="col-6 col-lg-3">
+                                        <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
                                                 <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Production</div>
                                                 <div className="fw-bold" style={{ fontSize: '1.25rem' }}>
@@ -696,7 +735,7 @@ const Overview = () => {
                                                 <div className="text-muted" style={{ fontSize: '0.75rem' }}>bottles</div>
                                             </div>
                                         </div>
-                                        <div className="col-6 col-lg-3">
+                                        <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
                                                 <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Downtime</div>
                                                 <div className={`fw-bold ${totalDowntime <= 60 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
@@ -707,7 +746,7 @@ const Overview = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="col-6 col-lg-3">
+                                        <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
                                                 <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Average OEE</div>
                                                 <div className={`fw-bold ${avgOEE >= 85 ? 'text-success' : avgOEE >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
@@ -718,7 +757,7 @@ const Overview = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="col-6 col-lg-3">
+                                        <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
                                                 <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Best Performer</div>
                                                 <div className="fw-bold text-dark" style={{ fontSize: '1.25rem' }}>
@@ -733,6 +772,76 @@ const Overview = () => {
                                 );
                             })()}
                         </div>
+
+                        {/* Additional Shift Metrics */}
+                        {(() => {
+                            const currentKey = `${shiftFilterDate || new Date().toISOString().split('T')[0]}_${currentShiftInfo?.id}`;
+                            const shiftData = shiftComparisonData[currentKey];
+                            if (!shiftData?.summary) return null;
+
+                            const { summary } = shiftData;
+                            return (
+                                <div className="row g-3 mb-4">
+                                    <div className="col-12">
+                                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>
+                                            <i className="ti ti-chart-donut me-2"></i>
+                                            Shift Stoppages Summary
+                                        </h6>
+                                    </div>
+                                    <div className="col-6">
+                                        <div className="border rounded p-3 bg-light">
+                                            <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>
+                                                <i className="ti ti-alert-triangle me-1"></i>
+                                                Total Stoppages
+                                            </div>
+                                            <div className="fw-bold text-danger" style={{ fontSize: '1.25rem' }}>
+                                                {summary.total_stoppages || 0}
+                                            </div>
+                                            <div className="text-muted" style={{ fontSize: '0.75rem' }}>incidents</div>
+                                        </div>
+                                    </div>
+                                    <div className="col-6">
+                                        <div className="border rounded p-3 bg-light">
+                                            <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>
+                                                <i className="ti ti-percentage me-1"></i>
+                                                Avg Efficiency
+                                            </div>
+                                            <div className={`fw-bold ${summary.avg_efficiency >= 85 ? 'text-success' : summary.avg_efficiency >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
+                                                {(summary.avg_efficiency || 0).toFixed(1)}%
+                                            </div>
+                                            <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                                {summary.avg_efficiency >= 85 ? 'Excellent' : summary.avg_efficiency >= 60 ? 'Acceptable' : 'Needs improvement'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {summary.top_stoppage_reasons && summary.top_stoppage_reasons.length > 0 && (
+                                        <div className="col-12">
+                                            <div className="border rounded p-3 bg-light">
+                                                <div className="text-muted mb-2" style={{ fontSize: '0.75rem' }}>
+                                                    <i className="ti ti-list-ordered me-1"></i>
+                                                    Top Stoppage Reasons
+                                                </div>
+                                                <div className="row g-2">
+                                                    {summary.top_stoppage_reasons.slice(0, 5).map((reason, idx) => (
+                                                        <div key={idx} className="col-12 col-md">
+                                                            <div className="d-flex align-items-center gap-2 p-2 bg-white rounded border">
+                                                                <span className="badge bg-secondary" style={{ fontSize: '0.7rem' }}>#{idx + 1}</span>
+                                                                <div className="flex-grow-1">
+                                                                    <div className="fw-semibold" style={{ fontSize: '0.8rem' }}>{reason.category || reason.name || 'Unknown'}</div>
+                                                                    <div className="text-muted" style={{ fontSize: '0.7rem' }}>
+                                                                        {formatDuration(reason.duration || reason.total_minutes || 0)}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
 
                         {/* Production Output by PET */}
                         <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>Production Output by PET</h6>
@@ -782,6 +891,70 @@ const Overview = () => {
                                 </div>
                             ))}
                         </div>
+
+                        {/* Shift Comparison Section */}
+                        {showShiftComparison && Object.keys(shiftComparisonData).length > 0 && (
+                            <div className="mt-4 pt-4 border-top">
+                                <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>
+                                    <i className="ti ti-chart-bar me-2"></i>
+                                    Shift Comparison
+                                </h6>
+                                <div className="table-responsive">
+                                    <table className="table table-bordered table-hover align-middle">
+                                        <thead className="table-light">
+                                            <tr>
+                                                <th style={{ fontSize: '0.8rem' }}>Date</th>
+                                                <th style={{ fontSize: '0.8rem' }}>Shift</th>
+                                                <th style={{ fontSize: '0.8rem' }}>Total Production</th>
+                                                <th style={{ fontSize: '0.8rem' }}>Total Downtime</th>
+                                                <th style={{ fontSize: '0.8rem' }}>Avg OEE</th>
+                                                <th style={{ fontSize: '0.8rem' }}>Stoppages</th>
+                                                <th style={{ fontSize: '0.8rem' }}>Avg Efficiency</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {Object.values(shiftComparisonData)
+                                                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                                                .slice(0, 10)
+                                                .map((data, idx) => {
+                                                    const { date, shift, reports, summary } = data;
+                                                    const totalProd = reports.reduce((sum, r) => sum + (r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
+                                                    const totalDown = reports.reduce((sum, r) => sum + (r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0), 0);
+                                                    const avgOee = reports.length > 0 
+                                                        ? (reports.reduce((sum, r) => sum + (parseFloat(r.efficiency) || r.metrics?.oee || 0), 0) / reports.length).toFixed(1)
+                                                        : 0;
+
+                                                    return (
+                                                        <tr key={idx} className={currentShiftInfo?.id === shift.id && shiftFilterDate === date ? 'table-primary' : ''}>
+                                                            <td style={{ fontSize: '0.8rem' }}>{date}</td>
+                                                            <td style={{ fontSize: '0.8rem' }}>
+                                                                <span className="badge bg-primary">{shift.name}</span>
+                                                            </td>
+                                                            <td className="fw-semibold" style={{ fontSize: '0.8rem' }}>{formatNum(Math.round(totalProd))}</td>
+                                                            <td style={{ fontSize: '0.8rem' }}>
+                                                                <span className={totalDown <= 60 ? 'text-success' : 'text-danger'}>
+                                                                    {formatDuration(totalDown)}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ fontSize: '0.8rem' }}>
+                                                                <span className={avgOee >= 85 ? 'text-success' : avgOee >= 60 ? 'text-warning' : 'text-danger'}>
+                                                                    {avgOee}%
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ fontSize: '0.8rem' }}>{summary.total_stoppages || 0}</td>
+                                                            <td style={{ fontSize: '0.8rem' }}>
+                                                                <span className={summary.avg_efficiency >= 85 ? 'text-success' : summary.avg_efficiency >= 60 ? 'text-warning' : 'text-danger'}>
+                                                                    {(summary.avg_efficiency || 0).toFixed(1)}%
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
