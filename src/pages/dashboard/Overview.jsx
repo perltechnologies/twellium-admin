@@ -759,7 +759,7 @@ const Overview = () => {
                                     <>
                                         <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
-                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Production</div>
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Production for all 6 Pets</div>
                                                 <div className="fw-bold" style={{ fontSize: '1.25rem' }}>
                                                     {formatNum(Math.round(totalProduction))}
                                                 </div>
@@ -768,7 +768,7 @@ const Overview = () => {
                                         </div>
                                         <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
-                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Downtime</div>
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Downtime across all lines</div>
                                                 <div className={`fw-bold ${totalDowntime <= 60 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
                                                     {formatDuration(totalDowntime)}
                                                 </div>
@@ -779,7 +779,7 @@ const Overview = () => {
                                         </div>
                                         <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
-                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Average OEE</div>
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Average OEE for all lines</div>
                                                 <div className={`fw-bold ${avgOEE >= 85 ? 'text-success' : avgOEE >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
                                                     {avgOEE}%
                                                 </div>
@@ -790,7 +790,7 @@ const Overview = () => {
                                         </div>
                                         <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
-                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Best Performer</div>
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Best Performing Line</div>
                                                 <div className="fw-bold text-dark" style={{ fontSize: '1.25rem' }}>
                                                     {bestPerformer?.name || 'N/A'}
                                                 </div>
@@ -823,7 +823,7 @@ const Overview = () => {
                                         <div className="border rounded p-3 bg-light">
                                             <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>
                                                 <i className="ti ti-alert-triangle me-1"></i>
-                                                Total Stoppages
+                                                Total Stoppages across all 6 Pets
                                             </div>
                                             <div className="fw-bold text-danger" style={{ fontSize: '1.25rem' }}>
                                                 {summary.total_stoppages || 0}
@@ -835,7 +835,7 @@ const Overview = () => {
                                         <div className="border rounded p-3 bg-light">
                                             <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>
                                                 <i className="ti ti-percentage me-1"></i>
-                                                Avg Efficiency
+                                                Avg Efficiency for all lines
                                             </div>
                                             <div className={`fw-bold ${summary.avg_efficiency >= 85 ? 'text-success' : summary.avg_efficiency >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
                                                 {(summary.avg_efficiency || 0).toFixed(1)}%
