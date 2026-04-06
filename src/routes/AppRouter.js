@@ -28,6 +28,7 @@ const StoppageLogList = React.lazy(() => import('../pages/production/stoppages/S
 const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/StoppageLogForm'));
 const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppages/StoppageLogDetails'));
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
+const ProductionRanges = React.lazy(() => import('../pages/production/ProductionRanges'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
@@ -323,31 +324,7 @@ export const AppRouter = () => {
 
                                 {/* Configurations */}
                                 <Route path="configs">
-                                    <Route
-                                        path="ranges"
-                                        element={
-                                            <GenericCrudPage
-                                                title="Production Ranges"
-                                                api={{
-                                                    list: productionApi.getProductionRanges,
-                                                    create: productionApi.createProductionRange,
-                                                    update: productionApi.updateProductionRange,
-                                                    delete: productionApi.deleteProductionRange
-                                                }}
-                                                columns={[
-                                                    { header: 'ID', accessor: 'id' },
-                                                    { header: 'Name', accessor: 'name' },
-                                                    { header: 'Start', accessor: 'start_value' },
-                                                    { header: 'End', accessor: 'end_value' },
-                                                ]}
-                                                formFields={[
-                                                    { name: 'name', label: 'Range Name', required: true },
-                                                    { name: 'start_value', label: 'Start Value', type: 'number', step: '0.01', required: true },
-                                                    { name: 'end_value', label: 'End Value', type: 'number', step: '0.01', required: true },
-                                                ]}
-                                            />
-                                        }
-                                    />
+                                    <Route path="ranges" element={<ProductionRanges />} />
                                     <Route
                                         path="units"
                                         element={

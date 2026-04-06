@@ -19,7 +19,7 @@ const GenericCrudPage = ({
     tableTitle = 'All Records',
     emptyStateTitle = 'No records found',
     emptyStateDescription = 'Try adjusting your search and add a new item.',
-    showActionsOnHover = true
+    showActionsOnHover = false
 }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -190,14 +190,14 @@ const GenericCrudPage = ({
     return (
         <>
             {/* Page Header */}
-            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2 animate__animated animate__fadeInDown">
+            <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3 animate__animated animate__fadeInDown">
                 <div>
                     <h4 className="mb-1 text-slate-900 dark:text-white">{title}</h4>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-0">{subtitle || `Manage ${title.toLowerCase()}`}</p>
                 </div>
-                <Button onClick={handleCreate}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    {createButtonLabel}
+                <Button onClick={handleCreate} variant="primary" className="shadow-lg hover:shadow-xl">
+                    <Plus className="h-4 w-4" />
+                    <span>{createButtonLabel}</span>
                 </Button>
             </div>
 
@@ -302,7 +302,7 @@ const GenericCrudPage = ({
                                                 </td>
                                             ))}
                                             <td className="text-end">
-                                                <div className={`d-flex gap-2 justify-content-end transition-opacity ${showActionsOnHover ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}>
+                                                <div className={`d-flex gap-2 justify-content-end ${showActionsOnHover ? 'actions-on-hover' : ''}`}>
                                                     {onView && (
                                                         <button
                                                             className="btn btn-sm btn-icon btn-outline-primary rounded-lg"

@@ -36,3 +36,13 @@
     transform: rotate(360deg);
   }
 }
+
+/* GenericCrudPage - Actions on Hover */
+tr.group .actions-on-hover {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+tr.group:hover .actions-on-hover {
+  opacity: 1;
+}
