@@ -13,6 +13,10 @@ const Formulas = React.lazy(() => import('../pages/dashboard/Formulas'));
 const ProductionReports = React.lazy(() => import('../pages/reports/ProductionReports'));
 const OeeAnalytics = React.lazy(() => import('../pages/reports/OeeAnalytics'));
 const ProductionAnalytics = React.lazy(() => import('../pages/reports/ProductionAnalytics'));
+const MaterialReport = React.lazy(() => import('../pages/reports/MaterialReport'));
+const SyrupReport = React.lazy(() => import('../pages/reports/SyrupReport'));
+const CO2Report = React.lazy(() => import('../pages/reports/CO2Report'));
+const ConsumptionReport = React.lazy(() => import('../pages/reports/ConsumptionReport'));
 const ProductionList = React.lazy(() => import('../pages/production/ProductionList'));
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
 const ReportDetails = React.lazy(() => import('../pages/production/ReportDetails'));
@@ -82,6 +86,10 @@ export const AppRouter = () => {
                             <Route path="analytics">
                                 <Route path="oee" element={<OeeAnalytics />} />
                                 <Route path="production" element={<ProductionAnalytics />} />
+                                <Route path="material" element={<MaterialReport />} />
+                                <Route path="syrup" element={<SyrupReport />} />
+                                <Route path="co2" element={<CO2Report />} />
+                                <Route path="consumption" element={<ConsumptionReport />} />
                             </Route>
 
                             {/* Production Routes */}

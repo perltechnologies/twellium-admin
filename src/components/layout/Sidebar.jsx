@@ -48,6 +48,10 @@ const Sidebar = () => {
                     submenu: [
                         { name: 'OEE Analytics', path: '/dashboard/analytics/oee' },
                         { name: 'Production Analytics', path: '/dashboard/analytics/production' },
+                        { name: 'Material Report', path: '/dashboard/analytics/material' },
+                        { name: 'Syrup Report', path: '/dashboard/analytics/syrup' },
+                        { name: 'CO2 Report', path: '/dashboard/analytics/co2' },
+                        { name: 'Consumption Report', path: '/dashboard/analytics/consumption' },
                     ],
                 },
             ],
