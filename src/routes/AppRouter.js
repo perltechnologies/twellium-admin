@@ -33,6 +33,7 @@ const MeasuringUnits = React.lazy(() => import('../pages/production/MeasuringUni
 const StandardCO2Levels = React.lazy(() => import('../pages/production/StandardCO2Levels'));
 const SyrupDensities = React.lazy(() => import('../pages/production/SyrupDensities'));
 const SyrupDilutionRatios = React.lazy(() => import('../pages/production/SyrupDilutionRatios'));
+const SyrupConcentrations = React.lazy(() => import('../pages/production/SyrupConcentrations'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
@@ -333,30 +334,7 @@ export const AppRouter = () => {
                                     <Route path="co2" element={<StandardCO2Levels />} />
                                     <Route path="densities" element={<SyrupDensities />} />
                                     <Route path="ratios" element={<SyrupDilutionRatios />} />
-                                    <Route
-                                        path="concentrations"
-                                        element={
-                                            <GenericCrudPage
-                                                title="Syrup Concentrations"
-                                                api={{
-                                                    list: productionApi.getSyrupConcentrations,
-                                                    create: productionApi.createSyrupConcentration,
-                                                    update: productionApi.updateSyrupConcentration,
-                                                    delete: productionApi.deleteSyrupConcentration
-                                                }}
-                                                columns={[
-                                                    { header: 'ID', accessor: 'id' },
-                                                    { header: 'Name', accessor: 'name' },
-                                                    { header: 'Value', accessor: 'value' },
-                                                    { header: 'Unit', accessor: 'unit' },
-                                                ]}
-                                                formFields={[
-                                                    { name: 'name', label: 'Name', required: true },
-                                                    { name: 'value', label: 'Concentration Value', type: 'number', step: '0.01', required: true },
-                                                    { name: 'unit', label: 'Unit', required: true },
-                                                ]}
-                                            />
-                                        }
+                                    <Route path="concentrations" element={<SyrupConcentrations />} />
                                     />
                                     <Route
                                         path="bottles-per-pack"
