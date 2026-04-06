@@ -380,29 +380,6 @@ export const AppRouter = () => {
                                 <Route path="cage-quantities" element={<CageQuantities />} />
                                 <Route path="cap-box-quantities" element={<CapBoxQuantities />} />
                             </Route>
-                                />
-                                <Route
-                                    path="cap-box-quantities"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Cap Box Quantities"
-                                            api={{
-                                                list: productionApi.getCapBoxQuantities,
-                                                create: productionApi.createCapBoxQuantity,
-                                                update: productionApi.updateCapBoxQuantity,
-                                                delete: productionApi.deleteCapBoxQuantity
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Quantity (pcs)', accessor: 'value_pcs' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'value_pcs', label: 'Value (Pieces)', type: 'number', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                            </Route>
                         </Route>
 
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
