@@ -29,7 +29,7 @@ const CO2Report = () => {
             const res = await productionApi.getReports(params);
             const reports = res.data?.data || res.data?.results || [];
             
-            // Group by date and PET
+            // Group by date and PET from co2_readings
             const co2Map = {};
             reports.forEach(r => {
                 const date = r.production_date;
@@ -42,15 +42,34 @@ const CO2Report = () => {
                         pet,
                         co2_used: 0,
                         bottles: 0,
-                        pressure: r.co2_pressure || 0,
-                        temperature: r.co2_temperature || 0
+                        pressure: 0,
+                        temperature: 0,
+                        count: 0
                     };
                 }
-                co2Map[key].co2_used += r.co2_used || 0;
-                co2Map[key].bottles += r.metrics?.details?.total_output_pcs || 0;
+                
+                // Extract from co2_readings object
+                if (r.co2_readings) {
+                    co2Map[key].co2_used += parseFloat(r.co2_readings.co2_used || r.co2_readings.co2_consumption || 0);
+                    co2Map[key].pressure += parseFloat(r.co2_readings.pressure || r.co2_readings.co2_pressure || 0);
+                    co2Map[key].temperature += parseFloat(r.co2_readings.temperature || r.co2_readings.co2_temperature || 0);
+                    co2Map[key].count += 1;
+                }
+                
+                // Get bottles from production readings
+                if (r.production_readings) {
+                    co2Map[key].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
+                }
             });
 
-            setData(Object.values(co2Map).sort((a, b) => 
+            // Calculate averages
+            const result = Object.values(co2Map).map(d => ({
+                ...d,
+                pressure: d.count > 0 ? (d.pressure / d.count).toFixed(2) : 0,
+                temperature: d.count > 0 ? (d.temperature / d.count).toFixed(2) : 0
+            }));
+
+            setData(result.sort((a, b) => 
                 a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet)
             ));
         } catch (err) {

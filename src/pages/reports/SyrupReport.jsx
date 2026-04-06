@@ -29,7 +29,7 @@ const SyrupReport = () => {
             const res = await productionApi.getReports(params);
             const reports = res.data?.data || res.data?.results || [];
             
-            // Group by date and PET
+            // Group by date and PET from syrup_readings
             const syrupMap = {};
             reports.forEach(r => {
                 const date = r.production_date;
@@ -43,15 +43,38 @@ const SyrupReport = () => {
                         syrup_used: 0,
                         water_used: 0,
                         bottles: 0,
-                        brix_level: r.brix_level || 0
+                        brix_level: 0,
+                        count: 0
                     };
                 }
-                syrupMap[key].syrup_used += r.syrup_used || 0;
-                syrupMap[key].water_used += r.water_used || 0;
-                syrupMap[key].bottles += r.metrics?.details?.total_output_pcs || 0;
+                
+                // Extract from syrup_readings object
+                if (r.syrup_readings) {
+                    syrupMap[key].brix_level += parseFloat(r.syrup_readings.brix || r.syrup_readings.brix_level || 0);
+                    syrupMap[key].count += 1;
+                }
+                
+                // Get bottles from production readings
+                if (r.production_readings) {
+                    syrupMap[key].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
+                }
+                
+                // Extract from batches array for syrup/water usage
+                if (r.batches && Array.isArray(r.batches)) {
+                    r.batches.forEach(batch => {
+                        syrupMap[key].syrup_used += parseFloat(batch.syrup_used || batch.syrup_quantity || 0);
+                        syrupMap[key].water_used += parseFloat(batch.water_used || batch.water_quantity || 0);
+                    });
+                }
             });
 
-            setData(Object.values(syrupMap).sort((a, b) => 
+            // Calculate average brix
+            const result = Object.values(syrupMap).map(d => ({
+                ...d,
+                brix_level: d.count > 0 ? (d.brix_level / d.count).toFixed(2) : 0
+            }));
+
+            setData(result.sort((a, b) => 
                 a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet)
             ));
         } catch (err) {

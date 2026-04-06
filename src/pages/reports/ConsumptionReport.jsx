@@ -29,7 +29,7 @@ const ConsumptionReport = () => {
             const res = await productionApi.getReports(params);
             const reports = res.data?.data || res.data?.results || [];
             
-            // Aggregate all consumption by PET
+            // Aggregate all consumption by PET from various sources
             const consumptionMap = {};
             reports.forEach(r => {
                 const pet = r.pet_name || 'Unknown';
@@ -43,11 +43,29 @@ const ConsumptionReport = () => {
                         bottles: 0
                     };
                 }
-                consumptionMap[pet].electricity += r.electricity_used || 0;
-                consumptionMap[pet].water += r.water_used || 0;
-                consumptionMap[pet].co2 += r.co2_used || 0;
-                consumptionMap[pet].syrup += r.syrup_used || 0;
-                consumptionMap[pet].bottles += r.metrics?.details?.total_output_pcs || 0;
+                
+                // Electricity from production readings or meters
+                if (r.production_readings) {
+                    consumptionMap[pet].electricity += parseFloat(r.production_readings.electricity_used || r.production_readings.electricity_consumption || 0);
+                }
+                
+                // Water from batches
+                if (r.batches && Array.isArray(r.batches)) {
+                    r.batches.forEach(batch => {
+                        consumptionMap[pet].water += parseFloat(batch.water_used || batch.water_quantity || 0);
+                        consumptionMap[pet].syrup += parseFloat(batch.syrup_used || batch.syrup_quantity || 0);
+                    });
+                }
+                
+                // CO2 from co2_readings
+                if (r.co2_readings) {
+                    consumptionMap[pet].co2 += parseFloat(r.co2_readings.co2_used || r.co2_readings.co2_consumption || 0);
+                }
+                
+                // Bottles from production readings
+                if (r.production_readings) {
+                    consumptionMap[pet].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
+                }
             });
 
             setData(Object.values(consumptionMap).sort((a, b) => {

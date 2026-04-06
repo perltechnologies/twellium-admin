@@ -29,17 +29,45 @@ const MaterialReport = () => {
             const res = await productionApi.getReports(params);
             const reports = res.data?.data || res.data?.results || [];
             
-            // Aggregate material usage by PET
+            // Aggregate material usage by PET from materials array
             const materialMap = {};
             reports.forEach(r => {
                 const pet = r.pet_name || 'Unknown';
                 if (!materialMap[pet]) {
-                    materialMap[pet] = { pet, preforms: 0, caps: 0, labels: 0, bottles: 0 };
+                    materialMap[pet] = { pet, preforms: 0, caps: 0, labels: 0, shrink: 0, bottles: 0 };
                 }
-                materialMap[pet].preforms += r.preforms_used || 0;
-                materialMap[pet].caps += r.caps_used || 0;
-                materialMap[pet].labels += r.labels_used || 0;
-                materialMap[pet].bottles += r.metrics?.details?.total_output_pcs || 0;
+                
+                // Extract from materials array (nested structure)
+                if (r.materials && Array.isArray(r.materials)) {
+                    r.materials.forEach(matGroup => {
+                        if (matGroup.material_type === 'Petline' && matGroup.data) {
+                            matGroup.data.forEach(item => {
+                                if (item.petline_type === 'preform' && item.data) {
+                                    item.data.forEach(p => {
+                                        materialMap[pet].preforms += parseInt(p.quantity_used || 0);
+                                    });
+                                } else if (item.petline_type === 'caps' && item.data) {
+                                    item.data.forEach(c => {
+                                        materialMap[pet].caps += parseInt(c.quantity_used || 0);
+                                    });
+                                } else if (item.petline_type === 'labels' && item.data) {
+                                    item.data.forEach(l => {
+                                        materialMap[pet].labels += parseInt(l.quantity_used || 0);
+                                    });
+                                } else if (item.petline_type === 'shrink' && item.data) {
+                                    item.data.forEach(s => {
+                                        materialMap[pet].shrink += parseInt(s.quantity_used || 0);
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+                
+                // Get bottles from production readings
+                if (r.production_readings) {
+                    materialMap[pet].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
+                }
             });
 
             setData(Object.values(materialMap).sort((a, b) => {
@@ -64,6 +92,7 @@ const MaterialReport = () => {
             'Preforms Used': d.preforms,
             'Caps Used': d.caps,
             'Labels Used': d.labels,
+            'Shrink Used': d.shrink,
             'Bottles Produced': d.bottles,
             'Preform Efficiency': d.bottles > 0 ? ((d.bottles / d.preforms) * 100).toFixed(2) + '%' : 'N/A'
         }));
@@ -74,8 +103,9 @@ const MaterialReport = () => {
         preforms: acc.preforms + d.preforms,
         caps: acc.caps + d.caps,
         labels: acc.labels + d.labels,
+        shrink: acc.shrink + d.shrink,
         bottles: acc.bottles + d.bottles
-    }), { preforms: 0, caps: 0, labels: 0, bottles: 0 });
+    }), { preforms: 0, caps: 0, labels: 0, shrink: 0, bottles: 0 });
 
     return (
         <>
@@ -120,6 +150,14 @@ const MaterialReport = () => {
                         <div className="col-md-3">
                             <div className="card">
                                 <div className="card-body">
+                                    <div className="text-muted mb-1">Total Shrink</div>
+                                    <h4 className="mb-0">{totals.shrink.toLocaleString()}</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-md-3">
+                            <div className="card">
+                                <div className="card-body">
                                     <div className="text-muted mb-1">Total Bottles</div>
                                     <h4 className="mb-0">{totals.bottles.toLocaleString()}</h4>
                                 </div>
@@ -142,6 +180,7 @@ const MaterialReport = () => {
                                     <Bar dataKey="preforms" fill="#3b82f6" name="Preforms" />
                                     <Bar dataKey="caps" fill="#22c55e" name="Caps" />
                                     <Bar dataKey="labels" fill="#f59e0b" name="Labels" />
+                                    <Bar dataKey="shrink" fill="#8b5cf6" name="Shrink" />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -160,6 +199,7 @@ const MaterialReport = () => {
                                             <th className="text-end">Preforms</th>
                                             <th className="text-end">Caps</th>
                                             <th className="text-end">Labels</th>
+                                            <th className="text-end">Shrink</th>
                                             <th className="text-end">Bottles</th>
                                             <th className="text-end">Efficiency</th>
                                         </tr>
@@ -171,6 +211,7 @@ const MaterialReport = () => {
                                                 <td className="text-end">{d.preforms.toLocaleString()}</td>
                                                 <td className="text-end">{d.caps.toLocaleString()}</td>
                                                 <td className="text-end">{d.labels.toLocaleString()}</td>
+                                                <td className="text-end">{d.shrink.toLocaleString()}</td>
                                                 <td className="text-end">{d.bottles.toLocaleString()}</td>
                                                 <td className="text-end">
                                                     {d.bottles > 0 && d.preforms > 0 
