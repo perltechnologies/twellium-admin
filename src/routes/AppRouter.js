@@ -34,6 +34,7 @@ const StandardCO2Levels = React.lazy(() => import('../pages/production/StandardC
 const SyrupDensities = React.lazy(() => import('../pages/production/SyrupDensities'));
 const SyrupDilutionRatios = React.lazy(() => import('../pages/production/SyrupDilutionRatios'));
 const SyrupConcentrations = React.lazy(() => import('../pages/production/SyrupConcentrations'));
+const BottlesPerPack = React.lazy(() => import('../pages/production/BottlesPerPack'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
@@ -335,28 +336,7 @@ export const AppRouter = () => {
                                     <Route path="densities" element={<SyrupDensities />} />
                                     <Route path="ratios" element={<SyrupDilutionRatios />} />
                                     <Route path="concentrations" element={<SyrupConcentrations />} />
-                                    />
-                                    <Route
-                                        path="bottles-per-pack"
-                                        element={
-                                            <GenericCrudPage
-                                                title="Bottles Per Pack"
-                                                api={{
-                                                    list: productionApi.getBottlesPerPack,
-                                                    create: productionApi.createBottlesPerPack,
-                                                    update: productionApi.updateBottlesPerPack,
-                                                    delete: productionApi.deleteBottlesPerPack
-                                                }}
-                                                columns={[
-                                                    { header: 'ID', accessor: 'id' },
-                                                    { header: 'Size', accessor: 'size' },
-                                                    { header: 'Quantity', accessor: 'quantity' },
-                                                    { header: 'Name', accessor: 'name' },
-                                                ]}
-                                                formFields={[
-                                                    { name: 'size', label: 'Size', type: 'number', step: '0.01', required: true },
-                                                    { name: 'quantity', label: 'Quantity', type: 'number', required: true },
-                                                ]}
+                                    <Route path="bottles-per-pack" element={<BottlesPerPack />} />
                                             />
                                         }
                                     />
