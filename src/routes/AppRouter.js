@@ -30,6 +30,7 @@ const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppage
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
 const ProductionRanges = React.lazy(() => import('../pages/production/ProductionRanges'));
 const MeasuringUnits = React.lazy(() => import('../pages/production/MeasuringUnits'));
+const StandardCO2Levels = React.lazy(() => import('../pages/production/StandardCO2Levels'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
@@ -327,26 +328,7 @@ export const AppRouter = () => {
                                 <Route path="configs">
                                     <Route path="ranges" element={<ProductionRanges />} />
                                     <Route path="units" element={<MeasuringUnits />} />
-                                    <Route
-                                        path="co2"
-                                        element={
-                                            <GenericCrudPage
-                                                title="Standard CO2 Levels"
-                                                api={{
-                                                    list: productionApi.getStandardCO2s,
-                                                    create: productionApi.createStandardCO2,
-                                                    update: productionApi.updateStandardCO2,
-                                                    delete: productionApi.deleteStandardCO2
-                                                }}
-                                                columns={[
-                                                    { header: 'ID', accessor: 'id' },
-                                                    { header: 'Name', accessor: 'name' },
-                                                    { header: 'Value', accessor: 'value' },
-                                                ]}
-                                                formFields={[
-                                                    { name: 'name', label: 'Name', required: true },
-                                                    { name: 'value', label: 'Value', type: 'number', step: '0.01', required: true },
-                                                ]}
+                                    <Route path="co2" element={<StandardCO2Levels />} />
                                             />
                                         }
                                     />
