@@ -330,15 +330,7 @@ export const AppRouter = () => {
                                     <Route path="ranges" element={<ProductionRanges />} />
                                     <Route path="units" element={<MeasuringUnits />} />
                                     <Route path="co2" element={<StandardCO2Levels />} />
-                                            />
-                                        }
-                                    />
                                     <Route path="densities" element={<SyrupDensities />} />
-                                                    { name: 'unit', label: 'Unit', required: true },
-                                                ]}
-                                            />
-                                        }
-                                    />
                                     <Route
                                         path="ratios"
                                         element={
