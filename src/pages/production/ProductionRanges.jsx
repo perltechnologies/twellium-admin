@@ -34,5 +34,3 @@ const ProductionRanges = () => {
 };
 
 export default ProductionRanges;
-
-export default ProductionRanges;
