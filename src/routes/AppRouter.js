@@ -36,6 +36,18 @@ const SyrupDilutionRatios = React.lazy(() => import('../pages/production/SyrupDi
 const SyrupConcentrations = React.lazy(() => import('../pages/production/SyrupConcentrations'));
 const BottlesPerPack = React.lazy(() => import('../pages/production/BottlesPerPack'));
 const LineSpeeds = React.lazy(() => import('../pages/production/LineSpeeds'));
+const Suppliers = React.lazy(() => import('../pages/definitions/Suppliers'));
+const PreformColors = React.lazy(() => import('../pages/definitions/PreformColors'));
+const CapTypes = React.lazy(() => import('../pages/definitions/CapTypes'));
+const CapColors = React.lazy(() => import('../pages/definitions/CapColors'));
+const LabelProductSizes = React.lazy(() => import('../pages/definitions/LabelProductSizes'));
+const LabelNames = React.lazy(() => import('../pages/definitions/LabelNames'));
+const ShrinkProductSizes = React.lazy(() => import('../pages/definitions/ShrinkProductSizes'));
+const PackSizes = React.lazy(() => import('../pages/definitions/PackSizes'));
+const ShrinkNames = React.lazy(() => import('../pages/definitions/ShrinkNames'));
+const PreformSizes = React.lazy(() => import('../pages/definitions/PreformSizes'));
+const CageQuantities = React.lazy(() => import('../pages/definitions/CageQuantities'));
+const CapBoxQuantities = React.lazy(() => import('../pages/definitions/CapBoxQuantities'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
@@ -355,237 +367,19 @@ export const AppRouter = () => {
 
                             {/* Material Definitions */}
                             <Route path="definitions">
-                                <Route
-                                    path="suppliers"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Suppliers"
-                                            api={{
-                                                list: productionApi.getSuppliers,
-                                                create: productionApi.createSupplier,
-                                                update: productionApi.updateSupplier,
-                                                delete: productionApi.deleteSupplier
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Name', accessor: 'name' },
-                                                { header: 'Created', accessor: 'date_created', render: (r) => r.date_created?.split('T')[0] }
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Supplier Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="preform-colors"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Preform Colors"
-                                            api={{
-                                                list: productionApi.getPreformColors,
-                                                create: productionApi.createPreformColor,
-                                                update: productionApi.updatePreformColor,
-                                                delete: productionApi.deletePreformColor
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Color Name', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Color Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="cap-types"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Cap Types"
-                                            api={{
-                                                list: productionApi.getCapTypes,
-                                                create: productionApi.createCapType,
-                                                update: productionApi.updateCapType,
-                                                delete: productionApi.deleteCapType
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Cap Type', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Cap Type Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="cap-colors"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Cap Colors"
-                                            api={{
-                                                list: productionApi.getCapColors,
-                                                create: productionApi.createCapColor,
-                                                update: productionApi.updateCapColor,
-                                                delete: productionApi.deleteCapColor
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Color Name', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Color Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="label-product-sizes"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Label Product Sizes"
-                                            api={{
-                                                list: productionApi.getLabelProductSizes,
-                                                create: productionApi.createLabelProductSize,
-                                                update: productionApi.updateLabelProductSize,
-                                                delete: productionApi.deleteLabelProductSize
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Size', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Product Size Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="label-names"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Label Names"
-                                            api={{
-                                                list: productionApi.getLabelNames,
-                                                create: productionApi.createLabelName,
-                                                update: productionApi.updateLabelName,
-                                                delete: productionApi.deleteLabelName
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Label Name', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Label Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="shrink-product-sizes"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Shrink Product Sizes"
-                                            api={{
-                                                list: productionApi.getShrinkProductSizes,
-                                                create: productionApi.createShrinkProductSize,
-                                                update: productionApi.updateShrinkProductSize,
-                                                delete: productionApi.deleteShrinkProductSize
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Size', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Product Size Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="pack-sizes"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Pack Sizes"
-                                            api={{
-                                                list: productionApi.getPackSizes,
-                                                create: productionApi.createPackSize,
-                                                update: productionApi.updatePackSize,
-                                                delete: productionApi.deletePackSize
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Pack Size', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Pack Size Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="shrink-names"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Shrink Names"
-                                            api={{
-                                                list: productionApi.getShrinkNames,
-                                                create: productionApi.createShrinkName,
-                                                update: productionApi.updateShrinkName,
-                                                delete: productionApi.deleteShrinkName
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Shrink Name', accessor: 'name' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'name', label: 'Shrink Name', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="preform-sizes"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Preform Sizes (Grams)"
-                                            api={{
-                                                list: productionApi.getPreformSizes,
-                                                create: productionApi.createPreformSize,
-                                                update: productionApi.updatePreformSize,
-                                                delete: productionApi.deletePreformSize
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Value (g)', accessor: 'value_gr' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'value_gr', label: 'Weight (grams)', required: true }
-                                            ]}
-                                        />
-                                    }
-                                />
-                                <Route
-                                    path="cage-quantities"
-                                    element={
-                                        <GenericCrudPage
-                                            title="Cage Quantities"
-                                            api={{
-                                                list: productionApi.getCageQuantities,
-                                                create: productionApi.createCageQuantity,
-                                                update: productionApi.updateCageQuantity,
-                                                delete: productionApi.deleteCageQuantity
-                                            }}
-                                            columns={[
-                                                { header: 'ID', accessor: 'id' },
-                                                { header: 'Quantity (pcs)', accessor: 'value_pcs' },
-                                            ]}
-                                            formFields={[
-                                                { name: 'value_pcs', label: 'Value (Pieces)', type: 'number', required: true }
-                                            ]}
-                                        />
-                                    }
+                                <Route path="suppliers" element={<Suppliers />} />
+                                <Route path="preform-colors" element={<PreformColors />} />
+                                <Route path="cap-types" element={<CapTypes />} />
+                                <Route path="cap-colors" element={<CapColors />} />
+                                <Route path="label-product-sizes" element={<LabelProductSizes />} />
+                                <Route path="label-names" element={<LabelNames />} />
+                                <Route path="shrink-product-sizes" element={<ShrinkProductSizes />} />
+                                <Route path="pack-sizes" element={<PackSizes />} />
+                                <Route path="shrink-names" element={<ShrinkNames />} />
+                                <Route path="preform-sizes" element={<PreformSizes />} />
+                                <Route path="cage-quantities" element={<CageQuantities />} />
+                                <Route path="cap-box-quantities" element={<CapBoxQuantities />} />
+                            </Route>
                                 />
                                 <Route
                                     path="cap-box-quantities"
