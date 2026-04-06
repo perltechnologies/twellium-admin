@@ -35,6 +35,7 @@ const SyrupDensities = React.lazy(() => import('../pages/production/SyrupDensiti
 const SyrupDilutionRatios = React.lazy(() => import('../pages/production/SyrupDilutionRatios'));
 const SyrupConcentrations = React.lazy(() => import('../pages/production/SyrupConcentrations'));
 const BottlesPerPack = React.lazy(() => import('../pages/production/BottlesPerPack'));
+const LineSpeeds = React.lazy(() => import('../pages/production/LineSpeeds'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
@@ -337,31 +338,7 @@ export const AppRouter = () => {
                                     <Route path="ratios" element={<SyrupDilutionRatios />} />
                                     <Route path="concentrations" element={<SyrupConcentrations />} />
                                     <Route path="bottles-per-pack" element={<BottlesPerPack />} />
-                                            />
-                                        }
-                                    />
-                                    <Route
-                                        path="line-speeds"
-                                        element={
-                                            <GenericCrudPage
-                                                title="Line Speeds"
-                                                api={{
-                                                    list: productionApi.getLineSpeeds,
-                                                    create: productionApi.createLineSpeed,
-                                                    update: productionApi.updateLineSpeed,
-                                                    delete: productionApi.deleteLineSpeed
-                                                }}
-                                                columns={[
-                                                    { header: 'ID', accessor: 'id' },
-                                                    { header: 'Name', accessor: 'name' },
-                                                    { header: 'Speed', accessor: 'speed' },
-                                                ]}
-                                                formFields={[
-                                                    { name: 'name', label: 'Name', required: true },
-                                                    { name: 'speed', label: 'Speed', type: 'number', step: '0.01', required: true },
-                                                ]}
-                                            />
-                                        }
+                                    <Route path="line-speeds" element={<LineSpeeds />} />
                                     />
                                 </Route>
                             </Route>
