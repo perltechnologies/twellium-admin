@@ -29,6 +29,7 @@ const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/S
 const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppages/StoppageLogDetails'));
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
 const ProductionRanges = React.lazy(() => import('../pages/production/ProductionRanges'));
+const MeasuringUnits = React.lazy(() => import('../pages/production/MeasuringUnits'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
 const UserList = React.lazy(() => import('../pages/users/UserList'));
@@ -325,31 +326,7 @@ export const AppRouter = () => {
                                 {/* Configurations */}
                                 <Route path="configs">
                                     <Route path="ranges" element={<ProductionRanges />} />
-                                    <Route
-                                        path="units"
-                                        element={
-                                            <GenericCrudPage
-                                                title="Measuring Units"
-                                                api={{
-                                                    list: productionApi.getMeasuringUnits,
-                                                    create: productionApi.createMeasuringUnit,
-                                                    update: productionApi.updateMeasuringUnit,
-                                                    delete: productionApi.deleteMeasuringUnit
-                                                }}
-                                                columns={[
-                                                    { header: 'ID', accessor: 'id' },
-                                                    { header: 'Name', accessor: 'name' },
-                                                    { header: 'Short Name', accessor: 'short_name' },
-                                                    { header: 'Value', accessor: 'value' },
-                                                ]}
-                                                formFields={[
-                                                    { name: 'name', label: 'Unit Name', required: true },
-                                                    { name: 'short_name', label: 'Short Name', required: true },
-                                                    { name: 'value', label: 'Value', type: 'number', step: '0.001', required: true },
-                                                ]}
-                                            />
-                                        }
-                                    />
+                                    <Route path="units" element={<MeasuringUnits />} />
                                     <Route
                                         path="co2"
                                         element={
