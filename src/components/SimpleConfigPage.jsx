@@ -129,39 +129,39 @@ const SimpleConfigPage = ({
                         </div>
                     ) : (
                         <div className="table-responsive">
-                            <table className="table table-hover mb-0">
+                            <table className="table table-sm table-hover mb-0">
                                 <thead className="table-light">
                                     <tr>
                                         {columns.map((col) => (
-                                            <th key={col.accessor} className={col.align === 'right' ? 'text-end' : ''}>
+                                            <th key={col.accessor} className={`${col.align === 'right' ? 'text-end' : ''} small`}>
                                                 {col.header}
                                             </th>
                                         ))}
-                                        <th className="text-end" style={{ width: '100px' }}>Actions</th>
+                                        <th className="text-end small" style={{ width: '100px' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {data.map((item) => (
                                         <tr key={item.id}>
                                             {columns.map((col) => (
-                                                <td key={col.accessor} className={col.align === 'right' ? 'text-end' : ''}>
+                                                <td key={col.accessor} className={`${col.align === 'right' ? 'text-end' : ''} small`}>
                                                     {formatValue(item[col.accessor], col.accessor, item)}
                                                 </td>
                                             ))}
                                             <td className="text-end">
                                                 <button
                                                     onClick={() => handleEdit(item)}
-                                                    className="btn btn-sm btn-light me-1"
+                                                    className="btn btn-sm btn-light me-1 py-0 px-2"
                                                     title="Edit"
                                                 >
-                                                    <Edit className="h-4 w-4" />
+                                                    <Edit className="h-3 w-3" />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(item)}
-                                                    className="btn btn-sm btn-light text-danger"
+                                                    className="btn btn-sm btn-light text-danger py-0 px-2"
                                                     title="Delete"
                                                 >
-                                                    <Trash2 className="h-4 w-4" />
+                                                    <Trash2 className="h-3 w-3" />
                                                 </button>
                                             </td>
                                         </tr>
