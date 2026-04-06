@@ -293,9 +293,20 @@ const Overview = () => {
                 return;
             }
 
-            // Fixed time range: 00:00:00 to 11:59:59 PM on the same date
-            const shiftStart = new Date(`${refDateStr}T00:00:00Z`);
-            const shiftEnd = new Date(`${refDateStr}T23:59:59Z`);
+            // Calculate shift time range based on shift type
+            const startTime = targetShift.start_time?.slice(0, 5);
+            const endTime = targetShift.end_time?.slice(0, 5);
+            const isNightShift = startTime > endTime; // Night shift crosses midnight
+            
+            const shiftStart = new Date(`${refDateStr}T${startTime}:00Z`);
+            let shiftEnd;
+            if (isNightShift) {
+                const nextDay = new Date(refDateStr);
+                nextDay.setDate(nextDay.getDate() + 1);
+                shiftEnd = new Date(`${nextDay.toISOString().split('T')[0]}T${endTime}:00Z`);
+            } else {
+                shiftEnd = new Date(`${refDateStr}T${endTime}:00Z`);
+            }
 
             setCurrentShiftInfo({
                 id: targetShift.id,
@@ -305,7 +316,7 @@ const Overview = () => {
                 lastUpdated: null
             });
 
-            // Use the stoppages summary endpoint with fixed time range and shift parameter
+            // Use the stoppages summary endpoint with shift-specific time range and shift parameter
             const shiftParams = {
                 start_datetime: shiftStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
                 end_datetime: shiftEnd.toISOString().replace(/\.\d{3}Z$/, 'Z'),
