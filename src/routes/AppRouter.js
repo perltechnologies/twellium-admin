@@ -104,12 +104,12 @@ export const AppRouter = () => {
 
                             {/* Analytics Routes */}
                             <Route path="analytics">
-                                <Route path="oee" element={<OeeAnalytics />} />
-                                <Route path="production" element={<ProductionAnalytics />} />
-                                <Route path="material" element={<MaterialReport />} />
-                                <Route path="syrup" element={<SyrupReport />} />
-                                <Route path="co2" element={<CO2Report />} />
-                                <Route path="consumption" element={<ConsumptionReport />} />
+                                <Route path="oee-analytics" element={<OeeAnalytics />} />
+                                <Route path="production-analytics" element={<ProductionAnalytics />} />
+                                <Route path="material-analytics" element={<MaterialReport />} />
+                                <Route path="syrup-analytics" element={<SyrupReport />} />
+                                <Route path="co2-analytics" element={<CO2Report />} />
+                                <Route path="consumption-analytics" element={<ConsumptionReport />} />
                             </Route>
 
                             {/* Production Routes */}

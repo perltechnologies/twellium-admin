@@ -26,48 +26,21 @@ const MaterialReport = () => {
             if (filters.start_date) params.production_date_after = filters.start_date;
             if (filters.end_date) params.production_date_before = filters.end_date;
 
-            const res = await productionApi.getReports(params);
-            const reports = res.data?.data || res.data?.results || [];
+            const res = await productionApi.getMaterialConsumptions(params);
+            const consumptions = res.data?.data || res.data?.results || [];
             
-            // Aggregate material usage by PET from materials array
             const materialMap = {};
-            reports.forEach(r => {
-                const pet = r.pet_name || 'Unknown';
+            consumptions.forEach(c => {
+                const pet = c.pet_name || 'Unknown';
                 if (!materialMap[pet]) {
                     materialMap[pet] = { pet, preforms: 0, caps: 0, labels: 0, shrink: 0, bottles: 0 };
                 }
                 
-                // Extract from materials array (nested structure)
-                if (r.materials && Array.isArray(r.materials)) {
-                    r.materials.forEach(matGroup => {
-                        if (matGroup.material_type === 'Petline' && matGroup.data) {
-                            matGroup.data.forEach(item => {
-                                if (item.petline_type === 'preform' && item.data) {
-                                    item.data.forEach(p => {
-                                        materialMap[pet].preforms += parseInt(p.quantity_used || 0);
-                                    });
-                                } else if (item.petline_type === 'caps' && item.data) {
-                                    item.data.forEach(c => {
-                                        materialMap[pet].caps += parseInt(c.quantity_used || 0);
-                                    });
-                                } else if (item.petline_type === 'labels' && item.data) {
-                                    item.data.forEach(l => {
-                                        materialMap[pet].labels += parseInt(l.quantity_used || 0);
-                                    });
-                                } else if (item.petline_type === 'shrink' && item.data) {
-                                    item.data.forEach(s => {
-                                        materialMap[pet].shrink += parseInt(s.quantity_used || 0);
-                                    });
-                                }
-                            });
-                        }
-                    });
-                }
-                
-                // Get bottles from production readings
-                if (r.production_readings) {
-                    materialMap[pet].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
-                }
+                materialMap[pet].preforms += parseInt(c.preforms_used || 0);
+                materialMap[pet].caps += parseInt(c.caps_used || 0);
+                materialMap[pet].labels += parseInt(c.labels_used || 0);
+                materialMap[pet].shrink += parseInt(c.shrink_used || 0);
+                materialMap[pet].bottles += parseInt(c.bottles_produced || 0);
             });
 
             setData(Object.values(materialMap).sort((a, b) => {

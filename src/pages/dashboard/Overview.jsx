@@ -159,12 +159,28 @@ const Overview = () => {
     const [selectedOutputPets, setSelectedOutputPets] = useState([]);
     
     // Filters for Production Output by PET
-    const [outputUseRange, setOutputUseRange] = useState(false);
+    const [outputUseRange, setOutputUseRange] = useState(true);
     const [outputSingleDate, setOutputSingleDate] = useState('');
-    const [outputStartDate, setOutputStartDate] = useState('');
-    const [outputEndDate, setOutputEndDate] = useState('');
+    const [outputStartDate, setOutputStartDate] = useState(() => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const sunday = new Date(today);
+        sunday.setDate(today.getDate() - dayOfWeek);
+        return sunday.toISOString().split('T')[0];
+    });
+    const [outputEndDate, setOutputEndDate] = useState(() => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const sunday = new Date(today);
+        sunday.setDate(today.getDate() - dayOfWeek);
+        const saturday = new Date(sunday);
+        saturday.setDate(sunday.getDate() + 6);
+        return saturday.toISOString().split('T')[0];
+    });
     const [outputPetSelected, setOutputPetSelected] = useState('');
-    const [outputPeriod, setOutputPeriod] = useState(''); // 'week' or 'month'
+    const [outputPeriod, setOutputPeriod] = useState('week'); // 'week' or 'month'
+    const [outputPeriodReports, setOutputPeriodReports] = useState([]);
+    const [outputPeriodLoading, setOutputPeriodLoading] = useState(false);
 
     /* Stale-while-revalidate: separate initial vs refresh state */
     const [initialLoading, setInitialLoading] = useState(true);
@@ -260,6 +276,36 @@ const Overview = () => {
         }
     }, [filters]);
 
+    // Fetch data when week/month period is selected for Production Output
+    useEffect(() => {
+        if (outputPeriod && outputStartDate && outputEndDate) {
+            const fetchOutputPeriodData = async () => {
+                setOutputPeriodLoading(true);
+                try {
+                    const startDateTime = new Date(outputStartDate);
+                    startDateTime.setHours(0, 0, 0, 0);
+                    const endDateTime = new Date(outputEndDate);
+                    endDateTime.setHours(23, 59, 59, 999);
+                    
+                    const params = {
+                        datetime_start_time: startDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z'),
+                        datetime_end_time: endDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z')
+                    };
+                    
+                    const response = await productionApi.getOeeSummary(params);
+                    const data = response?.data?.data || response?.data?.results || response?.data || [];
+                    setOutputPeriodReports(data.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+                } catch (error) {
+                    console.error('Error fetching output period data:', error);
+                    setOutputPeriodReports([]);
+                } finally {
+                    setOutputPeriodLoading(false);
+                }
+            };
+            fetchOutputPeriodData();
+        }
+    }, [outputPeriod, outputStartDate, outputEndDate]);
+
     /* Load shift data separately */
     const loadShiftData = useCallback(async () => {
         if (!shifts.length) return;
@@ -268,9 +314,16 @@ const Overview = () => {
         try {
             const now = new Date();
             const currentTime = now.toTimeString().slice(0, 5);
-            const todayStr = now.toISOString().split('T')[0];
+            let todayStr = now.toISOString().split('T')[0];
+            
+            // If before 6am, use previous day for shift data
+            if (currentTime < '06:00') {
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                todayStr = yesterday.toISOString().split('T')[0];
+            }
 
-            // Use shiftFilterDate if set, otherwise use today
+            // Use shiftFilterDate if set, otherwise use calculated date
             const refDateStr = shiftFilterDate || todayStr;
 
             // Find which shift the current clock time falls in (for auto-selection)
@@ -293,21 +346,6 @@ const Overview = () => {
                 return;
             }
 
-            // Calculate shift time range based on shift type
-            const startTime = targetShift.start_time?.slice(0, 5);
-            const endTime = targetShift.end_time?.slice(0, 5);
-            const isNightShift = startTime > endTime; // Night shift crosses midnight
-            
-            const shiftStart = new Date(`${refDateStr}T${startTime}:00Z`);
-            let shiftEnd;
-            if (isNightShift) {
-                const nextDay = new Date(refDateStr);
-                nextDay.setDate(nextDay.getDate() + 1);
-                shiftEnd = new Date(`${nextDay.toISOString().split('T')[0]}T${endTime}:00Z`);
-            } else {
-                shiftEnd = new Date(`${refDateStr}T${endTime}:00Z`);
-            }
-
             setCurrentShiftInfo({
                 id: targetShift.id,
                 name: targetShift.name,
@@ -316,10 +354,29 @@ const Overview = () => {
                 lastUpdated: null
             });
 
-            // Use the stoppages summary endpoint with shift-specific time range and shift parameter
+            // Calculate shift date range based on shift times
+            const shiftStart = targetShift.start_time?.slice(0, 5);
+            const shiftEnd = targetShift.end_time?.slice(0, 5);
+            
+            let startDateTime, endDateTime;
+            
+            if (shiftStart && shiftEnd && shiftStart > shiftEnd) {
+                // Night shift: crosses midnight (e.g., 18:00 to 06:00)
+                // Start on refDateStr, end on next day
+                const startDate = new Date(refDateStr + 'T' + shiftStart + ':00Z');
+                const endDate = new Date(refDateStr + 'T' + shiftEnd + ':59Z');
+                endDate.setDate(endDate.getDate() + 1);
+                startDateTime = startDate.toISOString().replace(/\\.\\d{3}Z$/, 'Z');
+                endDateTime = endDate.toISOString().replace(/\\.\\d{3}Z$/, 'Z');
+            } else {
+                // Day shift: same day
+                startDateTime = `${refDateStr}T${shiftStart || '06:00'}:00Z`;
+                endDateTime = `${refDateStr}T${shiftEnd || '18:00'}:59Z`;
+            }
+
             const shiftParams = {
-                start_datetime: shiftStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-                end_datetime: shiftEnd.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+                start_datetime: startDateTime,
+                end_datetime: endDateTime,
                 shift: targetShift.id
             };
 
@@ -329,20 +386,22 @@ const Overview = () => {
             }
 
             const shiftReportsRes = await productionApi.getStoppagesSummary(shiftParams);
-            const shiftReports = extractList(shiftReportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
-
-            // Extract comprehensive stoppages summary data - handle nested structure
-            const responseData = shiftReportsRes?.data?.data || shiftReportsRes?.data || {};
-            const overallTotals = responseData.overall_totals || {};
+            
+            // Handle nested response: response.data.data contains the actual data object
+            const outerData = shiftReportsRes?.data?.data || shiftReportsRes?.data || {};
+            const stoppagesArray = outerData.data || [];
+            const shiftReports = stoppagesArray.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            
+            const overallTotals = outerData.overall_totals || {};
             const stoppagesSummary = {
-                total_production: overallTotals.bottles_produced || shiftReports.reduce((sum, r) => sum + (r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0),
-                total_downtime: overallTotals.downtime_minutes || shiftReports.reduce((sum, r) => sum + (r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0), 0),
-                total_stoppages: responseData.total_stoppages || responseData.count || 0,
-                avg_efficiency: parseFloat(overallTotals.efficiency) || responseData.avg_efficiency || 0,
-                downtime_breakdown: responseData.downtime_breakdown || {},
-                top_stoppage_reasons: responseData.top_stoppage_reasons || [],
-                shift_start_time: responseData.shift_start_time,
-                shift_end_time: responseData.shift_end_time,
+                total_production: overallTotals.bottles_produced || 0,
+                total_downtime: overallTotals.downtime_minutes || 0,
+                total_stoppages: outerData.count || 0,
+                avg_efficiency: parseFloat(overallTotals.efficiency) || 0,
+                downtime_breakdown: outerData.downtime_breakdown || {},
+                top_stoppage_reasons: outerData.top_stoppage_reasons || [],
+                shift_start_time: outerData.shift_start_time,
+                shift_end_time: outerData.shift_end_time,
             };
 
             // Get the latest log_time from the reports
@@ -559,8 +618,9 @@ const Overview = () => {
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
-        // Start with all available PETs
         const lineMap = {};
+        
+        // Start with all available PETs from rawPets
         rawPets.forEach(pet => {
             lineMap[pet.pet_name] = { 
                 name: pet.pet_name, 
@@ -575,10 +635,23 @@ const Overview = () => {
         // Add data from hourly reports (from stoppages summary endpoint)
         hourlyReports.forEach(r => {
             const name = r.pet_name;
+            // Create entry if it doesn't exist (for cases where rawPets is empty)
+            if (!lineMap[name]) {
+                lineMap[name] = { 
+                    name: name, 
+                    reports: 0, 
+                    oee: 0, 
+                    production: 0, 
+                    downtime: 0,
+                    efficiency: 0
+                };
+            }
+            
             if (lineMap[name]) {
                 lineMap[name].reports += 1;
-                // Use efficiency from API response, fallback to OEE from metrics
-                lineMap[name].oee += parseFloat(r.efficiency) || r.metrics?.oee || 0;
+                // Use efficiency from API response (convert string to number), fallback to OEE from metrics
+                const efficiency = parseFloat(r.efficiency) || r.metrics?.oee || 0;
+                lineMap[name].oee += efficiency;
                 lineMap[name].production += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                 lineMap[name].downtime += r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
                 
@@ -704,7 +777,17 @@ const Overview = () => {
                                 {currentShiftInfo?.start_time && currentShiftInfo?.end_time && (
                                     <div className="text-muted" style={{ fontSize: '0.8rem' }}>
                                         Shift Time: {(() => {
-                                            const refDate = shiftFilterDate || new Date().toISOString().split('T')[0];
+                                            const now = new Date();
+                                            const currentTime = now.toTimeString().slice(0, 5);
+                                            let refDate = shiftFilterDate || now.toISOString().split('T')[0];
+                                            
+                                            // If before 6am and no manual filter, use previous day
+                                            if (!shiftFilterDate && currentTime < '06:00') {
+                                                const yesterday = new Date(now);
+                                                yesterday.setDate(yesterday.getDate() - 1);
+                                                refDate = yesterday.toISOString().split('T')[0];
+                                            }
+                                            
                                             const startTime = currentShiftInfo.start_time.slice(0, 5);
                                             const endTime = currentShiftInfo.end_time.slice(0, 5);
                                             
@@ -1301,9 +1384,14 @@ const Overview = () => {
                                             className={`btn ${outputPeriod === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
                                                 const today = new Date();
+                                                const dayOfWeek = today.getDay();
+                                                const sunday = new Date(today);
+                                                sunday.setDate(today.getDate() - dayOfWeek);
+                                                const saturday = new Date(sunday);
+                                                saturday.setDate(sunday.getDate() + 6);
                                                 setOutputUseRange(true);
-                                                setOutputStartDate(today.toISOString().split('T')[0]);
-                                                setOutputEndDate(today.toISOString().split('T')[0]);
+                                                setOutputStartDate(sunday.toISOString().split('T')[0]);
+                                                setOutputEndDate(saturday.toISOString().split('T')[0]);
                                                 setOutputSingleDate('');
                                                 setOutputPeriod('week');
                                             }}
@@ -1314,9 +1402,11 @@ const Overview = () => {
                                             className={`btn ${outputPeriod === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => {
                                                 const today = new Date();
+                                                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                                                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
                                                 setOutputUseRange(true);
-                                                setOutputStartDate(today.toISOString().split('T')[0]);
-                                                setOutputEndDate(today.toISOString().split('T')[0]);
+                                                setOutputStartDate(firstDay.toISOString().split('T')[0]);
+                                                setOutputEndDate(lastDay.toISOString().split('T')[0]);
                                                 setOutputSingleDate('');
                                                 setOutputPeriod('month');
                                             }}
@@ -1328,9 +1418,15 @@ const Overview = () => {
                             </div>
                         </div>
                         <div className="card-body">
-                            {(() => {
-                                // Filter reports by local date filters
-                                let filteredReports = [...allReports];
+                            {outputPeriodLoading ? (
+                                <div className="text-center py-5">
+                                    <div className="spinner-border text-primary" role="status">
+                                        <span className="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            ) : (() => {
+                                // Use period reports when week/month is active, otherwise use allReports
+                                let filteredReports = outputPeriod ? [...outputPeriodReports] : [...allReports];
                                 
                                 if (outputUseRange) {
                                     if (outputStartDate) filteredReports = filteredReports.filter(r => r.production_date >= outputStartDate);
@@ -1379,7 +1475,7 @@ const Overview = () => {
                                     if (!grouped[date][petName]) {
                                         grouped[date][petName] = 0;
                                     }
-                                    grouped[date][petName] += r.metrics?.details?.total_output_pcs || 0;
+                                    grouped[date][petName] += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                                 });
 
                                 // Create series for each PET

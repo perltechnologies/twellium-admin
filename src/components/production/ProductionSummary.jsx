@@ -1,14 +1,61 @@
-import React, { useState, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useMemo, lazy, Suspense, useEffect } from 'react';
 import { useFilters } from '../../context/FilterContext';
+import { productionApi } from '../../api/production';
 
 const ReactApexChart = lazy(() => import('react-apexcharts'));
 
 const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
     const { filters } = useFilters();
     const [period, setPeriod] = useState('week');
-    const [localStartDate, setLocalStartDate] = useState('');
-    const [localEndDate, setLocalEndDate] = useState('');
-    const [useLocalDates, setUseLocalDates] = useState(false);
+    const [localStartDate, setLocalStartDate] = useState(() => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const sunday = new Date(today);
+        sunday.setDate(today.getDate() - dayOfWeek);
+        return sunday.toISOString().split('T')[0];
+    });
+    const [localEndDate, setLocalEndDate] = useState(() => {
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        const sunday = new Date(today);
+        sunday.setDate(today.getDate() - dayOfWeek);
+        const saturday = new Date(sunday);
+        saturday.setDate(sunday.getDate() + 6);
+        return saturday.toISOString().split('T')[0];
+    });
+    const [useLocalDates, setUseLocalDates] = useState(true);
+    const [periodReports, setPeriodReports] = useState([]);
+    const [periodLoading, setPeriodLoading] = useState(false);
+
+    // Fetch data when week/month period is selected
+    useEffect(() => {
+        if (useLocalDates && localStartDate && localEndDate) {
+            const fetchPeriodData = async () => {
+                setPeriodLoading(true);
+                try {
+                    const startDateTime = new Date(localStartDate);
+                    startDateTime.setHours(0, 0, 0, 0);
+                    const endDateTime = new Date(localEndDate);
+                    endDateTime.setHours(23, 59, 59, 999);
+                    
+                    const params = {
+                        datetime_start_time: startDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z'),
+                        datetime_end_time: endDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z')
+                    };
+                    
+                    const response = await productionApi.getOeeSummary(params);
+                    const data = response?.data?.data || response?.data?.results || response?.data || [];
+                    setPeriodReports(data.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+                } catch (error) {
+                    console.error('Error fetching period data:', error);
+                    setPeriodReports([]);
+                } finally {
+                    setPeriodLoading(false);
+                }
+            };
+            fetchPeriodData();
+        }
+    }, [useLocalDates, localStartDate, localEndDate]);
 
     // Use local dates if week/month clicked, otherwise global filters
     const singleDate = useLocalDates ? '' : (filters.log_date || '');
@@ -16,9 +63,13 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
     const endDate = useLocalDates ? localEndDate : (filters.end_date || '');
     const useRange = !!startDate || !!endDate;
     const selectedPet = filters.pet || '';
+    
+    // Use period reports when week/month is active, otherwise use passed reports
+    const activeReports = useLocalDates ? periodReports : reports;
+    const activeLoading = useLocalDates ? periodLoading : loading;
 
     const chartData = useMemo(() => {
-        let filtered = reports;
+        let filtered = activeReports;
 
         // Filter by date - use global filters
         if (useRange) {
@@ -46,25 +97,21 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         }
 
         // Generate date range
-        const now = new Date();
         let dates = [];
         let grouped = {};
 
         if (period === 'month') {
-            // Current month: 1st to last day
-            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            for (let d = new Date(firstDay); d <= lastDay; d = new Date(d.setDate(d.getDate() + 1))) {
+            // Use local dates for month range
+            const firstDay = new Date(localStartDate || new Date());
+            const lastDay = new Date(localEndDate || new Date());
+            for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
                 dates.push(new Date(d).toISOString().split('T')[0]);
             }
         } else {
-            // Current week: Sunday to Saturday
-            const dayOfWeek = now.getDay();
-            const sunday = new Date(now);
-            sunday.setDate(now.getDate() - dayOfWeek);
-            const saturday = new Date(sunday);
-            saturday.setDate(sunday.getDate() + 6);
-            for (let d = new Date(sunday); d <= saturday; d = new Date(d.setDate(d.getDate() + 1))) {
+            // Use local dates for week range
+            const firstDay = new Date(localStartDate || new Date());
+            const lastDay = new Date(localEndDate || new Date());
+            for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
                 dates.push(new Date(d).toISOString().split('T')[0]);
             }
         }
@@ -78,7 +125,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             if (!grouped[date][petName]) {
                 grouped[date][petName] = { oee: 0, count: 0 };
             }
-            grouped[date][petName].oee += parseFloat(r.efficiency) || r.metrics?.oee || r.oee || 0;
+            grouped[date][petName].oee += r.metrics?.oee || parseFloat(r.efficiency) || r.oee || 0;
             grouped[date][petName].count += 1;
         });
 
@@ -93,10 +140,10 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         }));
 
         return { dates, series };
-    }, [reports, period, useRange, singleDate, startDate, endDate, selectedPet, pets]);
+    }, [activeReports, period, useRange, singleDate, startDate, endDate, selectedPet, pets]);
 
     const summary = useMemo(() => {
-        let filtered = reports;
+        let filtered = activeReports;
 
         // Filter by date - use global filters
         if (useRange) {
@@ -123,14 +170,14 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             }
         }
 
-        const totalProduction = filtered.reduce((s, r) => s + (r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
+        const totalProduction = filtered.reduce((s, r) => s + (r.total_bottles_produced || r.bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
         const avgOee = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (parseFloat(r.efficiency) || r.metrics?.oee || r.oee || 0), 0) / filtered.length
+            ? filtered.reduce((s, r) => s + (r.metrics?.oee || parseFloat(r.efficiency) || r.oee || 0), 0) / filtered.length
             : 0;
-        const totalDowntime = filtered.reduce((s, r) => s + (r.downtime_minutes || r.metrics?.details?.total_downtime_mins || r.total_downtime_mins || 0), 0);
+        const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || r.downtime_minutes || r.total_downtime_mins || 0), 0);
 
         return { totalProduction, avgOee, totalDowntime, reports: filtered.length };
-    }, [reports, useRange, singleDate, startDate, endDate, selectedPet, pets]);
+    }, [activeReports, useRange, singleDate, startDate, endDate, selectedPet, pets]);
 
     const hasActiveFilter = !!(singleDate || startDate || endDate || selectedPet);
 
@@ -193,7 +240,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </span>
                     )}
                     <span className="badge bg-soft-secondary text-secondary">
-                        {reports.length} reports loaded
+                        {activeReports.length} reports loaded
                     </span>
                 </div>
             </div>
@@ -252,7 +299,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                 </div>
 
                 {/* Chart */}
-                {loading ? (
+                {activeLoading ? (
                     <div className="text-center py-5">
                         <div className="spinner-border text-primary" role="status">
                             <span className="visually-hidden">Loading...</span>
