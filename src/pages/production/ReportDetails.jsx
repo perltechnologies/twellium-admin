@@ -831,25 +831,67 @@ const ReportDetails = () => {
                                 </div>
                             )}
                         </div>
-                        <div className="vstack gap-3">
-                            <div className="d-flex align-items-center gap-3">
-                                <div
-                                    className="rounded-circle flex-shrink-0"
-                                    style={{ backgroundColor: COLOR_EFFICIENCY, width: '12px', height: '12px' }}
-                                />
-                                <div className="flex-grow-1">
+                        <div className="vstack gap-4">
+                            <div className="text-center">
+                                <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={[
+                                                    { value: efficiencyData[0]?.value || 0 },
+                                                    { value: 100 - (efficiencyData[0]?.value || 0) }
+                                                ]}
+                                                cx="50%"
+                                                cy="50%"
+                                                startAngle={90}
+                                                endAngle={450}
+                                                innerRadius={30}
+                                                outerRadius={40}
+                                                dataKey="value"
+                                                stroke="none"
+                                            >
+                                                <Cell fill={COLOR_EFFICIENCY} />
+                                                <Cell fill="#e9ecef" />
+                                            </Pie>
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
+                                        <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(efficiencyData[0]?.value || 0).toFixed(1)}%</div>
+                                    </div>
+                                </div>
+                                <div className="mt-2">
                                     <small className="text-muted text-uppercase fw-semibold d-block">Efficiency</small>
-                                    <h4 className="mb-0 fw-bold">{efficiencyData[0]?.value || 0}%</h4>
                                 </div>
                             </div>
-                            <div className="d-flex align-items-center gap-3">
-                                <div
-                                    className="rounded-circle flex-shrink-0"
-                                    style={{ backgroundColor: '#e9ecef', width: '12px', height: '12px' }}
-                                />
-                                <div className="flex-grow-1">
+                            <div className="text-center">
+                                <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={[
+                                                    { value: 100 - (efficiencyData[0]?.value || 0) },
+                                                    { value: efficiencyData[0]?.value || 0 }
+                                                ]}
+                                                cx="50%"
+                                                cy="50%"
+                                                startAngle={90}
+                                                endAngle={450}
+                                                innerRadius={30}
+                                                outerRadius={40}
+                                                dataKey="value"
+                                                stroke="none"
+                                            >
+                                                <Cell fill="#dc3545" />
+                                                <Cell fill="#e9ecef" />
+                                            </Pie>
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
+                                        <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(100 - (efficiencyData[0]?.value || 0)).toFixed(1)}%</div>
+                                    </div>
+                                </div>
+                                <div className="mt-2">
                                     <small className="text-muted text-uppercase fw-semibold d-block">Loss</small>
-                                    <h4 className="mb-0 fw-bold">{100 - (efficiencyData[0]?.value || 0)}%</h4>
                                 </div>
                             </div>
                         </div>
