@@ -82,23 +82,23 @@ const OeeAnalytics = () => {
                 }
                 
                 if (startDate && endDate) {
-                    params.datetime_start_time = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
-                    params.datetime_end_time = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    params.start_datetime = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    params.end_datetime = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
                 }
             } else if (filters.log_date) {
                 const startDate = new Date(filters.log_date + 'T00:00:00Z');
                 const endDate = new Date(filters.log_date + 'T23:59:59Z');
-                params.datetime_start_time = startDate.toISOString();
-                params.datetime_end_time = endDate.toISOString();
+                params.start_datetime = startDate.toISOString();
+                params.end_datetime = endDate.toISOString();
             } else if (filters.start_date && filters.end_date) {
                 const startDate = new Date(filters.start_date + 'T00:00:00Z');
                 const endDate = new Date(filters.end_date + 'T23:59:59Z');
-                params.datetime_start_time = startDate.toISOString();
-                params.datetime_end_time = endDate.toISOString();
+                params.start_datetime = startDate.toISOString();
+                params.end_datetime = endDate.toISOString();
             }
             
-            const res = await productionApi.getOeeSummary(params);
-            let reportData = res.data?.data || Array.isArray(res.data) ? res.data : res.data?.results || [];
+            const res = await productionApi.getStoppagesSummary(params);
+            let reportData = res.data?.data?.data || res.data?.data || [];
             reportData = reportData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
             
             // Extract production_date from report_code (e.g., "PR-2026-04-07-NIGHT" -> "2026-04-07")
