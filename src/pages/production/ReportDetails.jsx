@@ -782,85 +782,74 @@ const ReportDetails = () => {
             </div>
 
             {/* Production Summary Stats */}
-            <div className="mb-4">
-                <h5 className="mb-3 fw-semibold">Production Summary</h5>
-                <div className="row g-3 mb-3">
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase d-block mb-2">Total Output</small>
-                                <h3 className="mb-0 fw-bold text-primary">{totalOutput.toLocaleString()}</h3>
-                                <small className="text-muted">bottles</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase d-block mb-2">Production Time</small>
-                                <h3 className="mb-0 fw-bold text-info">{productionTime} hrs</h3>
-                                <small className="text-muted">planned time</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase d-block mb-2">Efficiency</small>
-                                <h3 className="mb-0 fw-bold text-primary">{efficiency}%</h3>
-                                <small className="text-muted">OEE score</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase d-block mb-2">Downtime</small>
-                                <h3 className="mb-0 fw-bold text-warning">{totalDowntime} min</h3>
-                                <small className="text-muted">total stoppage</small>
-                            </div>
-                        </div>
-                    </div>
+            <div className="card shadow-sm mb-4">
+                <div className="card-header bg-white border-bottom">
+                    <h6 className="mb-0 fw-semibold">Production Summary</h6>
                 </div>
-
-                <div className="row g-3">
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm bg-light">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase fw-semibold d-block mb-2">Mechanical Downtime</small>
-                                <h4 className="mb-0 fw-bold">{mechanicalDowntime} min</h4>
+                <div className="card-body">
+                    <div className="row g-3">
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Total Output</small>
+                                    <h5 className="mb-0 fw-bold text-primary">{totalOutput.toLocaleString()}</h5>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm bg-light">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase fw-semibold d-block mb-2">Planned Downtime</small>
-                                <h4 className="mb-0 fw-bold">{plannedDowntime} min</h4>
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Production Time</small>
+                                    <h5 className="mb-0 fw-bold text-info">{productionTime} hrs</h5>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm bg-light">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase fw-semibold d-block mb-2">Availability</small>
-                                <h4 className="mb-0 fw-bold">{oeeMetrics.availability}%</h4>
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Efficiency</small>
+                                    <h5 className="mb-0 fw-bold text-success">{efficiency}%</h5>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm bg-light">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase fw-semibold d-block mb-2">Performance</small>
-                                <h4 className="mb-0 fw-bold">{oeeMetrics.performance}%</h4>
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Downtime</small>
+                                    <h5 className="mb-0 fw-bold text-warning">{totalDowntime} min</h5>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div className="col-lg-3 col-md-6">
-                        <div className="card border-0 shadow-sm bg-light">
-                            <div className="card-body">
-                                <small className="text-muted text-uppercase fw-semibold d-block mb-2">Quality</small>
-                                <h4 className="mb-0 fw-bold">{oeeMetrics.quality}%</h4>
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Mechanical DT</small>
+                                    <h5 className="mb-0 fw-bold">{mechanicalDowntime} min</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Planned DT</small>
+                                    <h5 className="mb-0 fw-bold">{plannedDowntime} min</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Availability</small>
+                                    <h5 className="mb-0 fw-bold text-primary">{oeeMetrics.availability}%</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-lg-3 col-md-6">
+                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Performance</small>
+                                    <h5 className="mb-0 fw-bold text-info">{oeeMetrics.performance}%</h5>
+                                </div>
                             </div>
                         </div>
                     </div>
