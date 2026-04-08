@@ -175,8 +175,31 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             ? filtered.reduce((s, r) => s + (r.metrics?.oee || parseFloat(r.efficiency) || r.oee || 0), 0) / filtered.length
             : 0;
         const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || r.downtime_minutes || r.total_downtime_mins || 0), 0);
+        const avgRuntime = filtered.length > 0
+            ? filtered.reduce((s, r) => s + (r.metrics?.details?.total_runtime_mins || r.runtime_minutes || 0), 0) / filtered.length
+            : 0;
+        const avgPerformance = filtered.length > 0
+            ? filtered.reduce((s, r) => s + (r.metrics?.performance || r.performance || 0), 0) / filtered.length
+            : 0;
+        const avgAvailability = filtered.length > 0
+            ? filtered.reduce((s, r) => s + (r.metrics?.availability || r.availability || 0), 0) / filtered.length
+            : 0;
+        const avgQuality = filtered.length > 0
+            ? filtered.reduce((s, r) => s + (r.metrics?.quality || r.quality || 0), 0) / filtered.length
+            : 0;
+        const targetMet = filtered.filter(r => (r.metrics?.oee || r.oee || 0) >= 85).length;
 
-        return { totalProduction, avgOee, totalDowntime, reports: filtered.length };
+        return { 
+            totalProduction, 
+            avgOee, 
+            totalDowntime, 
+            reports: filtered.length,
+            avgRuntime,
+            avgPerformance,
+            avgAvailability,
+            avgQuality,
+            targetMet
+        };
     }, [activeReports, useRange, singleDate, startDate, endDate, selectedPet, pets]);
 
     const hasActiveFilter = !!(singleDate || startDate || endDate || selectedPet);
@@ -247,52 +270,133 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             <div className="card-body">
 
                 {/* Summary Stats */}
-                <div className="row g-3 mb-4">
-                    <div className="col-md-3">
-                        <div className="card border-0 shadow-sm bg-soft-primary">
-                            <div className="card-body text-center">
-                                <div className="avatar bg-primary rounded-circle p-2 mb-2">
-                                    <i className="ti ti-bottle text-white fs-4"></i>
+                <div className="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-2 mb-2">
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-primary h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-primary rounded-circle p-2">
+                                        <i className="ti ti-bottle text-white fs-5"></i>
+                                    </div>
                                 </div>
-                                <small className="text-muted d-block fs-12">Total Production</small>
-                                <h5 className="mb-0 text-primary fw-bold">{summary.totalProduction.toLocaleString()}</h5>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Total Production</small>
+                                <h6 className="mb-0 text-primary fw-bold">{summary.totalProduction.toLocaleString()}</h6>
                                 <small className="text-muted fs-11">bottles</small>
                             </div>
                         </div>
                     </div>
-                    <div className="col-md-3">
-                        <div className="card border-0 shadow-sm bg-soft-success">
-                            <div className="card-body text-center">
-                                <div className="avatar bg-success rounded-circle p-2 mb-2">
-                                    <i className="ti ti-chart-line text-white fs-4"></i>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-success h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-success rounded-circle p-2">
+                                        <i className="ti ti-chart-pie text-white fs-5"></i>
+                                    </div>
                                 </div>
-                                <small className="text-muted d-block fs-12">Avg OEE</small>
-                                <h5 className="mb-0 text-success fw-bold">{summary.avgOee.toFixed(1)}%</h5>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Avg OEE</small>
+                                <h6 className="mb-0 text-success fw-bold">{summary.avgOee.toFixed(1)}%</h6>
                                 <small className="text-muted fs-11">efficiency</small>
                             </div>
                         </div>
                     </div>
-                    <div className="col-md-3">
-                        <div className="card border-0 shadow-sm bg-soft-danger">
-                            <div className="card-body text-center">
-                                <div className="avatar bg-danger rounded-circle p-2 mb-2">
-                                    <i className="ti ti-clock-stop text-white fs-4"></i>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-danger h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-danger rounded-circle p-2">
+                                        <i className="ti ti-clock-pause text-white fs-5"></i>
+                                    </div>
                                 </div>
-                                <small className="text-muted d-block fs-12">Total Downtime</small>
-                                <h5 className="mb-0 text-danger fw-bold">{Math.round(summary.totalDowntime)}m</h5>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Total Downtime</small>
+                                <h6 className="mb-0 text-danger fw-bold">{Math.round(summary.totalDowntime)}m</h6>
                                 <small className="text-muted fs-11">{Math.round(summary.totalDowntime / 60)}h {Math.round(summary.totalDowntime % 60)}m</small>
                             </div>
                         </div>
                     </div>
-                    <div className="col-md-3">
-                        <div className="card border-0 shadow-sm bg-soft-info">
-                            <div className="card-body text-center">
-                                <div className="avatar bg-info rounded-circle p-2 mb-2">
-                                    <i className="ti ti-file-report text-white fs-4"></i>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-info h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-info rounded-circle p-2">
+                                        <i className="ti ti-file-analytics text-white fs-5"></i>
+                                    </div>
                                 </div>
-                                <small className="text-muted d-block fs-12">Reports</small>
-                                <h5 className="mb-0 text-info fw-bold">{summary.reports}</h5>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Reports</small>
+                                <h6 className="mb-0 text-info fw-bold">{summary.reports}</h6>
                                 <small className="text-muted fs-11">in period</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div className="row row-cols-1 row-cols-sm-2 row-cols-md-5 g-2 mb-4">
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-warning h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-warning rounded-circle p-2">
+                                        <i className="ti ti-clock-play text-white fs-5"></i>
+                                    </div>
+                                </div>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Avg Runtime</small>
+                                <h6 className="mb-0 text-warning fw-bold">{Math.round(summary.avgRuntime)}m</h6>
+                                <small className="text-muted fs-11">per shift</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-purple h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="rounded-circle p-2" style={{backgroundColor: '#8b5cf6'}}>
+                                        <i className="ti ti-gauge-filled text-white fs-5"></i>
+                                    </div>
+                                </div>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Performance</small>
+                                <h6 className="mb-0 fw-bold" style={{color: '#8b5cf6'}}>{summary.avgPerformance.toFixed(1)}%</h6>
+                                <small className="text-muted fs-11">rate</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-teal h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="rounded-circle p-2" style={{backgroundColor: '#06b6d4'}}>
+                                        <i className="ti ti-activity text-white fs-5"></i>
+                                    </div>
+                                </div>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Availability</small>
+                                <h6 className="mb-0 fw-bold" style={{color: '#06b6d4'}}>{summary.avgAvailability.toFixed(1)}%</h6>
+                                <small className="text-muted fs-11">uptime</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-indigo h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="rounded-circle p-2" style={{backgroundColor: '#4f46e5'}}>
+                                        <i className="ti ti-award text-white fs-5"></i>
+                                    </div>
+                                </div>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Quality</small>
+                                <h6 className="mb-0 fw-bold" style={{color: '#4f46e5'}}>{summary.avgQuality.toFixed(1)}%</h6>
+                                <small className="text-muted fs-11">rate</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-success h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-success rounded-circle p-2">
+                                        <i className="ti ti-target-arrow text-white fs-5"></i>
+                                    </div>
+                                </div>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Target Met</small>
+                                <h6 className="mb-0 text-success fw-bold">{summary.targetMet}</h6>
+                                <small className="text-muted fs-11">shifts</small>
                             </div>
                         </div>
                     </div>

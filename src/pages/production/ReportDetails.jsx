@@ -787,76 +787,124 @@ const ReportDetails = () => {
                     <h6 className="mb-0 fw-semibold">Production Summary</h6>
                 </div>
                 <div className="card-body">
-                    <div className="row g-3">
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Total Output</small>
-                                    <h6 className="mb-0 fw-bold text-primary">{totalOutput.toLocaleString()}</h6>
+                    <div className="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-2 mb-2">
+                        <div className="col">
+                            <div className="card border-0 shadow-sm bg-soft-primary h-100">
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="bg-primary rounded-circle p-2 flex-shrink-0">
+                                        <i className="ti ti-package text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Total Output</small>
+                                        <h6 className="mb-0 text-primary fw-bold">{totalOutput.toLocaleString()}</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Prod. Time</small>
-                                    <h6 className="mb-0 fw-bold text-info">{productionTime} hrs</h6>
+                        <div className="col">
+                            <div className="card border-0 shadow-sm bg-soft-info h-100">
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="bg-info rounded-circle p-2 flex-shrink-0">
+                                        <i className="ti ti-clock-hour-4 text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Prod. Time</small>
+                                        <h6 className="mb-0 text-info fw-bold">{productionTime} hrs</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Efficiency</small>
-                                    <h6 className="mb-0 fw-bold text-success">{efficiency}%</h6>
+                        <div className="col">
+                            <div className="card border-0 shadow-sm bg-soft-success h-100">
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="bg-success rounded-circle p-2 flex-shrink-0">
+                                        <i className="ti ti-chart-pie text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Efficiency</small>
+                                        <h6 className="mb-0 text-success fw-bold">{efficiency}%</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Downtime</small>
-                                    <h6 className="mb-0 fw-bold text-warning">{totalDowntime} min</h6>
+                        <div className="col">
+                            <div className="card border-0 shadow-sm bg-soft-warning h-100">
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="bg-warning rounded-circle p-2 flex-shrink-0">
+                                        <i className="ti ti-clock-pause text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Downtime</small>
+                                        <h6 className="mb-0 text-warning fw-bold">{totalDowntime} min</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Mech. DT</small>
-                                    <h6 className="mb-0 fw-bold text-danger">{mechanicalDowntime} min</h6>
+                    </div>
+                    
+                    <div className="row row-cols-1 row-cols-sm-2 row-cols-md-5 g-2">
+                        <div className="col">
+                            <div className="card border-0 shadow-sm bg-soft-danger h-100">
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="bg-danger rounded-circle p-2 flex-shrink-0">
+                                        <i className="ti ti-tool text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Mech. DT</small>
+                                        <h6 className="mb-0 text-danger fw-bold">{mechanicalDowntime} min</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Planned DT</small>
-                                    <h6 className="mb-0 fw-bold">{plannedDowntime} min</h6>
+                        <div className="col">
+                            <div className="card border-0 shadow-sm h-100" style={{backgroundColor: '#f8f9fa'}}>
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="rounded-circle p-2 flex-shrink-0" style={{backgroundColor: '#6c757d'}}>
+                                        <i className="ti ti-calendar-time text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Planned DT</small>
+                                        <h6 className="mb-0 fw-bold" style={{color: '#6c757d'}}>{plannedDowntime} min</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Availability</small>
-                                    <h6 className="mb-0 fw-bold text-primary">{oeeMetrics.availability}%</h6>
+                        <div className="col">
+                            <div className="card border-0 shadow-sm h-100" style={{backgroundColor: '#e0f2fe'}}>
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="rounded-circle p-2 flex-shrink-0" style={{backgroundColor: '#06b6d4'}}>
+                                        <i className="ti ti-activity text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Availability</small>
+                                        <h6 className="mb-0 fw-bold" style={{color: '#06b6d4'}}>{oeeMetrics.availability}%</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Performance</small>
-                                    <h6 className="mb-0 fw-bold text-info">{oeeMetrics.performance}%</h6>
+                        <div className="col">
+                            <div className="card border-0 shadow-sm h-100" style={{backgroundColor: '#ede9fe'}}>
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="rounded-circle p-2 flex-shrink-0" style={{backgroundColor: '#8b5cf6'}}>
+                                        <i className="ti ti-gauge-filled text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Performance</small>
+                                        <h6 className="mb-0 fw-bold" style={{color: '#8b5cf6'}}>{oeeMetrics.performance}%</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-2 col-md-4 col-6">
-                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
-                                <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Quality</small>
-                                    <h6 className="mb-0 fw-bold text-success">{oeeMetrics.quality}%</h6>
+                        <div className="col">
+                            <div className="card border-0 shadow-sm bg-soft-success h-100">
+                                <div className="card-body p-2 d-flex align-items-center gap-2">
+                                    <div className="bg-success rounded-circle p-2 flex-shrink-0">
+                                        <i className="ti ti-award text-white fs-5"></i>
+                                    </div>
+                                    <div className="flex-grow-1">
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Quality</small>
+                                        <h6 className="mb-0 text-success fw-bold">{oeeMetrics.quality}%</h6>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -865,192 +913,176 @@ const ReportDetails = () => {
             </div>
 
             {/* Production Performance Analysis */}
-            <div className="row g-3 mb-4">
-                {/* Efficiency Chart */}
-                <div className="col-lg-6">
-                    <div className="card h-100">
-                        <div className="card-header bg-soft-success">
-                            <h6 className="mb-0 d-flex align-items-center gap-2 text-success">
-                                <Activity className="h-4 w-4" />
-                                Efficiency Analysis
-                            </h6>
-                        </div>
-                        <div className="card-body">
-                            <div className="d-flex flex-column flex-md-row align-items-center gap-4 justify-content-center" style={{ minHeight: '250px' }}>
-                                <div className="position-relative" style={{ width: '200px', height: '200px' }}>
-                                    {efficiencyData.length > 0 ? (
-                                        <>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={[
-                                                            { name: 'Efficiency', value: efficiencyData[0]?.value || 0 },
-                                                            { name: 'Remaining', value: 100 - (efficiencyData[0]?.value || 0) }
-                                                        ]}
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        startAngle={90}
-                                                        endAngle={450}
-                                                        innerRadius={70}
-                                                        outerRadius={90}
-                                                        dataKey="value"
-                                                        stroke="none"
-                                                    >
-                                                        <Cell fill={COLOR_EFFICIENCY} />
-                                                        <Cell fill="#e9ecef" />
-                                                    </Pie>
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                            <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                <h1 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '3rem' }}>
-                                                    {efficiencyData[0]?.value}%
-                                                </h1>
-                                                <small className="text-muted text-uppercase fw-semibold">OEE Score</small>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="w-100 h-100 rounded-circle border border-3 border-dashed d-flex align-items-center justify-content-center">
-                                            <span className="text-muted small">No Data</span>
-                                        </div>
-                                    )}
+            <div className="card shadow-sm mb-4">
+                <div className="card-header bg-white border-bottom">
+                    <h6 className="mb-0 fw-semibold">Production Performance Analysis</h6>
+                </div>
+                <div className="card-body">
+                    <div className="row g-3">
+                        {/* Efficiency Chart */}
+                        <div className="col-lg-6">
+                            <div className="card h-100 border">
+                                <div className="card-header bg-soft-success">
+                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-success">
+                                        <Activity className="h-4 w-4" />
+                                        Efficiency Analysis
+                                    </h6>
                                 </div>
-                                <div className="vstack gap-4">
-                                    <div className="text-center">
-                                        <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={[
-                                                            { value: efficiencyData[0]?.value || 0 },
-                                                            { value: 100 - (efficiencyData[0]?.value || 0) }
-                                                        ]}
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        startAngle={90}
-                                                        endAngle={450}
-                                                        innerRadius={30}
-                                                        outerRadius={40}
-                                                        dataKey="value"
-                                                        stroke="none"
-                                                    >
-                                                        <Cell fill={COLOR_EFFICIENCY} />
-                                                        <Cell fill="#e9ecef" />
-                                                    </Pie>
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                            <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(efficiencyData[0]?.value || 0).toFixed(1)}%</div>
+                                <div className="card-body">
+                                    <div className="d-flex flex-column flex-md-row align-items-center gap-4 justify-content-center" style={{ minHeight: '250px' }}>
+                                        <div className="position-relative" style={{ width: '200px', height: '200px' }}>
+                                            {efficiencyData.length > 0 ? (
+                                                <>
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie
+                                                                data={[
+                                                                    { name: 'Efficiency', value: efficiencyData[0]?.value || 0 },
+                                                                    { name: 'Remaining', value: 100 - (efficiencyData[0]?.value || 0) }
+                                                                ]}
+                                                                cx="50%"
+                                                                cy="50%"
+                                                                startAngle={90}
+                                                                endAngle={450}
+                                                                innerRadius={70}
+                                                                outerRadius={90}
+                                                                dataKey="value"
+                                                                stroke="none"
+                                                            >
+                                                                <Cell fill={COLOR_EFFICIENCY} />
+                                                                <Cell fill="#e9ecef" />
+                                                            </Pie>
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
+                                                        <h1 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '3rem' }}>
+                                                            {efficiencyData[0]?.value}%
+                                                        </h1>
+                                                        <small className="text-muted text-uppercase fw-semibold">OEE Score</small>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="w-100 h-100 rounded-circle border border-3 border-dashed d-flex align-items-center justify-content-center">
+                                                    <span className="text-muted small">No Data</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="vstack gap-4">
+                                            <div className="text-center">
+                                                <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie
+                                                                data={[
+                                                                    { value: efficiencyData[0]?.value || 0 },
+                                                                    { value: 100 - (efficiencyData[0]?.value || 0) }
+                                                                ]}
+                                                                cx="50%"
+                                                                cy="50%"
+                                                                startAngle={90}
+                                                                endAngle={450}
+                                                                innerRadius={30}
+                                                                outerRadius={40}
+                                                                dataKey="value"
+                                                                stroke="none"
+                                                            >
+                                                                <Cell fill={COLOR_EFFICIENCY} />
+                                                                <Cell fill="#e9ecef" />
+                                                            </Pie>
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
+                                                        <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(efficiencyData[0]?.value || 0).toFixed(1)}%</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2">
+                                                    <small className="text-muted text-uppercase fw-semibold d-block">Efficiency</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="mt-2">
-                                            <small className="text-muted text-uppercase fw-semibold d-block">Efficiency</small>
-                                        </div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie
-                                                        data={[
-                                                            { value: 100 - (efficiencyData[0]?.value || 0) },
-                                                            { value: efficiencyData[0]?.value || 0 }
-                                                        ]}
-                                                        cx="50%"
-                                                        cy="50%"
-                                                        startAngle={90}
-                                                        endAngle={450}
-                                                        innerRadius={30}
-                                                        outerRadius={40}
-                                                        dataKey="value"
-                                                        stroke="none"
-                                                    >
-                                                        <Cell fill="#dc3545" />
-                                                        <Cell fill="#e9ecef" />
-                                                    </Pie>
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                            <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(100 - (efficiencyData[0]?.value || 0)).toFixed(1)}%</div>
+                                            <div className="text-center">
+                                                <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie
+                                                                data={[
+                                                                    { value: 100 - (efficiencyData[0]?.value || 0) },
+                                                                    { value: efficiencyData[0]?.value || 0 }
+                                                                ]}
+                                                                cx="50%"
+                                                                cy="50%"
+                                                                startAngle={90}
+                                                                endAngle={450}
+                                                                innerRadius={30}
+                                                                outerRadius={40}
+                                                                dataKey="value"
+                                                                stroke="none"
+                                                            >
+                                                                <Cell fill="#dc3545" />
+                                                                <Cell fill="#e9ecef" />
+                                                            </Pie>
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
+                                                        <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(100 - (efficiencyData[0]?.value || 0)).toFixed(1)}%</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-2">
+                                                    <small className="text-muted text-uppercase fw-semibold d-block">Loss</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="mt-2">
-                                            <small className="text-muted text-uppercase fw-semibold d-block">Loss</small>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                {/* Downtime Analysis Chart */}
-                <div className="col-lg-6">
-                    <div className="card h-100">
-                        <div className="card-header bg-soft-warning">
-                            <h6 className="mb-0 d-flex align-items-center gap-2 text-warning">
-                                <AlertTriangle className="h-4 w-4" />
-                                Downtime Breakdown (Minutes)
-                            </h6>
-                        </div>
-                        <div className="card-body">
-                            <div style={{ height: '250px', width: '100%' }}>
-                        {downtimeData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={downtimeData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" opacity={0.5} />
-                                    <XAxis type="number" hide />
-                                    <YAxis
-                                        type="category"
-                                        dataKey="name"
-                                        width={100}
-                                        tick={{ fill: '#64748b', fontSize: 11 }}
-                                        tickLine={false}
-                                        axisLine={false}
-                                    />
-                                    <RechartsTooltip
-                                        cursor={{ fill: '#f1f5f9', opacity: 0.5 }}
-                                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                        formatter={(value) => [`${value} min`, 'Duration']}
-                                    />
-                                    <Bar dataKey="minutes" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted border border-2 border-dashed rounded">
-                                <Activity className="h-8 w-8 opacity-25 mb-2" />
-                                <span className="small">No Downtime Recorded</span>
+                        {/* Downtime Analysis Chart */}
+                        <div className="col-lg-6">
+                            <div className="card h-100 border">
+                                <div className="card-header bg-soft-warning">
+                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-warning">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        Downtime Breakdown (Minutes)
+                                    </h6>
+                                </div>
+                                <div className="card-body">
+                                    <div style={{ height: '250px', width: '100%' }}>
+                                {downtimeData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={downtimeData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" opacity={0.5} />
+                                            <XAxis type="number" hide />
+                                            <YAxis
+                                                type="category"
+                                                dataKey="name"
+                                                width={100}
+                                                tick={{ fill: '#64748b', fontSize: 11 }}
+                                                tickLine={false}
+                                                axisLine={false}
+                                            />
+                                            <RechartsTooltip
+                                                cursor={{ fill: '#f1f5f9', opacity: 0.5 }}
+                                                contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                                formatter={(value) => [`${value} min`, 'Duration']}
+                                            />
+                                            <Bar dataKey="minutes" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted border border-2 border-dashed rounded">
+                                        <Activity className="h-8 w-8 opacity-25 mb-2" />
+                                        <span className="small">No Downtime Recorded</span>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
-                </div>
+                        </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* OEE Analysis Charts */}
-            <div className="row g-3 mb-4">
-                <div className="col-lg-4">
-                    <OEECircularGauge
-                        title="Availability"
-                        value={Number(oeeMetrics.availability)}
-                        color="#3b82f6"
-                    />
-                </div>
-                <div className="col-lg-4">
-                    <OEECircularGauge
-                        title="Quality"
-                        value={Number(oeeMetrics.quality)}
-                        color="#10b981"
-                    />
-                </div>
-                <div className="col-lg-4">
-                    <OEECircularGauge
-                        title="Performance"
-                        value={Number(oeeMetrics.performance)}
-                        color="#f59e0b"
-                    />
-                </div>
-            </div>
+
 
             {/* Meter Readings Section */}
             <div className="card mb-4">
@@ -1099,62 +1131,9 @@ const ReportDetails = () => {
                 </div>
             )}
 
-            {/* High Level Stats Cards */}
-            <div className="row g-3 mb-4">
-                <div className="col-lg-3 col-md-6">
-                    <StatCard
-                    title="Total Output"
-                    value={totalOutput.toLocaleString()}
-                    icon={Layers}
-                    cardColor="success"
-                />
-                </div>
-                <div className="col-lg-3 col-md-6">
-                    <StatCard
-                    title="Production Time"
-                    value={`${productionTime} hrs`}
-                    icon={Clock}
-                    cardColor="info"
-                />
-                </div>
-                <div className="col-lg-3 col-md-6">
-                    <StatCard
-                    title="Efficiency"
-                    value={`${efficiency}%`}
-                    icon={Activity}
-                    cardColor="indigo"
-                />
-                </div>
-                <div className="col-lg-3 col-md-6">
-                    <StatCard
-                    title="Downtime"
-                    value={`${totalDowntime} min`}
-                    icon={AlertTriangle}
-                    cardColor="warning"
-                />
-                </div>
-            </div>
 
-            {/* Downtime Breakdown Stats */}
-            <div className="row g-3 mb-4">
-                <div className="col-md-6">
-                    <StatCard
-                    title="Mechanical Downtime"
-                    value={`${mechanicalDowntime} min`}
-                    icon={AlertTriangle}
-                    cardColor="danger"
-                />
-                </div>
-                <div className="col-md-6">
-                    <StatCard
-                    title="Planned Downtime"
-                    value={`${plannedDowntime} min`}
-                    icon={Clock}
-                    cardColor="info"
-                />
-                </div>
-            </div>
 
+          
 
 
             {/* Stoppage Timeline */}
