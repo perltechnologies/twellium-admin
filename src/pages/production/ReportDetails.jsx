@@ -800,33 +800,30 @@ const ReportDetails = () => {
                                     <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
                                             <Pie
-                                                data={efficiencyData}
+                                                data={[
+                                                    { name: 'Efficiency', value: efficiencyData[0]?.value || 0 },
+                                                    { name: 'Loss', value: 100 - (efficiencyData[0]?.value || 0) }
+                                                ]}
                                                 cx="50%"
                                                 cy="50%"
+                                                startAngle={90}
+                                                endAngle={-270}
                                                 innerRadius={60}
                                                 outerRadius={80}
-                                                paddingAngle={5}
+                                                paddingAngle={0}
                                                 dataKey="value"
-                                                cornerRadius={4}
                                                 stroke="none"
                                             >
-                                                {efficiencyData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={entry.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS} />
-                                                ))}
+                                                <Cell fill={COLOR_EFFICIENCY} />
+                                                <Cell fill="#e9ecef" />
                                             </Pie>
-                                            <RechartsTooltip
-                                                cursor={false}
-                                                contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                itemStyle={{ color: '#1e293b', fontWeight: 600 }}
-                                                formatter={(value) => [`${value}%`, '']}
-                                            />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                        <small className="text-muted text-uppercase d-block">Score</small>
-                                        <h3 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`}>
+                                        <h2 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`}>
                                             {efficiencyData[0]?.value}%
-                                        </h3>
+                                        </h2>
+                                        <small className="text-muted text-uppercase">OEE Score</small>
                                     </div>
                                 </div>
                             ) : (
@@ -836,18 +833,26 @@ const ReportDetails = () => {
                             )}
                         </div>
                         <div className="vstack gap-3">
-                            {efficiencyData.map((item, index) => (
-                                <div key={index} className="d-flex align-items-start gap-3">
-                                    <div
-                                        className="rounded-pill mt-1 flex-shrink-0"
-                                        style={{ backgroundColor: item.name === 'Efficiency' ? COLOR_EFFICIENCY : COLOR_LOSS, width: '6px', height: '40px' }}
-                                    />
-                                    <div>
-                                        <small className="text-muted text-uppercase fw-bold d-block">{item.name}</small>
-                                        <h5 className="mb-0 fw-bold">{item.value}%</h5>
-                                    </div>
+                            <div className="d-flex align-items-start gap-3">
+                                <div
+                                    className="rounded-pill mt-1 flex-shrink-0"
+                                    style={{ backgroundColor: COLOR_EFFICIENCY, width: '6px', height: '40px' }}
+                                />
+                                <div>
+                                    <small className="text-muted text-uppercase fw-bold d-block">Efficiency</small>
+                                    <h5 className="mb-0 fw-bold">{efficiencyData[0]?.value || 0}%</h5>
                                 </div>
-                            ))}
+                            </div>
+                            <div className="d-flex align-items-start gap-3">
+                                <div
+                                    className="rounded-pill mt-1 flex-shrink-0"
+                                    style={{ backgroundColor: '#e9ecef', width: '6px', height: '40px' }}
+                                />
+                                <div>
+                                    <small className="text-muted text-uppercase fw-bold d-block">Loss</small>
+                                    <h5 className="mb-0 fw-bold">{100 - (efficiencyData[0]?.value || 0)}%</h5>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
