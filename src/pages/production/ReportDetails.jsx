@@ -9,52 +9,41 @@ import {
 } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
 
-// OEE Chart Component
-const OEEBarChart = ({ title, data, color, tooltipPrefix, gridColor, textColor, bgColor, borderColor }) => (
+// OEE Circular Gauge Component
+const OEECircularGauge = ({ title, value, color }) => (
     <div className="card h-100">
         <div className="card-header">
             <h6 className="mb-0">{title}</h6>
         </div>
-        <div className="card-body" style={{ minHeight: '300px' }}>
-            {data.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={data} margin={{ top: 30, right: 10, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                        <XAxis
-                            dataKey="name"
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fill: textColor, fontSize: 12 }}
-                            dy={10}
-                        />
-                        <YAxis
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fill: textColor, fontSize: 12 }}
-                            domain={[0, 100]}
-                        />
-                        <RechartsTooltip
-                            cursor={{ fill: 'transparent' }}
-                            contentStyle={{ backgroundColor: bgColor, borderColor: borderColor, borderRadius: '8px', color: textColor }}
-                            formatter={(value) => [`${value}%`, tooltipPrefix]}
-                        />
-                        <Bar
+        <div className="card-body d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '300px' }}>
+            <div className="position-relative" style={{ width: '200px', height: '200px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                        <Pie
+                            data={[
+                                { name: title, value: value },
+                                { name: 'Remaining', value: 100 - value }
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            startAngle={90}
+                            endAngle={-270}
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={0}
                             dataKey="value"
-                            fill={color}
-                            radius={[4, 4, 0, 0]}
-                            barSize={40}
-                            animationDuration={1500}
+                            stroke="none"
                         >
-                            {data.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={color} />
-                            ))}
-                            <LabelList dataKey="value" position="top" fill={color} formatter={(val) => `${val}%`} fontSize={12} fontWeight="bold" />
-                        </Bar>
-                    </BarChart>
+                            <Cell fill={color} />
+                            <Cell fill="#e9ecef" />
+                        </Pie>
+                    </PieChart>
                 </ResponsiveContainer>
-            ) : (
-                <div className="text-center text-muted py-5">No Data</div>
-            )}
+                <div className="position-absolute top-50 start-50 translate-middle text-center">
+                    <h2 className="mb-0 fw-bold" style={{ color: color }}>{value}%</h2>
+                    <small className="text-muted text-uppercase">{title}</small>
+                </div>
+            </div>
         </div>
     </div>
 );
@@ -912,39 +901,24 @@ const ReportDetails = () => {
             {/* OEE Analysis Charts */}
             <div className="row g-3 mb-4">
                 <div className="col-lg-4">
-                    <OEEBarChart
+                    <OEECircularGauge
                         title="Availability"
-                        data={[{ name: report.pet_name, value: Number(oeeMetrics.availability) }]}
+                        value={Number(oeeMetrics.availability)}
                         color="#3b82f6"
-                        tooltipPrefix="Availability"
-                        gridColor={chartGridColor}
-                        textColor={tooltipText}
-                        bgColor={tooltipBg}
-                        borderColor={tooltipBorder}
                     />
                 </div>
                 <div className="col-lg-4">
-                    <OEEBarChart
+                    <OEECircularGauge
                         title="Quality"
-                        data={[{ name: report.pet_name, value: Number(oeeMetrics.quality) }]}
+                        value={Number(oeeMetrics.quality)}
                         color="#10b981"
-                        tooltipPrefix="Quality"
-                        gridColor={chartGridColor}
-                        textColor={tooltipText}
-                        bgColor={tooltipBg}
-                        borderColor={tooltipBorder}
                     />
                 </div>
                 <div className="col-lg-4">
-                    <OEEBarChart
+                    <OEECircularGauge
                         title="Performance"
-                        data={[{ name: report.pet_name, value: Number(oeeMetrics.performance) }]}
+                        value={Number(oeeMetrics.performance)}
                         color="#f59e0b"
-                        tooltipPrefix="Performance"
-                        gridColor={chartGridColor}
-                        textColor={tooltipText}
-                        bgColor={tooltipBg}
-                        borderColor={tooltipBorder}
                     />
                 </div>
             </div>
