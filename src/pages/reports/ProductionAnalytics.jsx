@@ -63,6 +63,11 @@ const ProductionAnalytics = () => {
             // Always use timeRange for data fetching if set, ignore manual date filters for fetching
             if (timeRange && timeRange !== 'all') {
                 const now = new Date();
+                const currentTime = now.toTimeString().slice(0, 5);
+                // If before 6am, use previous day for calculations
+                if (currentTime < '06:00') {
+                    now.setDate(now.getDate() - 1);
+                }
                 let startDate, endDate;
                 
                 if (timeRange === 'week') {
