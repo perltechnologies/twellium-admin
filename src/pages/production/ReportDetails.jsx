@@ -1079,38 +1079,59 @@ const ReportDetails = () => {
                     </ul>
                 </div>
 
-                <div className="card-body">{activeTab === 'batches' && (
-                        <DataTable
-                            columns={[
-                                { header: 'Batch #', accessor: 'batch_number' },
-                                { header: 'Syrup Liters', accessor: 'syrup_liters', render: row => `${row.syrup_liters} L` },
-                                { header: 'Start Time', accessor: 'start_time' },
-                            ]}
-                            data={report.batches}
-                            isLoading={false}
-                        />
-                    )}
+                <div className="card-body">
+                    <div className="tab-content">
+                        {activeTab === 'batches' && (
+                            <div className="tab-pane fade show active">
+                                <DataTable
+                                    columns={[
+                                        { header: 'Batch #', accessor: 'batch_number' },
+                                        { header: 'Syrup Liters', accessor: 'syrup_liters', render: row => `${row.syrup_liters} L` },
+                                        { header: 'Start Time', accessor: 'start_time' },
+                                    ]}
+                                    data={report.batches}
+                                    isLoading={false}
+                                />
+                            </div>
+                        )}
 
-                    {activeTab === 'materials' && (
-                        <MaterialsView materials={report.materials} />
-                    )}
+                        {activeTab === 'materials' && (
+                            <div className="tab-pane fade show active">
+                                <MaterialsView materials={report.materials} />
+                            </div>
+                        )}
 
-                    {activeTab === 'stoppages' && (
-                        <StoppageLogsView logs={report.stoppage_logs} />
-                    )}
+                        {activeTab === 'stoppages' && (
+                            <div className="tab-pane fade show active">
+                                <StoppageLogsView logs={report.stoppage_logs} />
+                            </div>
+                        )}
 
-                    {activeTab === 'workers' && (
-                        <DataTable
-                            columns={[
-                                { header: 'Name', accessor: 'user', render: row => row.user?.full_name || row.user?.username },
-                                { header: 'Role', accessor: 'user', render: row => row.user?.role },
-                                { header: 'Company', accessor: 'user', render: row => row.user?.company_name },
-                                { header: 'Present', accessor: 'present', render: row => row.present ? 'Yes' : 'No' },
-                            ]}
-                            data={report.workers}
-                            isLoading={false}
-                        />
-                    )}
+                        {activeTab === 'workers' && (
+                            <div className="tab-pane fade show active">
+                                <DataTable
+                                    columns={[
+                                        { header: 'Name', accessor: 'user', render: row => row.user?.full_name || row.user?.username },
+                                        { header: 'Role', accessor: 'user', render: row => row.user?.role },
+                                        { header: 'Company', accessor: 'user', render: row => row.user?.company_name },
+                                        { header: 'Present', accessor: 'present', render: row => row.present ? 'Yes' : 'No' },
+                                    ]}
+                                    data={report.workers}
+                                    isLoading={false}
+                                />
+                            </div>
+                        )}
+
+                        {activeTab === 'readings' && (
+                            <div className="tab-pane fade show active">
+                                <MeterReadingsView
+                                    productionReadings={report.production_readings}
+                                    syrupReadings={report.syrup_readings}
+                                    co2Readings={report.co2_readings}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </>
