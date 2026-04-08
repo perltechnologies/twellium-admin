@@ -38,7 +38,7 @@ const OeeAnalytics = () => {
     const [pets, setPets] = useState([]);
     const [chartType, setChartType] = useState('line');
     const [viewMode, setViewMode] = useState('chart');
-    const [timeRange, setTimeRange] = useState('month');
+    const [timeRange, setTimeRange] = useState('week');
 
     useEffect(() => {
         productionApi.getPets({ page_size: 100 })
