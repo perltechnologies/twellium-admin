@@ -100,11 +100,18 @@ const OeeAnalytics = () => {
             let reportData = res.data?.data?.data || res.data?.data || Array.isArray(res.data) ? res.data : res.data?.results || [];
             reportData = reportData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
             
-            // Map log_date to production_date for consistency
-            reportData = reportData.map(r => ({
-                ...r,
-                production_date: r.production_date || r.log_date
-            }));
+            // Extract production_date from report_code (e.g., "PR-2026-04-07-NIGHT" -> "2026-04-07")
+            reportData = reportData.map(r => {
+                let prodDate = r.production_date;
+                if (!prodDate && r.report_code) {
+                    const match = r.report_code.match(/PR-(\d{4}-\d{2}-\d{2})/);
+                    if (match) prodDate = match[1];
+                }
+                return {
+                    ...r,
+                    production_date: prodDate || r.log_date
+                };
+            });
             
             // Don't filter by date when timeRange is active - let the chart show all dates with 0 for missing data
             
