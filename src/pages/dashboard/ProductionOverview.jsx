@@ -640,8 +640,10 @@ const Overview = () => {
                                             contentStyle={{ borderRadius: 8, border: '1px solid #e9ecef', fontSize: 12 }}
                                             formatter={(v, name) => [v.toLocaleString(), name === 'planned' ? 'Planned' : 'Actual']}
                                         />
-                                        <Bar dataKey="planned" fill="#2F80ED" radius={[3, 3, 0, 0]} barSize={18} />
-                                        <Bar dataKey="actual" fill="#1ABE17" radius={[3, 3, 0, 0]} barSize={18} />
+                                        <Bar dataKey="planned" fill="#2F80ED" radius={[3, 3, 0, 0]} barSize={18}
+                                            label={{ position: 'inside', fontSize: 10, fill: '#ffffff', fontWeight: 600, formatter: (v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v }} />
+                                        <Bar dataKey="actual" fill="#1ABE17" radius={[3, 3, 0, 0]} barSize={18}
+                                            label={{ position: 'inside', fontSize: 10, fill: '#ffffff', fontWeight: 600, formatter: (v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v }} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
@@ -786,9 +788,9 @@ const Overview = () => {
                                             formatter={(v, name) => [formatDuration(v), name]}
                                         />
                                         <Bar dataKey="Mechanical" fill={DOWNTIME_COLORS.Mechanical} radius={[0, 4, 4, 0]} barSize={20}
-                                            label={{ position: 'right', fontSize: 10, fill: '#6b7280', formatter: (v) => v > 0 ? formatDuration(v) : '' }} />
+                                            label={{ position: 'inside', fontSize: 10, fill: '#ffffff', fontWeight: 600, formatter: (v) => v > 0 ? formatDuration(v) : '' }} />
                                         <Bar dataKey="Planned" fill={DOWNTIME_COLORS.Planned} radius={[0, 4, 4, 0]} barSize={20}
-                                            label={{ position: 'right', fontSize: 10, fill: '#6b7280', formatter: (v) => v > 0 ? formatDuration(v) : '' }} />
+                                            label={{ position: 'inside', fontSize: 10, fill: '#ffffff', fontWeight: 600, formatter: (v) => v > 0 ? formatDuration(v) : '' }} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (

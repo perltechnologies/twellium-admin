@@ -626,6 +626,10 @@ const ReportDetails = () => {
                 fillerReading += (parseFloat(m.filler_reading) || 0);
                 fillerRejects += (parseFloat(m.filler_rejects) || 0);
             });
+        } else {
+            // Fallback to report-level data
+            fillerReading = parseFloat(report.filler_reading) || parseFloat(report.total_bottles_produced) || 0;
+            fillerRejects = parseFloat(report.filler_rejects) || parseFloat(report.total_waste) || 0;
         }
 
         // Availability = (Total Production Time − Total Downtime) / (Total Production Time − Unplanned Downtime)
@@ -835,14 +839,14 @@ const ReportDetails = () => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Downtime</small>
-                                        <h6 className="mb-0 text-warning fw-bold">{totalDowntime} min</h6>
+                                        <h6 className="mb-0 text-warning fw-bold">{Number(totalDowntime).toFixed(2)} min</h6>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div className="row row-cols-1 row-cols-sm-2 row-cols-md-5 g-2">
+                    <div className="row row-cols-1 row-cols-sm-2 row-cols-md-2 g-2">
                         <div className="col">
                             <div className="card border-0 shadow-sm bg-soft-danger h-100">
                                 <div className="card-body p-2 d-flex align-items-center gap-2">
@@ -851,7 +855,7 @@ const ReportDetails = () => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Mech. DT</small>
-                                        <h6 className="mb-0 text-danger fw-bold">{mechanicalDowntime} min</h6>
+                                        <h6 className="mb-0 text-danger fw-bold">{Number(mechanicalDowntime).toFixed(2)} min</h6>
                                     </div>
                                 </div>
                             </div>
@@ -864,47 +868,77 @@ const ReportDetails = () => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Planned DT</small>
-                                        <h6 className="mb-0 fw-bold" style={{color: '#6c757d'}}>{plannedDowntime} min</h6>
+                                        <h6 className="mb-0 fw-bold" style={{color: '#6c757d'}}>{Number(plannedDowntime).toFixed(2)} min</h6>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <div className="row row-cols-1 row-cols-sm-3 g-3 mt-2">
                         <div className="col">
-                            <div className="card border-0 shadow-sm h-100" style={{backgroundColor: '#e0f2fe'}}>
-                                <div className="card-body p-2 d-flex align-items-center gap-2">
-                                    <div className="rounded-circle p-2 flex-shrink-0" style={{backgroundColor: '#06b6d4'}}>
-                                        <i className="ti ti-activity text-white fs-5"></i>
-                                    </div>
-                                    <div className="flex-grow-1">
-                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Availability</small>
-                                        <h6 className="mb-0 fw-bold" style={{color: '#06b6d4'}}>{oeeMetrics.availability}%</h6>
-                                    </div>
+                            <div className="card border-0 shadow-sm">
+                                <div className="card-body p-3">
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <BarChart data={[{ name: 'Availability', value: parseFloat(oeeMetrics.availability) }]} barSize={60}>
+                                            <defs>
+                                                <linearGradient id="availGradient" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#06b6d4" stopOpacity={1} />
+                                                    <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.7} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                                            <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 600 }} />
+                                            <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+                                            <Bar dataKey="value" fill="url(#availGradient)" radius={[8, 8, 0, 0]}>
+                                                <LabelList dataKey="value" position="inside" formatter={(value) => `${value}%`} style={{ fontWeight: 'bold', fill: '#ffffff', fontSize: 16 }} />
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
                         </div>
                         <div className="col">
-                            <div className="card border-0 shadow-sm h-100" style={{backgroundColor: '#ede9fe'}}>
-                                <div className="card-body p-2 d-flex align-items-center gap-2">
-                                    <div className="rounded-circle p-2 flex-shrink-0" style={{backgroundColor: '#8b5cf6'}}>
-                                        <i className="ti ti-gauge-filled text-white fs-5"></i>
-                                    </div>
-                                    <div className="flex-grow-1">
-                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Performance</small>
-                                        <h6 className="mb-0 fw-bold" style={{color: '#8b5cf6'}}>{oeeMetrics.performance}%</h6>
-                                    </div>
+                            <div className="card border-0 shadow-sm">
+                                <div className="card-body p-3">
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <BarChart data={[{ name: 'Performance', value: parseFloat(oeeMetrics.performance) }]} barSize={60}>
+                                            <defs>
+                                                <linearGradient id="perfGradient" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={1} />
+                                                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.7} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                                            <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 600 }} />
+                                            <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+                                            <Bar dataKey="value" fill="url(#perfGradient)" radius={[8, 8, 0, 0]}>
+                                                <LabelList dataKey="value" position="inside" formatter={(value) => `${value}%`} style={{ fontWeight: 'bold', fill: '#ffffff', fontSize: 16 }} />
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
                         </div>
                         <div className="col">
-                            <div className="card border-0 shadow-sm bg-soft-success h-100">
-                                <div className="card-body p-2 d-flex align-items-center gap-2">
-                                    <div className="bg-success rounded-circle p-2 flex-shrink-0">
-                                        <i className="ti ti-award text-white fs-5"></i>
-                                    </div>
-                                    <div className="flex-grow-1">
-                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Quality</small>
-                                        <h6 className="mb-0 text-success fw-bold">{oeeMetrics.quality}%</h6>
-                                    </div>
+                            <div className="card border-0 shadow-sm">
+                                <div className="card-body p-3">
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <BarChart data={[{ name: 'Quality', value: parseFloat(oeeMetrics.quality) }]} barSize={60}>
+                                            <defs>
+                                                <linearGradient id="qualGradient" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
+                                                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.7} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                                            <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 600 }} />
+                                            <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+                                            <Bar dataKey="value" fill="url(#qualGradient)" radius={[8, 8, 0, 0]}>
+                                                <LabelList dataKey="value" position="inside" formatter={(value) => `${value}%`} style={{ fontWeight: 'bold', fill: '#ffffff', fontSize: 16 }} />
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
                                 </div>
                             </div>
                         </div>
@@ -913,24 +947,28 @@ const ReportDetails = () => {
             </div>
 
             {/* Production Performance Analysis */}
-            <div className="card shadow-sm mb-4">
-                <div className="card-header bg-white border-bottom">
-                    <h6 className="mb-0 fw-semibold">Production Performance Analysis</h6>
+            <div className="card shadow-sm mb-4 border-0">
+                <div className="card-header bg-white border-bottom py-3">
+                    <h6 className="mb-0 fw-semibold text-dark d-flex align-items-center gap-2">
+                        <i className="ti ti-chart-bar fs-5 text-primary"></i>
+                        Production Performance Analysis
+                    </h6>
+                    <small className="text-muted">Efficiency and downtime metrics overview</small>
                 </div>
-                <div className="card-body">
-                    <div className="row g-3">
+                <div className="card-body p-4 bg-white">
+                    <div className="row g-4">
                         {/* Efficiency Chart */}
                         <div className="col-lg-6">
-                            <div className="card h-100 border">
-                                <div className="card-header bg-soft-success">
-                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-success">
-                                        <Activity className="h-4 w-4" />
+                            <div className="card h-100 border shadow-sm" style={{ overflow: 'hidden' }}>
+                                <div className="card-header bg-light border-bottom py-3">
+                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-dark fw-semibold">
+                                        <Activity className="h-4 w-4 text-success" />
                                         Efficiency Analysis
                                     </h6>
                                 </div>
-                                <div className="card-body">
-                                    <div className="d-flex flex-column flex-md-row align-items-center gap-4 justify-content-center" style={{ minHeight: '250px' }}>
-                                        <div className="position-relative" style={{ width: '200px', height: '200px' }}>
+                                <div className="card-body bg-white p-4">
+                                    <div className="d-flex flex-column flex-md-row align-items-center gap-4 justify-content-center" style={{ minHeight: '300px' }}>
+                                        <div className="position-relative" style={{ width: '220px', height: '220px' }}>
                                             {efficiencyData.length > 0 ? (
                                                 <>
                                                     <ResponsiveContainer width="100%" height="100%">
@@ -944,32 +982,32 @@ const ReportDetails = () => {
                                                                 cy="50%"
                                                                 startAngle={90}
                                                                 endAngle={450}
-                                                                innerRadius={70}
-                                                                outerRadius={90}
+                                                                innerRadius={75}
+                                                                outerRadius={95}
                                                                 dataKey="value"
                                                                 stroke="none"
                                                             >
-                                                                <Cell fill={COLOR_EFFICIENCY} />
-                                                                <Cell fill="#e9ecef" />
+                                                                <Cell fill={efficiencyData[0]?.value >= 80 ? '#10b981' : efficiencyData[0]?.value >= 60 ? '#f59e0b' : '#ef4444'} />
+                                                                <Cell fill="#e5e7eb" />
                                                             </Pie>
                                                         </PieChart>
                                                     </ResponsiveContainer>
                                                     <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                        <h1 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '3rem' }}>
+                                                        <h1 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '3.5rem' }}>
                                                             {efficiencyData[0]?.value}%
                                                         </h1>
-                                                        <small className="text-muted text-uppercase fw-semibold">OEE Score</small>
+                                                        <small className="text-secondary text-uppercase fw-semibold" style={{ letterSpacing: '0.5px' }}>OEE Score</small>
                                                     </div>
                                                 </>
                                             ) : (
-                                                <div className="w-100 h-100 rounded-circle border border-3 border-dashed d-flex align-items-center justify-content-center">
+                                                <div className="w-100 h-100 rounded-circle border border-2 border-dashed d-flex align-items-center justify-content-center bg-light">
                                                     <span className="text-muted small">No Data</span>
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="vstack gap-4">
-                                            <div className="text-center">
-                                                <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
+                                        <div className="vstack gap-3">
+                                            <div className="text-center p-3 rounded border" style={{ backgroundColor: '#f9fafb' }}>
+                                                <div className="position-relative d-inline-block mb-2" style={{ width: '110px', height: '110px' }}>
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <PieChart>
                                                             <Pie
@@ -981,26 +1019,28 @@ const ReportDetails = () => {
                                                                 cy="50%"
                                                                 startAngle={90}
                                                                 endAngle={450}
-                                                                innerRadius={30}
-                                                                outerRadius={40}
+                                                                innerRadius={35}
+                                                                outerRadius={45}
                                                                 dataKey="value"
                                                                 stroke="none"
                                                             >
-                                                                <Cell fill={COLOR_EFFICIENCY} />
-                                                                <Cell fill="#e9ecef" />
+                                                                <Cell fill="#10b981" />
+                                                                <Cell fill="#e5e7eb" />
                                                             </Pie>
                                                         </PieChart>
                                                     </ResponsiveContainer>
                                                     <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                        <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(efficiencyData[0]?.value || 0).toFixed(1)}%</div>
+                                                        <div className="fw-bold text-success" style={{ fontSize: '1.5rem' }}>{(efficiencyData[0]?.value || 0).toFixed(1)}%</div>
                                                     </div>
                                                 </div>
-                                                <div className="mt-2">
-                                                    <small className="text-muted text-uppercase fw-semibold d-block">Efficiency</small>
+                                                <div>
+                                                    <small className="text-secondary text-uppercase fw-semibold d-block">
+                                                        <i className="ti ti-trending-up me-1"></i>Efficiency
+                                                    </small>
                                                 </div>
                                             </div>
-                                            <div className="text-center">
-                                                <div className="position-relative d-inline-block" style={{ width: '100px', height: '100px' }}>
+                                            <div className="text-center p-3 rounded border" style={{ backgroundColor: '#f9fafb' }}>
+                                                <div className="position-relative d-inline-block mb-2" style={{ width: '110px', height: '110px' }}>
                                                     <ResponsiveContainer width="100%" height="100%">
                                                         <PieChart>
                                                             <Pie
@@ -1012,22 +1052,24 @@ const ReportDetails = () => {
                                                                 cy="50%"
                                                                 startAngle={90}
                                                                 endAngle={450}
-                                                                innerRadius={30}
-                                                                outerRadius={40}
+                                                                innerRadius={35}
+                                                                outerRadius={45}
                                                                 dataKey="value"
                                                                 stroke="none"
                                                             >
-                                                                <Cell fill="#dc3545" />
-                                                                <Cell fill="#e9ecef" />
+                                                                <Cell fill="#6b7280" />
+                                                                <Cell fill="#e5e7eb" />
                                                             </Pie>
                                                         </PieChart>
                                                     </ResponsiveContainer>
                                                     <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                        <div className="fw-bold" style={{ fontSize: '1.2rem' }}>{(100 - (efficiencyData[0]?.value || 0)).toFixed(1)}%</div>
+                                                        <div className="fw-bold text-secondary" style={{ fontSize: '1.5rem' }}>{(100 - (efficiencyData[0]?.value || 0)).toFixed(1)}%</div>
                                                     </div>
                                                 </div>
-                                                <div className="mt-2">
-                                                    <small className="text-muted text-uppercase fw-semibold d-block">Loss</small>
+                                                <div>
+                                                    <small className="text-secondary text-uppercase fw-semibold d-block">
+                                                        <i className="ti ti-trending-down me-1"></i>Loss
+                                                    </small>
                                                 </div>
                                             </div>
                                         </div>
@@ -1038,40 +1080,74 @@ const ReportDetails = () => {
 
                         {/* Downtime Analysis Chart */}
                         <div className="col-lg-6">
-                            <div className="card h-100 border">
-                                <div className="card-header bg-soft-warning">
-                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-warning">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        Downtime Breakdown (Minutes)
+                            <div className="card h-100 border shadow-sm" style={{ overflow: 'hidden' }}>
+                                <div className="card-header bg-light border-bottom py-3">
+                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-dark fw-semibold">
+                                        <AlertTriangle className="h-4 w-4 text-warning" />
+                                        Downtime Breakdown
                                     </h6>
                                 </div>
-                                <div className="card-body">
-                                    <div style={{ height: '250px', width: '100%' }}>
+                                <div className="card-body bg-white p-4">
+                                    <div style={{ height: '300px', width: '100%' }}>
                                 {downtimeData.length > 0 ? (
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={downtimeData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                                            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e2e8f0" opacity={0.5} />
-                                            <XAxis type="number" hide />
+                                        <BarChart data={downtimeData} layout="vertical" margin={{ top: 10, right: 50, left: 120, bottom: 10 }}>
+                                            <defs>
+                                                <linearGradient id="downtimeGradient" x1="0" y1="0" x2="1" y2="0">
+                                                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9} />
+                                                    <stop offset="100%" stopColor="#f59e0b" stopOpacity={1} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} vertical={true} stroke="#e5e7eb" opacity={0.5} />
+                                            <XAxis
+                                                type="number"
+                                                tick={{ fill: '#6b7280', fontSize: 11 }}
+                                                axisLine={{ stroke: '#d1d5db' }}
+                                                tickLine={{ stroke: '#d1d5db' }}
+                                                label={{ value: 'Duration (minutes)', position: 'insideBottom', offset: -5, fill: '#6b7280', fontSize: 11 }}
+                                            />
                                             <YAxis
                                                 type="category"
                                                 dataKey="name"
-                                                width={100}
-                                                tick={{ fill: '#64748b', fontSize: 11 }}
+                                                width={120}
+                                                tick={{ fill: '#374151', fontSize: 11, fontWeight: 500 }}
                                                 tickLine={false}
-                                                axisLine={false}
+                                                axisLine={{ stroke: '#d1d5db' }}
                                             />
                                             <RechartsTooltip
-                                                cursor={{ fill: '#f1f5f9', opacity: 0.5 }}
-                                                contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                                formatter={(value) => [`${value} min`, 'Duration']}
+                                                cursor={{ fill: '#f3f4f6', opacity: 0.5 }}
+                                                contentStyle={{
+                                                    backgroundColor: '#fff',
+                                                    borderRadius: '8px',
+                                                    border: '1px solid #e5e7eb',
+                                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                                    padding: '10px 14px'
+                                                }}
+                                                labelStyle={{ fontWeight: '600', color: '#111827', fontSize: '13px', marginBottom: '4px' }}
+                                                formatter={(value) => [`${Number(value).toFixed(1)} min`, 'Duration']}
                                             />
-                                            <Bar dataKey="minutes" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={20} />
+                                            <Bar
+                                                dataKey="minutes"
+                                                radius={[0, 6, 6, 0]}
+                                                barSize={28}
+                                                label={{
+                                                    position: 'inside',
+                                                    fill: '#ffffff',
+                                                    fontSize: 11,
+                                                    fontWeight: 700,
+                                                    formatter: (value) => value ? `${Number(value).toFixed(0)}m` : ''
+                                                }}
+                                            >
+                                                {downtimeData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#06b6d4', '#ec4899', '#6b7280'][index % 8]} />
+                                                ))}
+                                            </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
                                 ) : (
-                                    <div className="w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted border border-2 border-dashed rounded">
+                                    <div className="w-100 h-100 d-flex flex-column align-items-center justify-content-center text-muted border border-2 border-dashed rounded bg-light">
                                         <Activity className="h-8 w-8 opacity-25 mb-2" />
-                                        <span className="small">No Downtime Recorded</span>
+                                        <span className="small fw-semibold">No Downtime Recorded</span>
                                     </div>
                                 )}
                             </div>

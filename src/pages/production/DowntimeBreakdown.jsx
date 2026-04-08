@@ -215,7 +215,18 @@ const DowntimeBreakdown = () => {
                                             }}
                                             formatter={(value) => [`${value} min`, 'Duration']}
                                         />
-                                        <Bar dataKey="minutes" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                                        <Bar 
+                                            dataKey="minutes" 
+                                            fill="#f59e0b" 
+                                            radius={[0, 4, 4, 0]}
+                                            label={{ 
+                                                position: 'right', 
+                                                fill: isDark ? '#94a3b8' : '#64748b',
+                                                fontSize: 11,
+                                                fontWeight: 500,
+                                                formatter: (value) => `${value}m`
+                                            }}
+                                        />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
