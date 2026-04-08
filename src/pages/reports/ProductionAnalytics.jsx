@@ -41,7 +41,7 @@ const ProductionAnalytics = () => {
     const [pets, setPets] = useState([]);
     const [activeTab, setActiveTab] = useState('output');
     const [viewMode, setViewMode] = useState('chart');
-    const [timeRange, setTimeRange] = useState('month');
+    const [timeRange, setTimeRange] = useState('week');
 
     useEffect(() => {
         productionApi.getPets({ page_size: 100 })
@@ -69,22 +69,23 @@ const ProductionAnalytics = () => {
                     const dayOfWeek = now.getDay();
                     startDate = new Date(now);
                     startDate.setDate(now.getDate() - dayOfWeek);
-                    startDate.setHours(0, 0, 0, 0);
+                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(startDate);
                     endDate.setDate(startDate.getDate() + 6);
-                    endDate.setHours(23, 59, 59, 0);
+                    endDate.setHours(6, 0, 59, 0);
                 } else if (timeRange === 'month') {
-                    // Use today only to avoid 500 error
-                    startDate = new Date(now);
-                    startDate.setHours(0, 0, 0, 0);
+                    // Current month from 1st to today
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(now);
-                    endDate.setHours(23, 59, 59, 0);
+                    endDate.setHours(6, 0, 59, 0);
                 } else if (timeRange === 'quarter') {
-                    // Use today only to avoid 500 error
-                    startDate = new Date(now);
-                    startDate.setHours(0, 0, 0, 0);
+                    // Current quarter
+                    const quarter = Math.floor(now.getMonth() / 3);
+                    startDate = new Date(now.getFullYear(), quarter * 3, 1);
+                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(now);
-                    endDate.setHours(23, 59, 59, 0);
+                    endDate.setHours(6, 0, 59, 0);
                 }
                 
                 if (startDate && endDate) {
