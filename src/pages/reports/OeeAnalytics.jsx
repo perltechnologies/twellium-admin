@@ -278,7 +278,11 @@ const OeeAnalytics = () => {
             availability: vals.count > 0 ? (vals.avail / vals.count).toFixed(1) : '0.0',
             quality: vals.count > 0 ? (vals.quality / vals.count).toFixed(1) : '0.0',
             performance: vals.count > 0 ? (vals.perf / vals.count).toFixed(1) : '0.0'
-        })).sort((a, b) => parseFloat(b.oee) - parseFloat(a.oee));
+        })).sort((a, b) => {
+            const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
+            return aNum - bNum;
+        });
     }, [data]);
 
     const radarData = useMemo(() => {
