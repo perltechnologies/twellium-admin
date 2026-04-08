@@ -786,10 +786,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase">Total Output</small>
-                                <div className="text-success"><Package className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase d-block mb-2">Total Output</small>
                             <h3 className="mb-0 fw-bold text-primary">{totalOutput.toLocaleString()}</h3>
                             <small className="text-muted">bottles</small>
                         </div>
@@ -798,10 +795,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase">Production Time</small>
-                                <div className="text-info"><Clock className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase d-block mb-2">Production Time</small>
                             <h3 className="mb-0 fw-bold text-info">{productionTime} hrs</h3>
                             <small className="text-muted">planned time</small>
                         </div>
@@ -810,10 +804,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase">Efficiency</small>
-                                <div className="text-primary"><Activity className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase d-block mb-2">Efficiency</small>
                             <h3 className="mb-0 fw-bold text-primary">{efficiency}%</h3>
                             <small className="text-muted">OEE score</small>
                         </div>
@@ -822,10 +813,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase">Downtime</small>
-                                <div className="text-warning"><AlertTriangle className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase d-block mb-2">Downtime</small>
                             <h3 className="mb-0 fw-bold text-warning">{totalDowntime} min</h3>
                             <small className="text-muted">total stoppage</small>
                         </div>
@@ -838,10 +826,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm bg-light">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase fw-semibold">Mechanical Downtime</small>
-                                <div className="text-danger"><AlertTriangle className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase fw-semibold d-block mb-2">Mechanical Downtime</small>
                             <h4 className="mb-0 fw-bold">{mechanicalDowntime} min</h4>
                         </div>
                     </div>
@@ -849,10 +834,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm bg-light">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase fw-semibold">Planned Downtime</small>
-                                <div className="text-warning"><Clock className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase fw-semibold d-block mb-2">Planned Downtime</small>
                             <h4 className="mb-0 fw-bold">{plannedDowntime} min</h4>
                         </div>
                     </div>
@@ -860,10 +842,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm bg-light">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase fw-semibold">Availability</small>
-                                <div className="text-primary"><Activity className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase fw-semibold d-block mb-2">Availability</small>
                             <h4 className="mb-0 fw-bold">{oeeMetrics.availability}%</h4>
                         </div>
                     </div>
@@ -871,10 +850,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm bg-light">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase fw-semibold">Performance</small>
-                                <div className="text-info"><Activity className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase fw-semibold d-block mb-2">Performance</small>
                             <h4 className="mb-0 fw-bold">{oeeMetrics.performance}%</h4>
                         </div>
                     </div>
@@ -882,10 +858,7 @@ const ReportDetails = () => {
                 <div className="col-lg-3 col-md-6">
                     <div className="card border-0 shadow-sm bg-light">
                         <div className="card-body">
-                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                <small className="text-muted text-uppercase fw-semibold">Quality</small>
-                                <div className="text-success"><Activity className="h-4 w-4" /></div>
-                            </div>
+                            <small className="text-muted text-uppercase fw-semibold d-block mb-2">Quality</small>
                             <h4 className="mb-0 fw-bold">{oeeMetrics.quality}%</h4>
                         </div>
                     </div>
