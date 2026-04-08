@@ -1058,24 +1058,25 @@ const ReportDetails = () => {
             <StoppageTimeline logs={report.stoppage_logs} />
 
             {/* Tabbed Detailed Content */}
-            <div className="card">
-                <div className="card-header p-0 border-0">
-                    <div className="d-flex overflow-auto">{tabs.map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`px-4 py-3 text-sm fw-medium border-0 bg-transparent d-flex align-items-center gap-2 ${activeTab === tab.id
-                                    ? 'text-primary border-bottom border-primary border-3'
-                                    : 'text-muted'
-                                    }`}
-                            >
-                                {tab.label}
-                                <span className={`badge ${activeTab === tab.id ? 'bg-primary' : 'bg-secondary'}`}>
-                                    {tab.count}
-                                </span>
-                            </button>
+            <div className="card shadow-sm">
+                <div className="card-header bg-white border-bottom">
+                    <ul className="nav nav-tabs card-header-tabs border-0" role="tablist">
+                        {tabs.map(tab => (
+                            <li className="nav-item" key={tab.id} role="presentation">
+                                <button
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`nav-link px-4 py-3 d-flex align-items-center gap-2 border-0 ${activeTab === tab.id ? 'active' : ''}`}
+                                    type="button"
+                                    role="tab"
+                                >
+                                    <span className="fw-semibold">{tab.label}</span>
+                                    <span className={`badge rounded-pill ${activeTab === tab.id ? 'bg-primary' : 'bg-light text-dark'}`}>
+                                        {tab.count}
+                                    </span>
+                                </button>
+                            </li>
                         ))}
-                    </div>
+                    </ul>
                 </div>
 
                 <div className="card-body">{activeTab === 'batches' && (
