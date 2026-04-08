@@ -157,13 +157,12 @@ const ProductionAnalytics = () => {
     }, [timeRange]);
 
     const dateRangeLabel = useMemo(() => {
-        if (weekRange) return weekRange;
         const allDates = [...reports.map(r => r.production_date), ...oeeData.map(r => r.production_date)].filter(Boolean);
         if (!allDates.length) return '';
         const minDate = allDates.reduce((a, b) => a < b ? a : b);
         const maxDate = allDates.reduce((a, b) => a > b ? a : b);
-        return `${minDate} to ${maxDate}`;
-    }, [reports, oeeData, weekRange]);
+        return minDate === maxDate ? minDate : `${minDate} to ${maxDate}`;
+    }, [reports, oeeData]);
 
     const stats = useMemo(() => {
         if (!reports.length) return { totalOutput: 0, avgOutput: 0, reportCount: 0, avgOee: 0, totalDowntime: 0, uniqueLines: 0, oeeStatus: null, isSingleDate: false, avgAvail: 0, avgQuality: 0, avgPerf: 0 };
