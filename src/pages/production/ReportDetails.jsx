@@ -1083,15 +1083,34 @@ const ReportDetails = () => {
                     <div className="tab-content">
                         {activeTab === 'batches' && (
                             <div className="tab-pane fade show active">
-                                <DataTable
-                                    columns={[
-                                        { header: 'Batch #', accessor: 'batch_number' },
-                                        { header: 'Syrup Liters', accessor: 'syrup_liters', render: row => `${row.syrup_liters} L` },
-                                        { header: 'Start Time', accessor: 'start_time' },
-                                    ]}
-                                    data={report.batches}
-                                    isLoading={false}
-                                />
+                                <div className="table-responsive">
+                                    <table className="table table-hover align-middle">
+                                        <thead className="table-light">
+                                            <tr>
+                                                <th>Batch #</th>
+                                                <th>Syrup Liters</th>
+                                                <th>Start Time</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {report.batches?.length > 0 ? (
+                                                report.batches.map((batch, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="fw-medium">{batch.batch_number}</td>
+                                                        <td>{batch.syrup_liters} L</td>
+                                                        <td>{batch.start_time}</td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="3" className="text-center text-muted py-4">
+                                                        No batches recorded
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
 
@@ -1109,16 +1128,42 @@ const ReportDetails = () => {
 
                         {activeTab === 'workers' && (
                             <div className="tab-pane fade show active">
-                                <DataTable
-                                    columns={[
-                                        { header: 'Name', accessor: 'user', render: row => row.user?.full_name || row.user?.username },
-                                        { header: 'Role', accessor: 'user', render: row => row.user?.role },
-                                        { header: 'Company', accessor: 'user', render: row => row.user?.company_name },
-                                        { header: 'Present', accessor: 'present', render: row => row.present ? 'Yes' : 'No' },
-                                    ]}
-                                    data={report.workers}
-                                    isLoading={false}
-                                />
+                                <div className="table-responsive">
+                                    <table className="table table-hover align-middle">
+                                        <thead className="table-light">
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Role</th>
+                                                <th>Company</th>
+                                                <th>Present</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {report.workers?.length > 0 ? (
+                                                report.workers.map((worker, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="fw-medium">{worker.user?.full_name || worker.user?.username}</td>
+                                                        <td><span className="badge bg-info">{worker.user?.role}</span></td>
+                                                        <td>{worker.user?.company_name}</td>
+                                                        <td>
+                                                            {worker.present ? (
+                                                                <span className="badge bg-success">Yes</span>
+                                                            ) : (
+                                                                <span className="badge bg-secondary">No</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="4" className="text-center text-muted py-4">
+                                                        No workers recorded
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
 
