@@ -802,15 +802,14 @@ const ReportDetails = () => {
                                             <Pie
                                                 data={[
                                                     { name: 'Efficiency', value: efficiencyData[0]?.value || 0 },
-                                                    { name: 'Loss', value: 100 - (efficiencyData[0]?.value || 0) }
+                                                    { name: 'Remaining', value: 100 - (efficiencyData[0]?.value || 0) }
                                                 ]}
                                                 cx="50%"
                                                 cy="50%"
                                                 startAngle={90}
-                                                endAngle={-270}
-                                                innerRadius={60}
-                                                outerRadius={80}
-                                                paddingAngle={0}
+                                                endAngle={450}
+                                                innerRadius={70}
+                                                outerRadius={90}
                                                 dataKey="value"
                                                 stroke="none"
                                             >
@@ -820,10 +819,10 @@ const ReportDetails = () => {
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                        <h2 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`}>
+                                        <h1 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 50 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '3rem' }}>
                                             {efficiencyData[0]?.value}%
-                                        </h2>
-                                        <small className="text-muted text-uppercase">OEE Score</small>
+                                        </h1>
+                                        <small className="text-muted text-uppercase fw-semibold">OEE Score</small>
                                     </div>
                                 </div>
                             ) : (
@@ -833,24 +832,24 @@ const ReportDetails = () => {
                             )}
                         </div>
                         <div className="vstack gap-3">
-                            <div className="d-flex align-items-start gap-3">
+                            <div className="d-flex align-items-center gap-3">
                                 <div
-                                    className="rounded-pill mt-1 flex-shrink-0"
-                                    style={{ backgroundColor: COLOR_EFFICIENCY, width: '6px', height: '40px' }}
+                                    className="rounded-circle flex-shrink-0"
+                                    style={{ backgroundColor: COLOR_EFFICIENCY, width: '12px', height: '12px' }}
                                 />
-                                <div>
-                                    <small className="text-muted text-uppercase fw-bold d-block">Efficiency</small>
-                                    <h5 className="mb-0 fw-bold">{efficiencyData[0]?.value || 0}%</h5>
+                                <div className="flex-grow-1">
+                                    <small className="text-muted text-uppercase fw-semibold d-block">Efficiency</small>
+                                    <h4 className="mb-0 fw-bold">{efficiencyData[0]?.value || 0}%</h4>
                                 </div>
                             </div>
-                            <div className="d-flex align-items-start gap-3">
+                            <div className="d-flex align-items-center gap-3">
                                 <div
-                                    className="rounded-pill mt-1 flex-shrink-0"
-                                    style={{ backgroundColor: '#e9ecef', width: '6px', height: '40px' }}
+                                    className="rounded-circle flex-shrink-0"
+                                    style={{ backgroundColor: '#e9ecef', width: '12px', height: '12px' }}
                                 />
-                                <div>
-                                    <small className="text-muted text-uppercase fw-bold d-block">Loss</small>
-                                    <h5 className="mb-0 fw-bold">{100 - (efficiencyData[0]?.value || 0)}%</h5>
+                                <div className="flex-grow-1">
+                                    <small className="text-muted text-uppercase fw-semibold d-block">Loss</small>
+                                    <h4 className="mb-0 fw-bold">{100 - (efficiencyData[0]?.value || 0)}%</h4>
                                 </div>
                             </div>
                         </div>
