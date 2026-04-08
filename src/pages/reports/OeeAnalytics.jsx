@@ -522,7 +522,8 @@ const OeeAnalytics = () => {
                                 </div>
                             </div>
                         </div>
-                {stats.isSingleDate ? (
+                {/* Component breakdown cards hidden - stoppages_summary only provides OEE */}
+                {false && stats.isSingleDate ? (
                     <>
                         <div className="col-xl-3 col-sm-6">
                             <div className="card border-top border-primary border-3 mb-0 h-100">
@@ -815,10 +816,7 @@ const OeeAnalytics = () => {
                                         <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} label={{ value: 'Percentage (%)', angle: -90, position: 'insideLeft' }} />
                                         <Tooltip content={<CustomTooltip />} />
                                         <Legend />
-                                        <Line type="monotone" dataKey="oee" stroke="#3b82f6" strokeWidth={2} dot={false} name="OEE" />
-                                        <Line type="monotone" dataKey="availability" stroke="#22c55e" strokeWidth={2} dot={false} name="Availability" />
-                                        <Line type="monotone" dataKey="quality" stroke="#8b5cf6" strokeWidth={2} dot={false} name="Quality" />
-                                        <Line type="monotone" dataKey="performance" stroke="#f59e0b" strokeWidth={2} dot={false} name="Performance" />
+                                        <Line type="monotone" dataKey="oee" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} name="OEE" />
                                     </LineChart>
                                 </ResponsiveContainer>
                             )}
