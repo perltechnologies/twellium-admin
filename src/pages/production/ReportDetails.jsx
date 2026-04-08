@@ -790,7 +790,7 @@ const ReportDetails = () => {
                                 <small className="text-muted text-uppercase">Total Output</small>
                                 <div className="text-success"><Package className="h-4 w-4" /></div>
                             </div>
-                            <h3 className="mb-0 fw-bold text-primary">{(report.metrics?.details?.total_output_pcs || 0).toLocaleString()}</h3>
+                            <h3 className="mb-0 fw-bold text-primary">{totalOutput.toLocaleString()}</h3>
                             <small className="text-muted">bottles</small>
                         </div>
                     </div>
@@ -802,7 +802,7 @@ const ReportDetails = () => {
                                 <small className="text-muted text-uppercase">Production Time</small>
                                 <div className="text-info"><Clock className="h-4 w-4" /></div>
                             </div>
-                            <h3 className="mb-0 fw-bold text-info">{Math.floor((report.metrics?.details?.planned_time_mins || 0) / 60)}h {Math.round((report.metrics?.details?.planned_time_mins || 0) % 60)}m</h3>
+                            <h3 className="mb-0 fw-bold text-info">{productionTime} hrs</h3>
                             <small className="text-muted">planned time</small>
                         </div>
                     </div>
@@ -814,7 +814,7 @@ const ReportDetails = () => {
                                 <small className="text-muted text-uppercase">Efficiency</small>
                                 <div className="text-primary"><Activity className="h-4 w-4" /></div>
                             </div>
-                            <h3 className="mb-0 fw-bold text-primary">{oeeMetrics.oee}%</h3>
+                            <h3 className="mb-0 fw-bold text-primary">{efficiency}%</h3>
                             <small className="text-muted">OEE score</small>
                         </div>
                     </div>
@@ -826,7 +826,7 @@ const ReportDetails = () => {
                                 <small className="text-muted text-uppercase">Downtime</small>
                                 <div className="text-warning"><AlertTriangle className="h-4 w-4" /></div>
                             </div>
-                            <h3 className="mb-0 fw-bold text-warning">{report.metrics?.details?.total_downtime_mins || 0} min</h3>
+                            <h3 className="mb-0 fw-bold text-warning">{totalDowntime} min</h3>
                             <small className="text-muted">total stoppage</small>
                         </div>
                     </div>
@@ -842,7 +842,7 @@ const ReportDetails = () => {
                                 <small className="text-muted text-uppercase fw-semibold">Mechanical Downtime</small>
                                 <div className="text-danger"><AlertTriangle className="h-4 w-4" /></div>
                             </div>
-                            <h4 className="mb-0 fw-bold">{report.metrics?.details?.mechanical_downtime_mins || 0} min</h4>
+                            <h4 className="mb-0 fw-bold">{mechanicalDowntime} min</h4>
                         </div>
                     </div>
                 </div>
@@ -853,7 +853,7 @@ const ReportDetails = () => {
                                 <small className="text-muted text-uppercase fw-semibold">Planned Downtime</small>
                                 <div className="text-warning"><Clock className="h-4 w-4" /></div>
                             </div>
-                            <h4 className="mb-0 fw-bold">{report.metrics?.details?.planned_downtime_mins || 0} min</h4>
+                            <h4 className="mb-0 fw-bold">{plannedDowntime} min</h4>
                         </div>
                     </div>
                 </div>
