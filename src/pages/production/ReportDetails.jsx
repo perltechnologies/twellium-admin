@@ -788,67 +788,75 @@ const ReportDetails = () => {
                 </div>
                 <div className="card-body">
                     <div className="row g-3">
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
                                     <small className="text-muted d-block">Total Output</small>
-                                    <h5 className="mb-0 fw-bold text-primary">{totalOutput.toLocaleString()}</h5>
+                                    <h6 className="mb-0 fw-bold text-primary">{totalOutput.toLocaleString()}</h6>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Production Time</small>
-                                    <h5 className="mb-0 fw-bold text-info">{productionTime} hrs</h5>
+                                    <small className="text-muted d-block">Prod. Time</small>
+                                    <h6 className="mb-0 fw-bold text-info">{productionTime} hrs</h6>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
                                     <small className="text-muted d-block">Efficiency</small>
-                                    <h5 className="mb-0 fw-bold text-success">{efficiency}%</h5>
+                                    <h6 className="mb-0 fw-bold text-success">{efficiency}%</h6>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
                                     <small className="text-muted d-block">Downtime</small>
-                                    <h5 className="mb-0 fw-bold text-warning">{totalDowntime} min</h5>
+                                    <h6 className="mb-0 fw-bold text-warning">{totalDowntime} min</h6>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
-                                    <small className="text-muted d-block">Mechanical DT</small>
-                                    <h5 className="mb-0 fw-bold">{mechanicalDowntime} min</h5>
+                                    <small className="text-muted d-block">Mech. DT</small>
+                                    <h6 className="mb-0 fw-bold text-danger">{mechanicalDowntime} min</h6>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
                                     <small className="text-muted d-block">Planned DT</small>
-                                    <h5 className="mb-0 fw-bold">{plannedDowntime} min</h5>
+                                    <h6 className="mb-0 fw-bold">{plannedDowntime} min</h6>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
                                     <small className="text-muted d-block">Availability</small>
-                                    <h5 className="mb-0 fw-bold text-primary">{oeeMetrics.availability}%</h5>
+                                    <h6 className="mb-0 fw-bold text-primary">{oeeMetrics.availability}%</h6>
                                 </div>
                             </div>
                         </div>
-                        <div className="col-lg-3 col-md-6">
-                            <div className="d-flex align-items-center gap-3 p-3 bg-light rounded">
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
                                 <div className="flex-grow-1">
                                     <small className="text-muted d-block">Performance</small>
-                                    <h5 className="mb-0 fw-bold text-info">{oeeMetrics.performance}%</h5>
+                                    <h6 className="mb-0 fw-bold text-info">{oeeMetrics.performance}%</h6>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="col-lg-2 col-md-4 col-6">
+                            <div className="d-flex align-items-center gap-2 p-3 bg-light rounded">
+                                <div className="flex-grow-1">
+                                    <small className="text-muted d-block">Quality</small>
+                                    <h6 className="mb-0 fw-bold text-success">{oeeMetrics.quality}%</h6>
                                 </div>
                             </div>
                         </div>
