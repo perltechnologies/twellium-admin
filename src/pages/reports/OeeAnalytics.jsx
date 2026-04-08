@@ -176,13 +176,20 @@ const OeeAnalytics = () => {
         const perfs = data.map(d => d.metrics?.performance || 0);
         const avgOee = oees.reduce((a, b) => a + b, 0) / oees.length;
         
+        const bestOee = Math.max(...oees);
+        const worstOee = Math.min(...oees);
+        const bestPet = data.find(d => (parseFloat(d.efficiency) || d.metrics?.oee || 0) === bestOee)?.pet_name || '';
+        const worstPet = data.find(d => (parseFloat(d.efficiency) || d.metrics?.oee || 0) === worstOee)?.pet_name || '';
+        
         return {
             avgOee,
             avgAvail: avails.reduce((a, b) => a + b, 0) / avails.length,
             avgQuality: qualities.reduce((a, b) => a + b, 0) / qualities.length,
             avgPerf: perfs.reduce((a, b) => a + b, 0) / perfs.length,
-            bestOee: Math.max(...oees),
-            worstOee: Math.min(...oees),
+            bestOee,
+            worstOee,
+            bestPet,
+            worstPet,
             totalOutput: data.reduce((sum, d) => sum + (d.bottles_produced || d.total_bottles_produced || d.metrics?.details?.total_output_pcs || 0), 0),
             totalDowntime: data.reduce((sum, d) => sum + (d.downtime_minutes || d.metrics?.details?.total_downtime_mins || 0), 0),
             oeeStatus: getStatusConfig(avgOee),
@@ -581,7 +588,7 @@ const OeeAnalytics = () => {
                                     <div className="progress" style={{ height: 4, width: 80 }}>
                                         <div className="progress-bar bg-success" role="progressbar" style={{ width: `${Math.min(stats.bestOee, 100)}%` }} />
                                     </div>
-                                    {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
+                                    <small className="text-muted mt-1">{stats.bestPet || (selectedPetName || '')}</small>
                                 </div>
                             </div>
                         </div>
@@ -596,7 +603,7 @@ const OeeAnalytics = () => {
                                     <div className="progress" style={{ height: 4, width: 80 }}>
                                         <div className="progress-bar bg-warning" role="progressbar" style={{ width: `${Math.min(stats.worstOee, 100)}%` }} />
                                     </div>
-                                    {selectedPetName && <small className="text-muted mt-1">{selectedPetName}</small>}
+                                    <small className="text-muted mt-1">{stats.worstPet || (selectedPetName || '')}</small>
                                 </div>
                             </div>
                         </div>
