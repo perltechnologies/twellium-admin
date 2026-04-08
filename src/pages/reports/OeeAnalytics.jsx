@@ -198,6 +198,11 @@ const OeeAnalytics = () => {
         
         if (timeRange === 'week') {
             const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+            // If before 6am, use previous day for week calculation
+            if (currentTime < '06:00') {
+                now.setDate(now.getDate() - 1);
+            }
             const dayOfWeek = now.getDay();
             minDate = new Date(now);
             minDate.setDate(now.getDate() - dayOfWeek);
