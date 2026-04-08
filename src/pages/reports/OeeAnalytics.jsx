@@ -156,7 +156,7 @@ const OeeAnalytics = () => {
         const uniqueDates = new Set(data.map(d => d.production_date?.slice(0, 10))).size;
         const isSingleDate = uniqueDates === 1 || filters.log_date;
         
-        const oees = data.map(d => d.metrics?.oee || 0);
+        const oees = data.map(d => parseFloat(d.efficiency) || d.metrics?.oee || 0);
         const avails = data.map(d => d.metrics?.availability || 0);
         const qualities = data.map(d => d.metrics?.quality || 0);
         const perfs = data.map(d => d.metrics?.performance || 0);
@@ -169,8 +169,8 @@ const OeeAnalytics = () => {
             avgPerf: perfs.reduce((a, b) => a + b, 0) / perfs.length,
             bestOee: Math.max(...oees),
             worstOee: Math.min(...oees),
-            totalOutput: data.reduce((sum, d) => sum + (d.metrics?.details?.total_output_pcs || 0), 0),
-            totalDowntime: data.reduce((sum, d) => sum + (d.metrics?.details?.total_downtime_mins || 0), 0),
+            totalOutput: data.reduce((sum, d) => sum + (d.bottles_produced || d.total_bottles_produced || d.metrics?.details?.total_output_pcs || 0), 0),
+            totalDowntime: data.reduce((sum, d) => sum + (d.downtime_minutes || d.metrics?.details?.total_downtime_mins || 0), 0),
             oeeStatus: getStatusConfig(avgOee),
             isSingleDate,
             reportCount: data.length
@@ -215,7 +215,7 @@ const OeeAnalytics = () => {
         data.forEach(d => {
             const date = d.production_date?.slice(0, 10) || '';
             if (!grouped[date]) grouped[date] = { oee: 0, availability: 0, quality: 0, performance: 0, count: 0 };
-            grouped[date].oee += d.metrics?.oee || 0;
+            grouped[date].oee += parseFloat(d.efficiency) || d.metrics?.oee || 0;
             grouped[date].availability += d.metrics?.availability || 0;
             grouped[date].quality += d.metrics?.quality || 0;
             grouped[date].performance += d.metrics?.performance || 0;
@@ -239,7 +239,7 @@ const OeeAnalytics = () => {
         data.forEach(d => {
             const pet = d.pet_name || 'Unknown';
             if (!allPets[pet]) allPets[pet] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0 };
-            allPets[pet].oee += d.metrics?.oee || 0;
+            allPets[pet].oee += parseFloat(d.efficiency) || d.metrics?.oee || 0;
             allPets[pet].avail += d.metrics?.availability || 0;
             allPets[pet].quality += d.metrics?.quality || 0;
             allPets[pet].perf += d.metrics?.performance || 0;
@@ -311,8 +311,8 @@ const OeeAnalytics = () => {
         data.forEach(d => {
             const date = d.production_date?.slice(0, 10) || '';
             if (!grouped[date]) grouped[date] = { oee: 0, count: 0, output: 0 };
-            grouped[date].oee += d.metrics?.oee || 0;
-            grouped[date].output += d.metrics?.details?.total_output_pcs || 0;
+            grouped[date].oee += parseFloat(d.efficiency) || d.metrics?.oee || 0;
+            grouped[date].output += d.bottles_produced || d.total_bottles_produced || d.metrics?.details?.total_output_pcs || 0;
             grouped[date].count += 1;
         });
         
@@ -327,7 +327,7 @@ const OeeAnalytics = () => {
     const oeeDistribution = useMemo(() => {
         const ranges = { 'Below 60%': 0, '60-70%': 0, '70-80%': 0, '80-85%': 0, '85-90%': 0, 'Above 90%': 0 };
         data.forEach(d => {
-            const oee = d.metrics?.oee || 0;
+            const oee = parseFloat(d.efficiency) || d.metrics?.oee || 0;
             if (oee < 60) ranges['Below 60%']++;
             else if (oee < 70) ranges['60-70%']++;
             else if (oee < 80) ranges['70-80%']++;
@@ -349,12 +349,12 @@ const OeeAnalytics = () => {
             Date: d.production_date?.slice(0, 10) || '',
             'PET Line': d.pet_name || 'Unknown',
             Shift: d.shift_name || '-',
-            OEE: `${(d.metrics?.oee || 0).toFixed(1)}%`,
+            OEE: `${(parseFloat(d.efficiency) || d.metrics?.oee || 0).toFixed(1)}%`,
             Availability: `${(d.metrics?.availability || 0).toFixed(1)}%`,
             Quality: `${(d.metrics?.quality || 0).toFixed(1)}%`,
             Performance: `${(d.metrics?.performance || 0).toFixed(1)}%`,
-            Output: d.metrics?.details?.total_output_pcs || 0,
-            Downtime: `${d.metrics?.details?.total_downtime_mins || 0} min`
+            Output: d.bottles_produced || d.total_bottles_produced || d.metrics?.details?.total_output_pcs || 0,
+            Downtime: `${d.downtime_minutes || d.metrics?.details?.total_downtime_mins || 0} min`
         }));
     }, [data]);
 
