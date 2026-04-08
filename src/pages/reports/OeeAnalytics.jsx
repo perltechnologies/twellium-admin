@@ -96,9 +96,15 @@ const OeeAnalytics = () => {
                 params.datetime_end_time = endDate.toISOString();
             }
             
-            const res = await productionApi.getOeeSummary(params);
-            let reportData = Array.isArray(res.data) ? res.data : res.data?.results || res.data?.data || [];
+            const res = await productionApi.getStoppagesSummary(params);
+            let reportData = res.data?.data?.data || res.data?.data || Array.isArray(res.data) ? res.data : res.data?.results || [];
             reportData = reportData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            
+            // Map log_date to production_date for consistency
+            reportData = reportData.map(r => ({
+                ...r,
+                production_date: r.production_date || r.log_date
+            }));
             
             // Don't filter by date when timeRange is active - let the chart show all dates with 0 for missing data
             
