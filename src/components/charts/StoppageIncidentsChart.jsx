@@ -28,6 +28,7 @@ const StoppageIncidentsChart = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedPet, setSelectedPet] = useState('');
+    const [selectedSubCategory, setSelectedSubCategory] = useState('');
     const [stoppages, setStoppages] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -67,6 +68,17 @@ const StoppageIncidentsChart = () => {
         });
     }, [stoppages]);
 
+    const availableSubCategories = useMemo(() => {
+        const subCats = new Set();
+        stoppages.forEach(stoppage => {
+            (stoppage.incidents || []).forEach(incident => {
+                const subCat = incident.sub_downtime_category_name;
+                if (subCat) subCats.add(subCat);
+            });
+        });
+        return Array.from(subCats).sort();
+    }, [stoppages]);
+
     const filteredStoppages = useMemo(() => {
         let filtered = stoppages;
         
@@ -74,8 +86,17 @@ const StoppageIncidentsChart = () => {
             filtered = filtered.filter(s => (s.pet_name || s.line_name) === selectedPet);
         }
         
+        if (selectedSubCategory) {
+            filtered = filtered.map(stoppage => ({
+                ...stoppage,
+                incidents: (stoppage.incidents || []).filter(
+                    incident => incident.sub_downtime_category_name === selectedSubCategory
+                )
+            })).filter(s => s.incidents.length > 0);
+        }
+        
         return filtered;
-    }, [stoppages, selectedPet]);
+    }, [stoppages, selectedPet, selectedSubCategory]);
 
     const chartData = useMemo(() => {
         const incidentMap = {};
@@ -191,6 +212,14 @@ const StoppageIncidentsChart = () => {
 
     const totalIncidents = chartData.reduce((sum, d) => sum + d.count, 0);
     const totalDuration = chartData.reduce((sum, d) => sum + d.totalDuration, 0);
+    
+    const dailyRate = useMemo(() => {
+        if (!useRange || !startDate || !endDate) return null;
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        return days > 0 ? (totalIncidents / days).toFixed(1) : 0;
+    }, [useRange, startDate, endDate, totalIncidents]);
 
     return (
         <div className="card">
@@ -249,7 +278,7 @@ const StoppageIncidentsChart = () => {
                             </div>
                         )}
                     </div>
-                    <div className="col-md-4">
+                    <div className="col-md-3">
                         <label className="form-label small">PET</label>
                         <select
                             className="form-select form-select-sm"
@@ -262,7 +291,20 @@ const StoppageIncidentsChart = () => {
                             ))}
                         </select>
                     </div>
-                    <div className="col-md-4">
+                    <div className="col-md-3">
+                        <label className="form-label small">Subcategory</label>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedSubCategory}
+                            onChange={(e) => setSelectedSubCategory(e.target.value)}
+                        >
+                            <option value="">All</option>
+                            {availableSubCategories.map(subCat => (
+                                <option key={subCat} value={subCat}>{subCat}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="col-md-2">
                         <label className="form-label small">Quick Select</label>
                         <div className="btn-group btn-group-sm w-100">
                             <button 
@@ -295,7 +337,7 @@ const StoppageIncidentsChart = () => {
                     </div>
                 </div>
                 
-                {(singleDate || startDate || endDate || selectedPet) && (
+                {(singleDate || startDate || endDate || selectedPet || selectedSubCategory) && (
                     <div className="alert alert-info d-flex align-items-center mt-3 mb-0">
                         <i className="ti ti-filter fs-5 me-2"></i>
                         <div className="flex-grow-1">
@@ -304,6 +346,7 @@ const StoppageIncidentsChart = () => {
                             {startDate && <span className="ms-2">From: {startDate}</span>}
                             {endDate && <span className="ms-2">To: {endDate}</span>}
                             {selectedPet && <span className="ms-2">• PET: {selectedPet}</span>}
+                            {selectedSubCategory && <span className="ms-2">• Subcategory: {selectedSubCategory}</span>}
                         </div>
                         <button 
                             className="btn btn-sm btn-outline-info"
@@ -312,6 +355,7 @@ const StoppageIncidentsChart = () => {
                                 setStartDate('');
                                 setEndDate('');
                                 setSelectedPet('');
+                                setSelectedSubCategory('');
                                 setUseRange(false);
                             }}
                         >
@@ -334,18 +378,27 @@ const StoppageIncidentsChart = () => {
                 ) : (
                     <>
                         <div className="row mb-3">
-                            <div className="col-6">
+                            <div className="col-4">
                                 <div className="border rounded p-3 text-center">
                                     <small className="text-muted d-block mb-1">Total Incidents</small>
                                     <h4 className="mb-0 text-primary">{totalIncidents}</h4>
                                 </div>
                             </div>
-                            <div className="col-6">
+                            <div className="col-4">
                                 <div className="border rounded p-3 text-center">
                                     <small className="text-muted d-block mb-1">Total Duration</small>
                                     <h4 className="mb-0 text-danger">{formatDuration(totalDuration)}</h4>
                                 </div>
                             </div>
+                            {dailyRate && (
+                                <div className="col-4">
+                                    <div className="border rounded p-3 text-center">
+                                        <small className="text-muted d-block mb-1">Daily Rate</small>
+                                        <h4 className="mb-0 text-info">{dailyRate}</h4>
+                                        <small className="text-muted">incidents/day</small>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <ReactApexChart options={chartOptions} series={series} type="bar" height={700} />
                     </>
