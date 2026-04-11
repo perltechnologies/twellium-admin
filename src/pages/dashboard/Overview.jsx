@@ -1478,14 +1478,10 @@ const Overview = () => {
                                     grouped[date][petName] += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                                 });
 
-                                // Create series for each PET
-                                const petNames = [...new Set(filteredReports.map(r => r.pet_name))].sort((a, b) => {
-                                    const aNum = parseInt(a?.match(/(\d+)/)?.[0] || '999');
-                                    const bNum = parseInt(b?.match(/(\d+)/)?.[0] || '999');
-                                    return aNum - bNum;
-                                });
+                                // Create series for each PET - always show Pet 1 to Pet 6
+                                const allPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
 
-                                const series = petNames.map(pet => ({
+                                const series = allPets.map(pet => ({
                                     name: pet,
                                     data: dates.map(date => grouped[date]?.[pet] || 0)
                                 }));
