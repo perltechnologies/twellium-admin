@@ -176,6 +176,8 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             ? filtered.reduce((s, r) => s + (r.metrics?.oee || parseFloat(r.efficiency) || r.oee || 0), 0) / filtered.length
             : 0;
         const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || r.downtime_minutes || r.total_downtime_mins || 0), 0);
+        const plannedDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
+        const mechDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
         const avgRuntime = filtered.length > 0
             ? filtered.reduce((s, r) => s + (r.metrics?.details?.total_runtime_mins || r.runtime_minutes || 0), 0) / filtered.length
             : 0;
@@ -193,7 +195,9 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         return { 
             totalProduction, 
             avgOee, 
-            totalDowntime, 
+            totalDowntime,
+            plannedDowntime,
+            mechDowntime,
             reports: filtered.length,
             avgRuntime,
             avgPerformance,
@@ -370,7 +374,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                     </div>
                 </div>
                 
-                <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-2 mb-4">
+                <div className="row row-cols-1 row-cols-sm-2 row-cols-md-5 g-2 mb-4">
                     <div className="col">
                         <div className="card border-0 shadow-sm bg-soft-purple h-100">
                             <div className="card-body text-center py-2 px-2">
@@ -410,6 +414,34 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                                 <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Quality</small>
                                 <h6 className="mb-0 fw-bold" style={{color: '#4f46e5'}}>{summary.avgQuality.toFixed(1)}%</h6>
                                 <small className="text-muted fs-11">rate</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-warning h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-warning rounded-circle p-2">
+                                        <i className="ti ti-calendar-time text-white fs-5"></i>
+                                    </div>
+                                </div>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Planned Downtime</small>
+                                <h6 className="mb-0 text-warning fw-bold">{Math.round(summary.plannedDowntime)}m</h6>
+                                <small className="text-muted fs-11">{Math.round(summary.plannedDowntime / 60)}h {Math.round(summary.plannedDowntime % 60)}m</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="col">
+                        <div className="card border-0 shadow-sm bg-soft-secondary h-100">
+                            <div className="card-body text-center py-2 px-2">
+                                <div className="d-flex align-items-center justify-content-center mb-2">
+                                    <div className="bg-secondary rounded-circle p-2">
+                                        <i className="ti ti-tool text-white fs-5"></i>
+                                    </div>
+                                </div>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Mech Downtime</small>
+                                <h6 className="mb-0 text-secondary fw-bold">{Math.round(summary.mechDowntime)}m</h6>
+                                <small className="text-muted fs-11">{Math.round(summary.mechDowntime / 60)}h {Math.round(summary.mechDowntime % 60)}m</small>
                             </div>
                         </div>
                     </div>
