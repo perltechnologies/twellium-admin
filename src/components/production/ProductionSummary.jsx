@@ -129,9 +129,10 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             grouped[date][petName].count += 1;
         });
 
-        const petNames = [...new Set(filtered.map(r => r.pet_name || 'Unknown'))].filter(Boolean);
+        // Define all PETs from Pet 1 to Pet 6
+        const allPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
 
-        const series = petNames.map(pet => ({
+        const series = allPets.map(pet => ({
             name: pet,
             data: dates.map(date => {
                 const data = grouped[date]?.[pet];
@@ -248,13 +249,53 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </div>
                     </div>
                 </div>
+                
+                {/* Dedicated Date Filter */}
+                <div className="row g-2 mb-3">
+                    <div className="col-md-4">
+                        <label className="form-label fs-12 mb-1">Start Date</label>
+                        <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            value={localStartDate}
+                            onChange={(e) => {
+                                setLocalStartDate(e.target.value);
+                                setUseLocalDates(true);
+                            }}
+                        />
+                    </div>
+                    <div className="col-md-4">
+                        <label className="form-label fs-12 mb-1">End Date</label>
+                        <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            value={localEndDate}
+                            onChange={(e) => {
+                                setLocalEndDate(e.target.value);
+                                setUseLocalDates(true);
+                            }}
+                        />
+                    </div>
+                    <div className="col-md-4 d-flex align-items-end">
+                        <button
+                            className="btn btn-sm btn-outline-secondary w-100"
+                            onClick={() => {
+                                const today = new Date().toISOString().split('T')[0];
+                                setLocalStartDate(today);
+                                setLocalEndDate(today);
+                                setUseLocalDates(true);
+                            }}
+                        >
+                            <i className="ti ti-calendar-event me-1"></i>Today
+                        </button>
+                    </div>
+                </div>
+                
                 {/* Active Filters Display */}
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                     <span className="badge bg-soft-info text-info">
                         <i className="ti ti-calendar me-1"></i>
-                        {useRange 
-                            ? `${startDate || 'Start'} - ${endDate || 'End'}`
-                            : singleDate || 'All Time'}
+                        {localStartDate} - {localEndDate}
                     </span>
                     {selectedPet && (
                         <span className="badge bg-soft-primary text-primary">
@@ -329,21 +370,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                     </div>
                 </div>
                 
-                <div className="row row-cols-1 row-cols-sm-2 row-cols-md-5 g-2 mb-4">
-                    <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-warning h-100">
-                            <div className="card-body text-center py-2 px-2">
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                    <div className="bg-warning rounded-circle p-2">
-                                        <i className="ti ti-clock-play text-white fs-5"></i>
-                                    </div>
-                                </div>
-                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Avg Runtime</small>
-                                <h6 className="mb-0 text-warning fw-bold">{Math.round(summary.avgRuntime)}m</h6>
-                                <small className="text-muted fs-11">per shift</small>
-                            </div>
-                        </div>
-                    </div>
+                <div className="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-2 mb-4">
                     <div className="col">
                         <div className="card border-0 shadow-sm bg-soft-purple h-100">
                             <div className="card-body text-center py-2 px-2">
@@ -383,20 +410,6 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                                 <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Quality</small>
                                 <h6 className="mb-0 fw-bold" style={{color: '#4f46e5'}}>{summary.avgQuality.toFixed(1)}%</h6>
                                 <small className="text-muted fs-11">rate</small>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-success h-100">
-                            <div className="card-body text-center py-2 px-2">
-                                <div className="d-flex align-items-center justify-content-center mb-2">
-                                    <div className="bg-success rounded-circle p-2">
-                                        <i className="ti ti-target-arrow text-white fs-5"></i>
-                                    </div>
-                                </div>
-                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Target Met</small>
-                                <h6 className="mb-0 text-success fw-bold">{summary.targetMet}</h6>
-                                <small className="text-muted fs-11">shifts</small>
                             </div>
                         </div>
                     </div>

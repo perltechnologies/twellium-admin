@@ -873,7 +873,7 @@ const Overview = () => {
                                         </div>
                                         <div className="col-3">
                                             <div className="border rounded p-3 bg-light">
-                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Average OEE for all lines</div>
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Average Efficiency for all lines</div>
                                                 <div className={`fw-bold ${avgOEE >= 85 ? 'text-success' : avgOEE >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
                                                     {avgOEE}%
                                                 </div>
@@ -1005,8 +1005,8 @@ const Overview = () => {
                             })}
                         </div>
 
-                        {/* OEE Efficiency by PET */}
-                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>OEE Efficiency by PET</h6>
+                        {/* Performance by PET */}
+                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>Performance by PET</h6>
                         <div className="row g-3">
                             {hourlyOeeByLine.map((line) => (
                                 <div key={`oee-${line.name}`} className="col">
