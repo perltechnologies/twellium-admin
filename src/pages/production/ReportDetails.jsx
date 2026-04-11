@@ -122,7 +122,6 @@ const MaterialsView = ({ materials }) => {
 };
 
 const PetlineMaterialsGroup = ({ items }) => {
-    // Group items by their specific petline_type
     const groups = {
         preform: items.filter(i => i.petline_type === 'preform').map(i => i.data),
         caps: items.filter(i => i.petline_type === 'caps').map(i => i.data),
@@ -131,88 +130,160 @@ const PetlineMaterialsGroup = ({ items }) => {
     };
 
     return (
-        <div className="vstack gap-3">
-            {/* Preforms Section */}
+        <div className="vstack gap-4">
+            {/* Preforms */}
             {groups.preform.length > 0 && (
-                <div className="bg-light rounded p-3 border">
-                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Preforms</h6>
-                    <DataTable
-                        columns={[
-                            { header: 'Batch', accessor: 'batch_number' },
-                            { header: 'Cage #', accessor: 'cage_number' },
-                            { header: 'Size (g)', accessor: 'preform_size_value' },
-                            { header: 'Color', accessor: 'preform_color_name' },
-                            { header: 'Supplier', accessor: 'supplier_name' },
-                            { header: 'Qty/Cage', accessor: 'quantity_per_cage_value' },
-                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
-                        ]}
-                        data={groups.preform}
-                        isLoading={false}
-                        pagination={null}
-                    />
+                <div className="card border shadow-sm">
+                    <div className="card-header bg-light border-bottom">
+                        <h6 className="mb-0 text-dark fw-semibold">Preforms</h6>
+                    </div>
+                    <div className="card-body p-0">
+                        <div className="table-responsive">
+                            <table className="table table-hover align-middle mb-0">
+                                <thead className="bg-light">
+                                    <tr>
+                                        <th className="fw-semibold text-muted">Batch #</th>
+                                        <th className="fw-semibold text-muted">Cage #</th>
+                                        <th className="fw-semibold text-muted">Size</th>
+                                        <th className="fw-semibold text-muted">Color</th>
+                                        <th className="fw-semibold text-muted">Supplier</th>
+                                        <th className="fw-semibold text-muted text-end">Qty/Cage</th>
+                                        <th className="fw-semibold text-muted">Infeed Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {groups.preform.map((item, idx) => (
+                                        <tr key={idx}>
+                                            <td className="fw-medium">{item.batch_number || '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.cage_number || '-'}</span></td>
+                                            <td>{item.preform_size_value ? `${item.preform_size_value}g` : '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.preform_color_name || '-'}</span></td>
+                                            <td className="text-muted">{item.supplier_name || '-'}</td>
+                                            <td className="text-end">{item.quantity_per_cage_value?.toLocaleString() || '-'}</td>
+                                            <td className="text-muted small">{item.material_infeed_time || '-'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Caps Section */}
+            {/* Caps */}
             {groups.caps.length > 0 && (
-                <div className="bg-light rounded p-3 border">
-                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Caps</h6>
-                    <DataTable
-                        columns={[
-                            { header: 'Batch', accessor: 'batch_number' },
-                            { header: 'Box #', accessor: 'box_number' },
-                            { header: 'Type', accessor: 'cap_type_name' },
-                            { header: 'Color', accessor: 'cap_color_name' },
-                            { header: 'Supplier', accessor: 'supplier_name' },
-                            { header: 'Qty/Box', accessor: 'quantity_per_box_value' },
-                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
-                        ]}
-                        data={groups.caps}
-                        isLoading={false}
-                        pagination={null}
-                    />
+                <div className="card border shadow-sm">
+                    <div className="card-header bg-light border-bottom">
+                        <h6 className="mb-0 text-dark fw-semibold">Caps</h6>
+                    </div>
+                    <div className="card-body p-0">
+                        <div className="table-responsive">
+                            <table className="table table-hover align-middle mb-0">
+                                <thead className="bg-light">
+                                    <tr>
+                                        <th className="fw-semibold text-muted">Batch #</th>
+                                        <th className="fw-semibold text-muted">Box #</th>
+                                        <th className="fw-semibold text-muted">Type</th>
+                                        <th className="fw-semibold text-muted">Color</th>
+                                        <th className="fw-semibold text-muted">Supplier</th>
+                                        <th className="fw-semibold text-muted text-end">Qty/Box</th>
+                                        <th className="fw-semibold text-muted">Infeed Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {groups.caps.map((item, idx) => (
+                                        <tr key={idx}>
+                                            <td className="fw-medium">{item.batch_number || '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.box_number || '-'}</span></td>
+                                            <td>{item.cap_type_name || '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.cap_color_name || '-'}</span></td>
+                                            <td className="text-muted">{item.supplier_name || '-'}</td>
+                                            <td className="text-end">{item.quantity_per_box_value?.toLocaleString() || '-'}</td>
+                                            <td className="text-muted small">{item.material_infeed_time || '-'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Labels Section */}
+            {/* Labels */}
             {groups.labels.length > 0 && (
-                <div className="bg-light rounded p-3 border">
-                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Labels / Sleeves</h6>
-                    <DataTable
-                        columns={[
-                            { header: 'Batch', accessor: 'batch_number' },
-                            { header: 'Roll #', accessor: 'roll_number' },
-                            { header: 'Name', accessor: 'label_sleeve_name_value' },
-                            { header: 'Size', accessor: 'product_size_name' },
-                            { header: 'Net Wt', accessor: 'roll_net_weight' },
-                            { header: 'Supplier', accessor: 'supplier_name' },
-                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
-                        ]}
-                        data={groups.labels}
-                        isLoading={false}
-                        pagination={null}
-                    />
+                <div className="card border shadow-sm">
+                    <div className="card-header bg-light border-bottom">
+                        <h6 className="mb-0 text-dark fw-semibold">Labels / Sleeves</h6>
+                    </div>
+                    <div className="card-body p-0">
+                        <div className="table-responsive">
+                            <table className="table table-hover align-middle mb-0">
+                                <thead className="bg-light">
+                                    <tr>
+                                        <th className="fw-semibold text-muted">Batch #</th>
+                                        <th className="fw-semibold text-muted">Roll #</th>
+                                        <th className="fw-semibold text-muted">Name</th>
+                                        <th className="fw-semibold text-muted">Size</th>
+                                        <th className="fw-semibold text-muted text-end">Net Weight</th>
+                                        <th className="fw-semibold text-muted">Supplier</th>
+                                        <th className="fw-semibold text-muted">Infeed Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {groups.labels.map((item, idx) => (
+                                        <tr key={idx}>
+                                            <td className="fw-medium">{item.batch_number || '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.roll_number || '-'}</span></td>
+                                            <td>{item.label_sleeve_name_value || '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.product_size_name || '-'}</span></td>
+                                            <td className="text-end">{item.roll_net_weight ? `${item.roll_net_weight} kg` : '-'}</td>
+                                            <td className="text-muted">{item.supplier_name || '-'}</td>
+                                            <td className="text-muted small">{item.material_infeed_time || '-'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Shrink Section */}
+            {/* Shrink */}
             {groups.shrink.length > 0 && (
-                <div className="bg-light rounded p-3 border">
-                    <h6 className="text-muted text-uppercase small fw-bold mb-3">Shrink Wrap</h6>
-                    <DataTable
-                        columns={[
-                            { header: 'Batch', accessor: 'batch_number' },
-                            { header: 'Roll #', accessor: 'roll_number' },
-                            { header: 'Name', accessor: 'shrink_name_value' },
-                            { header: 'Pack Size', accessor: 'pack_size_name' },
-                            { header: 'Net Wt', accessor: 'roll_net_weight' },
-                            { header: 'Supplier', accessor: 'supplier_name' },
-                            { header: 'Infeed Time', accessor: 'material_infeed_time' },
-                        ]}
-                        data={groups.shrink}
-                        isLoading={false}
-                        pagination={null}
-                    />
+                <div className="card border shadow-sm">
+                    <div className="card-header bg-light border-bottom">
+                        <h6 className="mb-0 text-dark fw-semibold">Shrink Wrap</h6>
+                    </div>
+                    <div className="card-body p-0">
+                        <div className="table-responsive">
+                            <table className="table table-hover align-middle mb-0">
+                                <thead className="bg-light">
+                                    <tr>
+                                        <th className="fw-semibold text-muted">Batch #</th>
+                                        <th className="fw-semibold text-muted">Roll #</th>
+                                        <th className="fw-semibold text-muted">Name</th>
+                                        <th className="fw-semibold text-muted">Pack Size</th>
+                                        <th className="fw-semibold text-muted text-end">Net Weight</th>
+                                        <th className="fw-semibold text-muted">Supplier</th>
+                                        <th className="fw-semibold text-muted">Infeed Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {groups.shrink.map((item, idx) => (
+                                        <tr key={idx}>
+                                            <td className="fw-medium">{item.batch_number || '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.roll_number || '-'}</span></td>
+                                            <td>{item.shrink_name_value || '-'}</td>
+                                            <td><span className="badge bg-light text-dark border">{item.pack_size_name || '-'}</span></td>
+                                            <td className="text-end">{item.roll_net_weight ? `${item.roll_net_weight} kg` : '-'}</td>
+                                            <td className="text-muted">{item.supplier_name || '-'}</td>
+                                            <td className="text-muted small">{item.material_infeed_time || '-'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -525,9 +596,15 @@ const ReportDetails = () => {
         let plannedDowntime = 0;
         let mechanicalDowntime = 0;
 
+        console.log('Total stoppage logs:', report.stoppage_logs?.length || 0);
+
         // Stoppage Logs Processing
         if (report.stoppage_logs && report.stoppage_logs.length > 0) {
-            report.stoppage_logs.forEach(log => {
+            report.stoppage_logs.forEach((log, logIndex) => {
+                console.log(`Processing stoppage log ${logIndex + 1}:`, {
+                    downtime_minutes: log.downtime_minutes,
+                    incidents_count: log.incidents?.length || 0
+                });
                 // Efficiency
                 const eff = parseFloat(log.efficiency);
                 if (!isNaN(eff)) {
@@ -547,16 +624,38 @@ const ReportDetails = () => {
                 if (log.incidents && log.incidents.length > 0) {
                     log.incidents.forEach(inc => {
                         const catName = inc.downtime_category_name || 'Uncategorized';
+                        
+                        // Parse incident_duration (could be "HH:MM:SS" or number)
+                        let durationMinutes = 0;
+                        if (inc.incident_duration) {
+                            if (typeof inc.incident_duration === 'string' && inc.incident_duration.includes(':')) {
+                                // Parse time string "HH:MM:SS" or "HH:MM"
+                                const parts = inc.incident_duration.split(':');
+                                const hours = parseInt(parts[0]) || 0;
+                                const mins = parseInt(parts[1]) || 0;
+                                const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
+                                durationMinutes = (hours * 60) + mins + (secs / 60);
+                            } else {
+                                durationMinutes = parseFloat(inc.incident_duration) || 0;
+                            }
+                        }
+                        
+                        console.log('Incident:', {
+                            category: catName,
+                            raw_duration: inc.incident_duration,
+                            parsed_minutes: durationMinutes
+                        });
+                        
                         if (!categoryMap[catName]) categoryMap[catName] = 0;
-                        categoryMap[catName] += (inc.incident_duration || 0);
+                        categoryMap[catName] += durationMinutes;
 
                         // Check for Planned Downtime
                         if (catName.toLowerCase().includes('planned')) {
-                            plannedDowntime += (inc.incident_duration || 0);
+                            plannedDowntime += durationMinutes;
                         }
                         // Check for Mechanical Downtime
                         if (catName.toLowerCase().includes('mechanical')) {
-                            mechanicalDowntime += (inc.incident_duration || 0);
+                            mechanicalDowntime += durationMinutes;
                         }
                     });
                 } else if (minutes > 0) {
@@ -610,15 +709,30 @@ const ReportDetails = () => {
             });
         }
 
-        // --- OEE CALCULATIONS ---
-
-        // Base values
+        // --- OEE CALCULATIONS (per /dashboard/formulas) ---
+        
         const prodHours = report.total_production_time_hours ? parseFloat(report.total_production_time_hours) : (productionTime || 1);
         const downtimeHours = totalDowntime / 60;
         const plannedDowntimeHours = plannedDowntime / 60;
-        const unplannedDowntimeHours = downtimeHours - plannedDowntimeHours;
+        const mechanicalDowntimeHours = mechanicalDowntime / 60;
         
-        // Use filler_reading from meter_readings if available
+        console.log('OEE Debug:', {
+            prodHours,
+            totalDowntime,
+            downtimeHours,
+            plannedDowntime,
+            plannedDowntimeHours,
+            mechanicalDowntime,
+            mechanicalDowntimeHours
+        });
+        
+        // Availability = (Planned Time - Total Downtime) / (Planned Time - Mechanical Downtime) × 100
+        // If mechanical downtime = 0, this becomes: (Planned - Total) / Planned = standard availability
+        const availNumerator = prodHours - downtimeHours;
+        const availDenominator = prodHours - mechanicalDowntimeHours;
+        const availVal = availDenominator > 0 ? Math.max(0, (availNumerator / availDenominator) * 100) : 0;
+
+        // Quality = (Total Production - Filler Reject) / Total Production × 100
         let fillerReading = 0;
         let fillerRejects = 0;
         if (report.meter_readings && report.meter_readings.length > 0) {
@@ -627,20 +741,12 @@ const ReportDetails = () => {
                 fillerRejects += (parseFloat(m.filler_rejects) || 0);
             });
         } else {
-            // Fallback to report-level data
             fillerReading = parseFloat(report.filler_reading) || parseFloat(report.total_bottles_produced) || 0;
             fillerRejects = parseFloat(report.filler_rejects) || parseFloat(report.total_waste) || 0;
         }
-
-        // Availability = (Total Production Time − Total Downtime) / (Total Production Time − Unplanned Downtime)
-        const availNumerator = prodHours - downtimeHours;
-        const availDenominator = prodHours - unplannedDowntimeHours;
-        const availVal = availDenominator > 0 ? (availNumerator / availDenominator) * 100 : 0;
-
-        // Quality = (Filler Reading − Filler Reject) / Filler Reading
         const qualVal = fillerReading > 0 ? ((fillerReading - fillerRejects) / fillerReading) * 100 : 0;
 
-        // Performance = (Total Production Time − Total Downtime) / (Total Production Time − Planned Downtime)
+        // Performance = (Planned Time - Total Downtime) / (Planned Time - Planned Downtime) × 100
         const perfNumerator = prodHours - downtimeHours;
         const perfDenominator = prodHours - plannedDowntimeHours;
         const perfVal = perfDenominator > 0 ? (perfNumerator / perfDenominator) * 100 : 0;
@@ -1217,18 +1323,18 @@ const ReportDetails = () => {
 
             {/* Tabbed Detailed Content */}
             <div className="card shadow-sm">
-                <div className="card-header bg-white border-bottom">
-                    <ul className="nav nav-tabs card-header-tabs border-0" role="tablist">
+                <div className="card-header bg-white">
+                    <ul className="nav nav-tabs card-header-tabs" role="tablist">
                         {tabs.map(tab => (
                             <li className="nav-item" key={tab.id} role="presentation">
                                 <button
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`nav-link px-4 py-3 d-flex align-items-center gap-2 border-0 ${activeTab === tab.id ? 'active' : ''}`}
+                                    className={`nav-link d-flex align-items-center gap-2 ${activeTab === tab.id ? 'active' : ''}`}
                                     type="button"
                                     role="tab"
                                 >
-                                    <span className="fw-semibold">{tab.label}</span>
-                                    <span className={`badge rounded-pill ${activeTab === tab.id ? 'bg-primary' : 'bg-light text-dark'}`}>
+                                    <span>{tab.label}</span>
+                                    <span className={`badge ${activeTab === tab.id ? 'bg-primary' : 'bg-secondary'}`}>
                                         {tab.count}
                                     </span>
                                 </button>
@@ -1237,8 +1343,8 @@ const ReportDetails = () => {
                     </ul>
                 </div>
 
-                <div className="card-body">
-                    <div className="tab-content">
+                <div className="card-body p-0">
+                    <div className="tab-content p-4">
                         {activeTab === 'batches' && (
                             <div className="tab-pane fade show active">
                                 <div className="table-responsive">

@@ -11,30 +11,30 @@ const FormulaCard = ({title, description, formula, variables, icon: Icon, color}
             <CardBody className="p-4">
                 <div className="d-flex align-items-center gap-3 mb-4">
                     <div className={`p-2.5 rounded-xl bg-${color}-100 dark:bg-${color}-900/20`}>
-                        <Icon className={`h-5 w-5 text-${color}-600 dark:text-${color}-400`} />
+                        <Icon className={`h-6 w-6 text-${color}-600 dark:text-${color}-400`} />
                     </div>
                     <div>
-                        <h5 className="mb-1 fw-semibold text-slate-900 dark:text-white">{title}</h5>
-                        <p className="text-slate-500 dark:text-slate-400 small mb-0">{description}</p>
+                        <h5 className="mb-1 fw-bold text-slate-900 dark:text-white fs-5">{title}</h5>
+                        <p className="text-slate-500 dark:text-slate-400 mb-0" style={{fontSize: '0.95rem'}}>{description}</p>
                     </div>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl mb-4 d-flex align-items-center justify-content-center overflow-auto" style={{minHeight: '100px'}}>
-                    <div className="fs-6 text-slate-800 dark:text-slate-200">
+                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl mb-4 d-flex align-items-center justify-content-center overflow-auto" style={{minHeight: '120px'}}>
+                    <div className="fs-5 text-slate-800 dark:text-slate-200">
                         <Latex>{`$$${formula}$$`}</Latex>
                     </div>
                 </div>
 
                 <div className="mt-auto">
-                    <div className="d-flex align-items-center gap-2 small fw-semibold border-bottom border-slate-200 dark:border-slate-700 pb-2 mb-3 text-slate-700 dark:text-slate-300">
+                    <div className="d-flex align-items-center gap-2 fw-semibold border-bottom border-slate-200 dark:border-slate-700 pb-2 mb-3 text-slate-700 dark:text-slate-300" style={{fontSize: '0.95rem'}}>
                         <Info className="h-4 w-4 text-primary" />
                         <span>Variable Mapping</span>
                     </div>
-                    <div className="small text-slate-600 dark:text-slate-400">
+                    <div className="text-slate-600 dark:text-slate-400" style={{fontSize: '0.9rem'}}>
                         {variables.map((v, idx) => (
                             <div key={idx} className="d-flex align-items-start gap-2 mb-2">
-                                <span className="font-monospace badge bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 fw-normal">{v.name}</span>
-                                <span>= {v.desc}</span>
+                                <span className="font-monospace badge bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 fw-normal" style={{fontSize: '0.85rem'}}>{v.name}</span>
+                                <span>{v.desc}</span>
                             </div>
                         ))}
                     </div>
@@ -101,12 +101,12 @@ const Formulas = () => {
             {/* Page Header */}
             <div className="d-flex align-items-center justify-content-between gap-2 mb-4 flex-wrap animate__animated animate__fadeInDown">
                 <div>
-                    <h4 className="mb-1 text-slate-900 dark:text-white">Production Formulas</h4>
-                    <p className="text-slate-500 dark:text-slate-400 mb-0">Mathematical models used for OEE calculations</p>
+                    <h4 className="mb-2 text-slate-900 dark:text-white fs-3 fw-bold">Production Formulas</h4>
+                    <p className="text-slate-500 dark:text-slate-400 mb-1 fs-6">Mathematical models used for OEE calculations</p>
                     <nav aria-label="breadcrumb">
                         <ol className="breadcrumb mb-0 p-0">
-                            <li className="breadcrumb-item"><Link to="/dashboard" className="text-slate-500 hover:text-primary">Home</Link></li>
-                            <li className="breadcrumb-item active text-slate-900 dark:text-white" aria-current="page">Formulas</li>
+                            <li className="breadcrumb-item fs-6"><Link to="/dashboard" className="text-slate-500 hover:text-primary">Home</Link></li>
+                            <li className="breadcrumb-item active text-slate-900 dark:text-white fs-6" aria-current="page">Formulas</li>
                         </ol>
                     </nav>
                 </div>
@@ -114,23 +114,23 @@ const Formulas = () => {
 
             {/* OEE Benchmark Legend */}
             <Card className="border-0 shadow-sm mb-4 animate__animated animate__fadeInUp">
-                <CardBody className="py-3">
+                <CardBody className="py-4">
                     <div className="d-flex align-items-center justify-content-center gap-4 flex-wrap">
-                        <span className="d-flex align-items-center gap-2 text-sm">
+                        <span className="d-flex align-items-center gap-2" style={{fontSize: '1rem'}}>
                             <span className="d-inline-flex">
-                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }}></span>
+                                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }}></span>
                             </span>
                             <span className="text-slate-600 dark:text-slate-300"><strong className="text-slate-900 dark:text-white">≥ 85%</strong> — World Class</span>
                         </span>
-                        <span className="d-flex align-items-center gap-2 text-sm">
+                        <span className="d-flex align-items-center gap-2" style={{fontSize: '1rem'}}>
                             <span className="d-inline-flex">
-                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }}></span>
+                                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }}></span>
                             </span>
                             <span className="text-slate-600 dark:text-slate-300"><strong className="text-slate-900 dark:text-white">60 – 84%</strong> — Acceptable</span>
                         </span>
-                        <span className="d-flex align-items-center gap-2 text-sm">
+                        <span className="d-flex align-items-center gap-2" style={{fontSize: '1rem'}}>
                             <span className="d-inline-flex">
-                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}></span>
+                                <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}></span>
                             </span>
                             <span className="text-slate-600 dark:text-slate-300"><strong className="text-slate-900 dark:text-white">&lt; 60%</strong> — Needs Improvement</span>
                         </span>

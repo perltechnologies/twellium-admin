@@ -54,6 +54,8 @@ const UserList = React.lazy(() => import('../pages/users/UserList'));
 const UserForm = React.lazy(() => import('../pages/users/UserForm'));
 const ProductList = React.lazy(() => import('../pages/inventory/ProductList'));
 const ProductForm = React.lazy(() => import('../pages/inventory/ProductForm'));
+const ShiftMetricsByCode = React.lazy(() => import('../pages/production/ShiftMetricsByCode'));
+const CreateReport = React.lazy(() => import('../pages/production/CreateReport'));
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useAuth();
@@ -117,9 +119,10 @@ export const AppRouter = () => {
                                 <Route index element={<ProductionList />} />
                                 <Route path="overview" element={<ProductionOverview />} />
                                 <Route path="reports" element={<ProductionList />} />
-                                <Route path="new" element={<ReportForm />} />
+                                <Route path="new" element={<CreateReport />} />
+                                <Route path="metrics" element={<ShiftMetricsByCode />} />
                                 <Route path=":id" element={<ReportDetails />} />
-                                <Route path=":id/edit" element={<ReportForm />} />
+                                <Route path=":id/edit" element={<CreateReport />} />
 
                                 {/* Stoppage Logs */}
                                 <Route path="stoppages" element={<StoppageLogList />} />
