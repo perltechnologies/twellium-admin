@@ -4,6 +4,11 @@ import { ChartWrapper } from '../ui';
 
 const ProductionGraphs = ({ reports }) => {
     const graphData = useMemo(() => {
+        console.log('=== ProductionGraphs Debug ===');
+        console.log('Total reports:', reports.length);
+        console.log('Pet 5 reports:', reports.filter(r => r.pet_name?.toLowerCase().includes('pet 5') || r.pet_name?.toLowerCase().includes('pet5')));
+        console.log('All unique pets:', [...new Set(reports.map(r => r.pet_name))]);
+        
         // Status distribution
         const statusCounts = reports.reduce((acc, r) => {
             acc[r.status] = (acc[r.status] || 0) + 1;
@@ -36,13 +41,14 @@ const ProductionGraphs = ({ reports }) => {
         // Output per PET per day - Group by PET and show last 7 days
         const petOutputByDay = {};
         reports.forEach(r => {
-            if (last7Days.includes(r.production_date)) {
+            const reportDate = (r.production_date || '').split('T')[0];
+            if (last7Days.includes(reportDate)) {
                 const pet = r.pet_name || 'Unknown';
                 if (!petOutputByDay[pet]) {
                     petOutputByDay[pet] = {};
                     last7Days.forEach(d => petOutputByDay[pet][d] = 0);
                 }
-                petOutputByDay[pet][r.production_date] += r.total_bottles_produced || 0;
+                petOutputByDay[pet][reportDate] += r.total_bottles_produced || 0;
             }
         });
 

@@ -1471,20 +1471,36 @@ const Overview = () => {
                                 filteredReports.forEach(r => {
                                     const date = r.production_date;
                                     if (!grouped[date]) grouped[date] = {};
-                                    const petName = r.pet_name;
+                                    // Normalize PET name to handle case/spacing variations
+                                    const petName = r.pet_name?.trim();
                                     if (!grouped[date][petName]) {
                                         grouped[date][petName] = 0;
                                     }
                                     grouped[date][petName] += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                                 });
 
+                                // Debug: Log unique PET names
+                                const uniquePets = [...new Set(filteredReports.map(r => r.pet_name))];
+                                console.log('Unique PET names in data:', uniquePets);
+                                console.log('Grouped data:', grouped);
+                                console.log('Sample report:', filteredReports[0]);
+
                                 // Create series for each PET - always show Pet 1 to Pet 6
                                 const allPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
 
-                                const series = allPets.map(pet => ({
-                                    name: pet,
-                                    data: dates.map(date => grouped[date]?.[pet] || 0)
-                                }));
+                                const series = allPets.map(pet => {
+                                    const data = dates.map(date => {
+                                        const value = grouped[date]?.[pet] || 0;
+                                        return value;
+                                    });
+                                    return {
+                                        name: pet,
+                                        data: data
+                                    };
+                                });
+
+                                console.log('Chart series:', series);
+                                console.log('Dates:', dates);
 
                                 return series.length === 0 ? (
                                     <div className="text-center text-muted py-4">No production data available</div>

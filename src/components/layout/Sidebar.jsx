@@ -1,16 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
-const Sidebar = () => {
-    const location = useLocation();
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [openSubmenus, setOpenSubmenus] = useState({ production: true, configs: false, definitions: false, reporting: false });
-
-    const toggleSubmenu = (key) => {
-        setOpenSubmenus(prev => ({ ...prev, [key]: !prev[key] }));
-    };
-
-    const navigation = [
+const navigation = [
         {
             section: 'Main Menu',
             items: [
@@ -109,6 +100,31 @@ const Sidebar = () => {
         },
     ];
 
+const Sidebar = () => {
+    const location = useLocation();
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [openSubmenus, setOpenSubmenus] = useState({ production: false, configs: false, definitions: false, reporting: false });
+
+    // Auto-open submenu if current path matches any submenu item
+    useEffect(() => {
+        const newOpenSubmenus = { production: false, configs: false, definitions: false, reporting: false };
+        navigation.forEach(section => {
+            section.items.forEach(item => {
+                if (item.submenu) {
+                    const isActive = item.submenu.some(sub => location.pathname === sub.path);
+                    if (isActive) {
+                        newOpenSubmenus[item.key] = true;
+                    }
+                }
+            });
+        });
+        setOpenSubmenus(newOpenSubmenus);
+    }, [location.pathname]);
+
+    const toggleSubmenu = (key) => {
+        setOpenSubmenus(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
     useEffect(() => {
         if (window.bootstrap) {
             const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -152,7 +168,11 @@ const Sidebar = () => {
                                                 <li key={item.name} className={item.submenu ? 'submenu' : ''}>
                                                     {item.submenu ? (
                                                         <>
-                                                            <a href="#" onClick={(e) => { e.preventDefault(); toggleSubmenu(item.key); }} className={openSubmenus[item.key] ? 'subdrop' : ''}>
+                                                            <a 
+                                                                href="#" 
+                                                                onClick={(e) => { e.preventDefault(); toggleSubmenu(item.key); }} 
+                                                                className={`${openSubmenus[item.key] ? 'subdrop' : ''} ${item.submenu.some(sub => location.pathname === sub.path) ? 'active' : ''}`}
+                                                            >
                                                                 <i className={`ti ${item.icon}`}></i>
                                                                 <span>{item.name}</span>
                                                                 <span className="menu-arrow"></span>
