@@ -452,11 +452,7 @@ const StoppageTimeline = ({ logs }) => {
 const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) => {
     const [activeReadingTab, setActiveReadingTab] = useState('production');
 
-    console.log('MeterReadingsView props:', { productionReadings, syrupReadings, co2Readings });
-
     const ReadingCard = ({ title, data, fields }) => {
-        console.log(`ReadingCard for ${title}:`, data);
-
         if (!data) {
             return (
                 <div className="text-center py-5 text-muted">
@@ -596,15 +592,9 @@ const ReportDetails = () => {
         let plannedDowntime = 0;
         let mechanicalDowntime = 0;
 
-        console.log('Total stoppage logs:', report.stoppage_logs?.length || 0);
-
         // Stoppage Logs Processing
         if (report.stoppage_logs && report.stoppage_logs.length > 0) {
-            report.stoppage_logs.forEach((log, logIndex) => {
-                console.log(`Processing stoppage log ${logIndex + 1}:`, {
-                    downtime_minutes: log.downtime_minutes,
-                    incidents_count: log.incidents?.length || 0
-                });
+            report.stoppage_logs.forEach((log) => {
                 // Efficiency
                 const eff = parseFloat(log.efficiency);
                 if (!isNaN(eff)) {
@@ -640,12 +630,6 @@ const ReportDetails = () => {
                             }
                         }
                         
-                        console.log('Incident:', {
-                            category: catName,
-                            raw_duration: inc.incident_duration,
-                            parsed_minutes: durationMinutes
-                        });
-                        
                         if (!categoryMap[catName]) categoryMap[catName] = 0;
                         categoryMap[catName] += durationMinutes;
 
@@ -665,7 +649,7 @@ const ReportDetails = () => {
             });
 
 
-            totalDowntime = totalDowntimeSum / report.stoppage_logs.length;
+            totalDowntime = totalDowntimeSum;
         }
 
 
@@ -673,12 +657,14 @@ const ReportDetails = () => {
         const avgEff = logCount > 0 ? totalEfficiency / logCount : 0;
         const effVal = Math.min(Math.max(avgEff, 0), 100);
 
+        // Use API OEE when available, fall back to averaged stoppage efficiency
+        const apiOee = report.metrics?.oee;
+        const parsedEff = parseFloat(report.efficiency);
+        const oeeVal = apiOee != null ? apiOee : !isNaN(parsedEff) ? parsedEff : effVal;
+        const clampedOee = Math.min(Math.max(oeeVal || 0, 0), 100);
 
         let productionTime = 0;
         if (report.start_time && report.end_time) {
-            const start = new Date(`${report.production_date}T${report.start_time}`);
-            const end = new Date(`${report.production_date}T${report.end_time}`);
-
             const sTime = new Date(`1970-01-01T${report.start_time}`);
             const eTime = new Date(`1970-01-01T${report.end_time}`);
             if (eTime < sTime) eTime.setDate(eTime.getDate() + 1); // Next day
@@ -688,8 +674,8 @@ const ReportDetails = () => {
         }
 
         const efficiencyData = [
-            { name: 'Efficiency', value: Number(effVal.toFixed(1)) },
-            { name: 'Downtime', value: Number((100 - effVal).toFixed(1)) }
+            { name: 'OEE', value: Number(clampedOee.toFixed(1)) },
+            { name: 'Loss', value: Number((100 - clampedOee).toFixed(1)) }
         ];
 
         const downtimeData = Object.keys(categoryMap).map(key => ({
@@ -697,34 +683,12 @@ const ReportDetails = () => {
             minutes: categoryMap[key]
         })).sort((a, b) => b.minutes - a.minutes);
 
-
-        let sumWaste = 0;
-        let sumFillerReading = 0;
-
-
-        if (report.meter_readings) {
-            report.meter_readings.forEach(m => {
-                sumWaste += (parseFloat(m.filler_rejects) || 0);
-                sumFillerReading += (parseFloat(m.filter_reading) || 0);
-            });
-        }
-
         // --- OEE CALCULATIONS (per /dashboard/formulas) ---
         
         const prodHours = report.total_production_time_hours ? parseFloat(report.total_production_time_hours) : (productionTime || 1);
         const downtimeHours = totalDowntime / 60;
         const plannedDowntimeHours = plannedDowntime / 60;
         const mechanicalDowntimeHours = mechanicalDowntime / 60;
-        
-        console.log('OEE Debug:', {
-            prodHours,
-            totalDowntime,
-            downtimeHours,
-            plannedDowntime,
-            plannedDowntimeHours,
-            mechanicalDowntime,
-            mechanicalDowntimeHours
-        });
         
         // Availability = (Planned Time - Total Downtime) / (Planned Time - Mechanical Downtime) × 100
         // If mechanical downtime = 0, this becomes: (Planned - Total) / Planned = standard availability
@@ -735,14 +699,13 @@ const ReportDetails = () => {
         // Quality = (Total Production - Filler Reject) / Total Production × 100
         let fillerReading = 0;
         let fillerRejects = 0;
-        if (report.meter_readings && report.meter_readings.length > 0) {
-            report.meter_readings.forEach(m => {
+        const readings = report.production_readings || report.meter_readings;
+        if (readings) {
+            const readingsArr = Array.isArray(readings) ? readings : [readings];
+            readingsArr.forEach(m => {
                 fillerReading += (parseFloat(m.filler_reading) || 0);
                 fillerRejects += (parseFloat(m.filler_rejects) || 0);
             });
-        } else {
-            fillerReading = parseFloat(report.filler_reading) || parseFloat(report.total_bottles_produced) || 0;
-            fillerRejects = parseFloat(report.filler_rejects) || parseFloat(report.total_waste) || 0;
         }
         const qualVal = fillerReading > 0 ? ((fillerReading - fillerRejects) / fillerReading) * 100 : 0;
 
@@ -751,10 +714,12 @@ const ReportDetails = () => {
         const perfDenominator = prodHours - plannedDowntimeHours;
         const perfVal = perfDenominator > 0 ? (perfNumerator / perfDenominator) * 100 : 0;
 
+        // Prefer API-provided metrics when available, fall back to manual calculation
+        const apiMetrics = report.metrics || {};
         const oeeMetrics = {
-            availability: Math.min(Math.max(availVal || 0, 0), 100).toFixed(1),
-            quality: Math.min(Math.max(qualVal || 0, 0), 100).toFixed(1),
-            performance: Math.min(Math.max(perfVal || 0, 0), 100).toFixed(1)
+            availability: (apiMetrics.availability != null ? apiMetrics.availability : Math.min(Math.max(availVal || 0, 0), 100)).toFixed(1),
+            quality: (apiMetrics.quality != null ? apiMetrics.quality : Math.min(Math.max(qualVal || 0, 0), 100)).toFixed(1),
+            performance: (apiMetrics.performance != null ? apiMetrics.performance : Math.min(Math.max(perfVal || 0, 0), 100)).toFixed(1)
         };
 
         return {
@@ -762,7 +727,7 @@ const ReportDetails = () => {
             downtimeData,
             totalOutput: totalOutput || report.total_bottles_produced || 0,
             totalDowntime: totalDowntime || report.total_downtime_minutes || 0,
-            efficiency: Number(effVal.toFixed(1)) || report.efficiency || 0,
+            efficiency: Number(clampedOee.toFixed(1)),
             productionTime: productionTime || report.total_production_time_hours || 0,
             oeeMetrics,
             plannedDowntime,
@@ -777,11 +742,11 @@ const ReportDetails = () => {
     const tooltipBorder = isDark ? '#1e293b' : '#e2e8f0';
     const tooltipText = isDark ? '#f1f5f9' : '#0f172a';
 
-    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = report ? calculateStats() : {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const stats = report ? calculateStats() : {
         efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }, plannedDowntime: 0, mechanicalDowntime: 0
     };
-    const COLOR_EFFICIENCY = '#10b981'; // emerald-500
-    const COLOR_LOSS = '#ef4444'; // red-500
+    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = stats;
 
     if (loading) return <div className="p-4 text-center text-muted">Loading details...</div>;
     if (!report) return <div className="p-4 text-center text-danger">Report not found</div>;
@@ -1054,25 +1019,25 @@ const ReportDetails = () => {
 
             {/* Production Performance Analysis */}
             <div className="card shadow-sm mb-4 border-0">
-                <div className="card-header bg-white border-bottom py-3">
-                    <h6 className="mb-0 fw-semibold text-dark d-flex align-items-center gap-2">
+                <div className="card-header border-bottom py-3">
+                    <h6 className="mb-0 fw-semibold d-flex align-items-center gap-2">
                         <i className="ti ti-chart-bar fs-5 text-primary"></i>
                         Production Performance Analysis
                     </h6>
                     <small className="text-muted">Efficiency and downtime metrics overview</small>
                 </div>
-                <div className="card-body p-4 bg-white">
+                <div className="card-body p-4">
                     <div className="row g-4">
                         {/* Efficiency Chart */}
                         <div className="col-lg-6">
                             <div className="card h-100 border shadow-sm" style={{ overflow: 'hidden' }}>
-                                <div className="card-header bg-light border-bottom py-3">
-                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-dark fw-semibold">
+                                <div className="card-header border-bottom py-3">
+                                    <h6 className="mb-0 d-flex align-items-center gap-2 fw-semibold">
                                         <Activity className="h-4 w-4 text-success" />
-                                        Efficiency Analysis
+                                        OEE Analysis
                                     </h6>
                                 </div>
-                                <div className="card-body bg-white p-4">
+                                <div className="card-body p-4">
                                     <div className="d-flex flex-column flex-md-row align-items-center gap-4 justify-content-center" style={{ minHeight: '300px' }}>
                                         <div className="position-relative" style={{ width: '220px', height: '220px' }}>
                                             {efficiencyData.length > 0 ? (
@@ -1094,7 +1059,7 @@ const ReportDetails = () => {
                                                                 stroke="none"
                                                             >
                                                                 <Cell fill={efficiencyData[0]?.value >= 80 ? '#10b981' : efficiencyData[0]?.value >= 60 ? '#f59e0b' : '#ef4444'} />
-                                                                <Cell fill="#e5e7eb" />
+                                                                <Cell fill={isDark ? '#334155' : '#e5e7eb'} />
                                                             </Pie>
                                                         </PieChart>
                                                     </ResponsiveContainer>
@@ -1112,72 +1077,43 @@ const ReportDetails = () => {
                                             )}
                                         </div>
                                         <div className="vstack gap-3">
-                                            <div className="text-center p-3 rounded border" style={{ backgroundColor: '#f9fafb' }}>
-                                                <div className="position-relative d-inline-block mb-2" style={{ width: '110px', height: '110px' }}>
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <PieChart>
-                                                            <Pie
-                                                                data={[
-                                                                    { value: efficiencyData[0]?.value || 0 },
-                                                                    { value: 100 - (efficiencyData[0]?.value || 0) }
-                                                                ]}
-                                                                cx="50%"
-                                                                cy="50%"
-                                                                startAngle={90}
-                                                                endAngle={450}
-                                                                innerRadius={35}
-                                                                outerRadius={45}
-                                                                dataKey="value"
-                                                                stroke="none"
-                                                            >
-                                                                <Cell fill="#10b981" />
-                                                                <Cell fill="#e5e7eb" />
-                                                            </Pie>
-                                                        </PieChart>
-                                                    </ResponsiveContainer>
-                                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                        <div className="fw-bold text-success" style={{ fontSize: '1.5rem' }}>{(efficiencyData[0]?.value || 0).toFixed(1)}%</div>
+                                            {[
+                                                { label: 'Availability', value: parseFloat(oeeMetrics.availability), color: '#06b6d4' },
+                                                { label: 'Performance', value: parseFloat(oeeMetrics.performance), color: '#8b5cf6' },
+                                                { label: 'Quality', value: parseFloat(oeeMetrics.quality), color: '#10b981' },
+                                            ].map(({ label, value, color }) => (
+                                                <div key={label} className="text-center p-3 rounded border" style={{ backgroundColor: isDark ? '#1e293b' : '#f9fafb' }}>
+                                                    <div className="position-relative d-inline-block mb-2" style={{ width: '110px', height: '110px' }}>
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <PieChart>
+                                                                <Pie
+                                                                    data={[
+                                                                        { value: value || 0 },
+                                                                        { value: 100 - (value || 0) }
+                                                                    ]}
+                                                                    cx="50%"
+                                                                    cy="50%"
+                                                                    startAngle={90}
+                                                                    endAngle={450}
+                                                                    innerRadius={35}
+                                                                    outerRadius={45}
+                                                                    dataKey="value"
+                                                                    stroke="none"
+                                                                >
+                                                                    <Cell fill={color} />
+                                                                    <Cell fill={isDark ? '#334155' : '#e5e7eb'} />
+                                                                </Pie>
+                                                            </PieChart>
+                                                        </ResponsiveContainer>
+                                                        <div className="position-absolute top-50 start-50 translate-middle text-center">
+                                                            <div className="fw-bold" style={{ fontSize: '1.5rem', color }}>{(value || 0).toFixed(1)}%</div>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <small className="text-secondary text-uppercase fw-semibold d-block">{label}</small>
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <small className="text-secondary text-uppercase fw-semibold d-block">
-                                                        <i className="ti ti-trending-up me-1"></i>Efficiency
-                                                    </small>
-                                                </div>
-                                            </div>
-                                            <div className="text-center p-3 rounded border" style={{ backgroundColor: '#f9fafb' }}>
-                                                <div className="position-relative d-inline-block mb-2" style={{ width: '110px', height: '110px' }}>
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <PieChart>
-                                                            <Pie
-                                                                data={[
-                                                                    { value: 100 - (efficiencyData[0]?.value || 0) },
-                                                                    { value: efficiencyData[0]?.value || 0 }
-                                                                ]}
-                                                                cx="50%"
-                                                                cy="50%"
-                                                                startAngle={90}
-                                                                endAngle={450}
-                                                                innerRadius={35}
-                                                                outerRadius={45}
-                                                                dataKey="value"
-                                                                stroke="none"
-                                                            >
-                                                                <Cell fill="#6b7280" />
-                                                                <Cell fill="#e5e7eb" />
-                                                            </Pie>
-                                                        </PieChart>
-                                                    </ResponsiveContainer>
-                                                    <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                        <div className="fw-bold text-secondary" style={{ fontSize: '1.5rem' }}>{(100 - (efficiencyData[0]?.value || 0)).toFixed(1)}%</div>
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <small className="text-secondary text-uppercase fw-semibold d-block">
-                                                        <i className="ti ti-trending-down me-1"></i>Loss
-                                                    </small>
-                                                </div>
-                                            </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
@@ -1187,49 +1123,43 @@ const ReportDetails = () => {
                         {/* Downtime Analysis Chart */}
                         <div className="col-lg-6">
                             <div className="card h-100 border shadow-sm" style={{ overflow: 'hidden' }}>
-                                <div className="card-header bg-light border-bottom py-3">
-                                    <h6 className="mb-0 d-flex align-items-center gap-2 text-dark fw-semibold">
+                                <div className="card-header border-bottom py-3">
+                                    <h6 className="mb-0 d-flex align-items-center gap-2 fw-semibold">
                                         <AlertTriangle className="h-4 w-4 text-warning" />
                                         Downtime Breakdown
                                     </h6>
                                 </div>
-                                <div className="card-body bg-white p-4">
+                                <div className="card-body p-4">
                                     <div style={{ height: '300px', width: '100%' }}>
                                 {downtimeData.length > 0 ? (
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart data={downtimeData} layout="vertical" margin={{ top: 10, right: 50, left: 120, bottom: 10 }}>
-                                            <defs>
-                                                <linearGradient id="downtimeGradient" x1="0" y1="0" x2="1" y2="0">
-                                                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9} />
-                                                    <stop offset="100%" stopColor="#f59e0b" stopOpacity={1} />
-                                                </linearGradient>
-                                            </defs>
-                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} vertical={true} stroke="#e5e7eb" opacity={0.5} />
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} vertical={true} stroke={chartGridColor} opacity={0.5} />
                                             <XAxis
                                                 type="number"
-                                                tick={{ fill: '#6b7280', fontSize: 11 }}
-                                                axisLine={{ stroke: '#d1d5db' }}
-                                                tickLine={{ stroke: '#d1d5db' }}
-                                                label={{ value: 'Duration (minutes)', position: 'insideBottom', offset: -5, fill: '#6b7280', fontSize: 11 }}
+                                                tick={{ fill: isDark ? '#94a3b8' : '#6b7280', fontSize: 11 }}
+                                                axisLine={{ stroke: isDark ? '#475569' : '#d1d5db' }}
+                                                tickLine={{ stroke: isDark ? '#475569' : '#d1d5db' }}
+                                                label={{ value: 'Duration (minutes)', position: 'insideBottom', offset: -5, fill: isDark ? '#94a3b8' : '#6b7280', fontSize: 11 }}
                                             />
                                             <YAxis
                                                 type="category"
                                                 dataKey="name"
                                                 width={120}
-                                                tick={{ fill: '#374151', fontSize: 11, fontWeight: 500 }}
+                                                tick={{ fill: isDark ? '#e2e8f0' : '#374151', fontSize: 11, fontWeight: 500 }}
                                                 tickLine={false}
-                                                axisLine={{ stroke: '#d1d5db' }}
+                                                axisLine={{ stroke: isDark ? '#475569' : '#d1d5db' }}
                                             />
                                             <RechartsTooltip
-                                                cursor={{ fill: '#f3f4f6', opacity: 0.5 }}
+                                                cursor={{ fill: isDark ? '#1e293b' : '#f3f4f6', opacity: 0.5 }}
                                                 contentStyle={{
-                                                    backgroundColor: '#fff',
+                                                    backgroundColor: tooltipBg,
                                                     borderRadius: '8px',
-                                                    border: '1px solid #e5e7eb',
+                                                    border: `1px solid ${tooltipBorder}`,
                                                     boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
                                                     padding: '10px 14px'
                                                 }}
-                                                labelStyle={{ fontWeight: '600', color: '#111827', fontSize: '13px', marginBottom: '4px' }}
+                                                labelStyle={{ fontWeight: '600', color: tooltipText, fontSize: '13px', marginBottom: '4px' }}
                                                 formatter={(value) => [`${Number(value).toFixed(1)} min`, 'Duration']}
                                             />
                                             <Bar

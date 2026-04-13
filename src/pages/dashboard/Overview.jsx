@@ -1426,7 +1426,15 @@ const Overview = () => {
                                 </div>
                             ) : (() => {
                                 // Use period reports when week/month is active, otherwise use allReports
-                                let filteredReports = outputPeriod ? [...outputPeriodReports] : [...allReports];
+                                let filteredReports = (outputPeriod ? [...outputPeriodReports] : [...allReports]).map(r => {
+                                    // Ensure production_date exists — extract from report_code or fall back to log_date
+                                    let prodDate = r.production_date;
+                                    if (!prodDate && r.report_code) {
+                                        const match = r.report_code.match(/PR-(\d{4}-\d{2}-\d{2})/);
+                                        if (match) prodDate = match[1];
+                                    }
+                                    return { ...r, production_date: prodDate || r.log_date };
+                                });
                                 
                                 if (outputUseRange) {
                                     if (outputStartDate) filteredReports = filteredReports.filter(r => r.production_date >= outputStartDate);
@@ -1466,36 +1474,37 @@ const Overview = () => {
                                     }
                                 }
 
-                                // Group reports by date and PET
+                                // Build a case-insensitive lookup: normalize all pet_name values to a canonical form
+                                const normalizePet = (name) => (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+                                // Group reports by date and normalized PET name
                                 const grouped = {};
                                 filteredReports.forEach(r => {
                                     const date = r.production_date;
+                                    if (!date) return;
                                     if (!grouped[date]) grouped[date] = {};
-                                    // Normalize PET name to handle case/spacing variations
-                                    const petName = r.pet_name?.trim();
-                                    if (!grouped[date][petName]) {
-                                        grouped[date][petName] = 0;
-                                    }
-                                    grouped[date][petName] += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+                                    const key = normalizePet(r.pet_name);
+                                    if (!key) return;
+                                    if (!grouped[date][key]) grouped[date][key] = 0;
+                                    grouped[date][key] += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                                 });
 
-                                // Debug: Log unique PET names
-                                const uniquePets = [...new Set(filteredReports.map(r => r.pet_name))];
-                                console.log('Unique PET names in data:', uniquePets);
-                                console.log('Grouped data:', grouped);
-                                console.log('Sample report:', filteredReports[0]);
+                                // Discover actual PET names from data, build display map
+                                const petDisplayNames = {};
+                                filteredReports.forEach(r => {
+                                    const key = normalizePet(r.pet_name);
+                                    if (key && !petDisplayNames[key]) petDisplayNames[key] = r.pet_name.trim();
+                                });
 
-                                // Create series for each PET - always show Pet 1 to Pet 6
+                                // Always show Pet 1–6, matching by normalized key
                                 const allPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
 
                                 const series = allPets.map(pet => {
-                                    const data = dates.map(date => {
-                                        const value = grouped[date]?.[pet] || 0;
-                                        return value;
-                                    });
+                                    const key = normalizePet(pet);
+                                    const displayName = petDisplayNames[key] || pet;
                                     return {
-                                        name: pet,
-                                        data: data
+                                        name: displayName,
+                                        data: dates.map(date => grouped[date]?.[key] || 0)
                                     };
                                 });
 
