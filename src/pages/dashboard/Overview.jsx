@@ -157,6 +157,15 @@ const Overview = () => {
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedOutputPets, setSelectedOutputPets] = useState([]);
+
+    // Independent OEE gauges date filter (defaults to previous day)
+    const [oeeDate, setOeeDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return d.toISOString().split('T')[0];
+    });
+    const [oeeReports, setOeeReports] = useState([]);
+    const [oeeLoading, setOeeLoading] = useState(false);
     
     // Filters for Production Output by PET
     const [outputUseRange, setOutputUseRange] = useState(true);
@@ -305,6 +314,27 @@ const Overview = () => {
             fetchOutputPeriodData();
         }
     }, [outputPeriod, outputStartDate, outputEndDate]);
+
+    // Fetch OEE data independently based on oeeDate
+    useEffect(() => {
+        if (!oeeDate) return;
+        const fetchOeeData = async () => {
+            setOeeLoading(true);
+            try {
+                const start = `${oeeDate}T00:00:00Z`;
+                const end = `${oeeDate}T23:59:59Z`;
+                const res = await productionApi.getOeeSummary({ datetime_start_time: start, datetime_end_time: end });
+                const data = res?.data?.data || res?.data?.results || res?.data || [];
+                setOeeReports(data.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+            } catch (e) {
+                console.error('Error fetching OEE data:', e);
+                setOeeReports([]);
+            } finally {
+                setOeeLoading(false);
+            }
+        };
+        fetchOeeData();
+    }, [oeeDate]);
 
     /* Load shift data separately */
     const loadShiftData = useCallback(async () => {
@@ -471,7 +501,7 @@ const Overview = () => {
 
     /* ── Derived data (recomputed when filter or raw data changes) ── */
     const { stats, oee, oeeByLine, downtimeCategories } = useMemo(() => {
-        let reports = rawReports;
+        let reports = oeeReports.length > 0 ? oeeReports : rawReports;
         if (selectedPet) {
             reports = reports.filter(r => r.pet_name === selectedPet);
         }
@@ -625,7 +655,7 @@ const Overview = () => {
             .sort((a, b) => b.value - a.value);
 
         return { stats, oee: displayOee, oeeByLine, downtimeCategories };
-    }, [rawReports, rawPets, rawStoppages, selectedPet, selectedDate]);
+    }, [oeeReports, rawReports, rawPets, rawStoppages, selectedPet, selectedDate]);
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
@@ -1126,42 +1156,35 @@ const Overview = () => {
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">
                                 Overall Equipment Effectiveness (Efficiency)
-                                {filters.log_date && (
-                                    <span className="badge bg-soft-info text-info ms-2 fs-11">
-                                        <i className="ti ti-calendar me-1"></i>{filters.log_date}
-                                    </span>
-                                )}
-                                {filters.start_date && filters.end_date && (
-                                    <span className="badge bg-soft-info text-info ms-2 fs-11">
-                                        <i className="ti ti-calendar me-1"></i>{filters.start_date} - {filters.end_date}
-                                    </span>
-                                )}
-                                {filters.pet && (
-                                    <span className="badge bg-soft-primary text-primary ms-2 fs-11">
-                                        <i className="ti ti-building-factory-2 me-1"></i>{availablePets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}
-                                    </span>
-                                )}
+                                <span className="badge bg-soft-info text-info ms-2 fs-11">
+                                    <i className="ti ti-calendar me-1"></i>{oeeDate}
+                                </span>
                             </h6>
-                            <button onClick={() => navigate('/dashboard/formulas')} className="btn btn-outline-light shadow btn-xs">
-                                <i className="ti ti-math-function me-1"></i>View Formulas
-                            </button>
+                            <div className="d-flex align-items-center gap-2">
+                                <input
+                                    type="date"
+                                    className="form-control form-control-sm"
+                                    value={oeeDate}
+                                    onChange={(e) => setOeeDate(e.target.value)}
+                                    style={{ width: 'auto' }}
+                                />
+                                <button onClick={() => navigate('/dashboard/formulas')} className="btn btn-outline-light shadow btn-xs">
+                                    <i className="ti ti-math-function me-1"></i>View Formulas
+                                </button>
+                            </div>
                         </div>
                         <div className="card-body">
-                                {!error && rawReports.length === 0 ? (
+                                {oeeLoading ? (
+                                    <div className="text-center py-5">
+                                        <div className="spinner-border text-primary" role="status">
+                                            <span className="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                ) : !error && oeeReports.length === 0 ? (
                                     <div className="alert alert-warning d-flex align-items-center">
                                         <i className="ti ti-alert-circle fs-4 me-2"></i>
                                         <div>
-                                            <strong>Active Filters:</strong>
-                                            {filters.start_date && filters.end_date ? (
-                                                <span className="ms-2">Date Range: {filters.start_date} to {filters.end_date}</span>
-                                            ) : filters.log_date ? (
-                                                <span className="ms-2">Date: {filters.log_date}</span>
-                                            ) : null}
-                                            {filters.pet && (
-                                                <span className="ms-2">• PET: {availablePets.find(p => p.id === parseInt(filters.pet))?.pet_name || filters.pet}</span>
-                                            )}
-                                            <br />
-                                            <strong>No data available</strong> for the selected date. Please adjust your filters.
+                                            <strong>No data available</strong> for {oeeDate}. Please select a different date.
                                         </div>
                                     </div>
                                 ) : (
