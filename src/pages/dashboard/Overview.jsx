@@ -637,6 +637,7 @@ const Overview = () => {
                 name: pet.pet_name, 
                 reports: 0, 
                 oee: 0, 
+                performance: 0,
                 production: 0, 
                 downtime: 0,
                 efficiency: 0
@@ -652,6 +653,7 @@ const Overview = () => {
                     name: name, 
                     reports: 0, 
                     oee: 0, 
+                    performance: 0,
                     production: 0, 
                     downtime: 0,
                     efficiency: 0
@@ -663,6 +665,7 @@ const Overview = () => {
                 // Use efficiency from API response (convert string to number), fallback to OEE from metrics
                 const efficiency = parseFloat(r.efficiency) || r.metrics?.oee || 0;
                 lineMap[name].oee += efficiency;
+                lineMap[name].performance += r.metrics?.performance || 0;
                 lineMap[name].production += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                 lineMap[name].downtime += r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
                 
@@ -680,6 +683,7 @@ const Overview = () => {
             name: l.name,
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
+            performance: l.reports > 0 ? clamp(l.performance / l.reports) : 0,
             production: l.production,
             downtime: l.downtime,
             lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
@@ -1022,7 +1026,7 @@ const Overview = () => {
                             {hourlyOeeByLine.map((line) => (
                                 <div key={`oee-${line.name}`} className="col">
                                     <CorporateGaugeChart
-                                        value={line.oee}
+                                        value={line.performance}
                                         label={line.name}
                                         size={160}
                                         lastUpdated={line.lastUpdated}
