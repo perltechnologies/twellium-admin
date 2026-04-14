@@ -629,6 +629,15 @@ const Overview = () => {
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
+        // Compute shift duration in minutes from currentShiftInfo
+        let shiftMins = 0;
+        if (currentShiftInfo?.start_time && currentShiftInfo?.end_time) {
+            const [sh, sm] = currentShiftInfo.start_time.slice(0, 5).split(':').map(Number);
+            const [eh, em] = currentShiftInfo.end_time.slice(0, 5).split(':').map(Number);
+            shiftMins = (eh * 60 + em) - (sh * 60 + sm);
+            if (shiftMins <= 0) shiftMins += 24 * 60; // crosses midnight
+        }
+
         const lineMap = {};
         
         // Start with all available PETs from rawPets
@@ -637,9 +646,9 @@ const Overview = () => {
                 name: pet.pet_name, 
                 reports: 0, 
                 oee: 0, 
-                performance: 0,
                 production: 0, 
                 downtime: 0,
+                plannedDowntime: 0,
                 efficiency: 0
             };
         });
@@ -653,9 +662,9 @@ const Overview = () => {
                     name: name, 
                     reports: 0, 
                     oee: 0, 
-                    performance: 0,
                     production: 0, 
                     downtime: 0,
+                    plannedDowntime: 0,
                     efficiency: 0
                 };
             }
@@ -665,9 +674,9 @@ const Overview = () => {
                 // Use efficiency from API response (convert string to number), fallback to OEE from metrics
                 const efficiency = parseFloat(r.efficiency) || r.metrics?.oee || 0;
                 lineMap[name].oee += efficiency;
-                lineMap[name].performance += r.metrics?.performance || 0;
                 lineMap[name].production += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                 lineMap[name].downtime += r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
+                lineMap[name].plannedDowntime += r.planned_downtime_minutes || r.metrics?.details?.planned_downtime_mins || 0;
                 
                 // Track last updated time
                 if (r.log_time) {
@@ -679,11 +688,16 @@ const Overview = () => {
             }
         });
 
-        return Object.values(lineMap).map(l => ({
+        return Object.values(lineMap).map(l => {
+            // Performance = (Planned Time - Total Downtime) / (Planned Time - Planned Downtime) × 100
+            const plannedTime = shiftMins * l.reports;
+            const operationalTime = plannedTime - l.plannedDowntime;
+            const perf = operationalTime > 0 ? ((plannedTime - l.downtime) / operationalTime) * 100 : 0;
+            return {
             name: l.name,
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
-            performance: l.reports > 0 ? clamp(l.performance / l.reports) : 0,
+            performance: clamp(perf),
             production: l.production,
             downtime: l.downtime,
             lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
@@ -694,12 +708,13 @@ const Overview = () => {
                 second: '2-digit',
                 hour12: true
             }) : null,
-        })).sort((a, b) => {
+            };
+        }).sort((a, b) => {
             const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [hourlyReports, rawPets]);
+    }, [hourlyReports, rawPets, currentShiftInfo]);
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;
