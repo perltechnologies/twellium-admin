@@ -317,7 +317,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                 {/* Summary Stats */}
                 <div className="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-2 mb-2">
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-primary h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-primary h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="bg-primary rounded-circle p-2">
@@ -331,21 +331,21 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </div>
                     </div>
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-success h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-success h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="bg-success rounded-circle p-2">
                                         <i className="ti ti-chart-pie text-white fs-5"></i>
                                     </div>
                                 </div>
-                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Avg OEE</small>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Avg Efficiency</small>
                                 <h6 className="mb-0 text-success fw-bold">{summary.avgOee.toFixed(1)}%</h6>
                                 <small className="text-muted fs-11">efficiency</small>
                             </div>
                         </div>
                     </div>
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-danger h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-danger h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="bg-danger rounded-circle p-2">
@@ -359,7 +359,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </div>
                     </div>
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-info h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-info h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="bg-info rounded-circle p-2">
@@ -376,7 +376,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                 
                 <div className="row row-cols-1 row-cols-sm-2 row-cols-md-5 g-2 mb-4">
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-purple h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-purple h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="rounded-circle p-2" style={{backgroundColor: '#8b5cf6'}}>
@@ -390,7 +390,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </div>
                     </div>
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-teal h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-teal h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="rounded-circle p-2" style={{backgroundColor: '#06b6d4'}}>
@@ -404,7 +404,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </div>
                     </div>
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-indigo h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-indigo h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="rounded-circle p-2" style={{backgroundColor: '#4f46e5'}}>
@@ -418,7 +418,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </div>
                     </div>
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-warning h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-warning h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="bg-warning rounded-circle p-2">
@@ -432,7 +432,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
                         </div>
                     </div>
                     <div className="col">
-                        <div className="card border-0 shadow-sm bg-soft-secondary h-100">
+                        <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-secondary h-100">
                             <div className="card-body text-center py-2 px-2">
                                 <div className="d-flex align-items-center justify-content-center mb-2">
                                     <div className="bg-secondary rounded-circle p-2">

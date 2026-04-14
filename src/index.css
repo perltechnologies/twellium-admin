@@ -541,6 +541,23 @@ h6 { font-size: 0.875rem; }
   color: var(--warning);
 }
 
+/* Production Summary stat cards: keep secondary text readable on hover */
+.production-summary-stat-card .text-muted {
+  color: #475569 !important;
+}
+
+.production-summary-stat-card:hover .text-muted {
+  color: #334155 !important;
+}
+
+[data-bs-theme="dark"] .production-summary-stat-card .text-muted {
+  color: #cbd5e1 !important;
+}
+
+[data-bs-theme="dark"] .production-summary-stat-card:hover .text-muted {
+  color: #e2e8f0 !important;
+}
+
 /* Alert Enhancements */
 .alert {
   border-radius: 10px;

@@ -529,7 +529,7 @@ const Overview = () => {
         reports.forEach(r => {
             const name = r.pet_name;
             if (!lineMap[name]) {
-                lineMap[name] = { name, reports: 0, availability: 0, quality: 0, performance: 0, oee: 0, production: 0 };
+                lineMap[name] = { name, reports: 0, availability: 0, quality: 0, performance: 0, oee: 0, production: 0, dates: [] };
             }
             lineMap[name].reports += 1;
             lineMap[name].availability += r.metrics?.availability || 0;
@@ -537,17 +537,28 @@ const Overview = () => {
             lineMap[name].performance += r.metrics?.performance || 0;
             lineMap[name].oee += r.metrics?.oee || 0;
             lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
+            if (r.report_code) lineMap[name].dates.push({ code: r.report_code, shift: r.shift_name });
         });
 
-        const oeeByLine = Object.values(lineMap).map(l => ({
-            name: l.name,
-            reports: l.reports,
-            availability: clamp(l.availability / l.reports),
-            quality: clamp(l.quality / l.reports),
-            performance: clamp(l.performance / l.reports),
-            oee: clamp(l.oee / l.reports),
-            production: l.production,
-        })).sort((a, b) => {
+        const oeeByLine = Object.values(lineMap).map(l => {
+            // Pick the entry with the most recent date from report_codes (format: PR-YYYY-MM-DD-SHIFT)
+            const latest = l.dates.reduce((best, entry) => {
+                const match = entry.code.match(/PR-(\d{4}-\d{2}-\d{2})/);
+                if (!match) return best;
+                return !best || match[1] > best.date ? { date: match[1], shift: entry.shift } : best;
+            }, null);
+            return {
+                name: l.name,
+                reports: l.reports,
+                availability: clamp(l.availability / l.reports),
+                quality: clamp(l.quality / l.reports),
+                performance: clamp(l.performance / l.reports),
+                oee: clamp(l.oee / l.reports),
+                production: l.production,
+                date: latest?.date || null,
+                shift: latest?.shift || null,
+            };
+        }).sort((a, b) => {
             const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
@@ -889,7 +900,7 @@ const Overview = () => {
                                                     {bestPerformer?.name || 'N/A'}
                                                 </div>
                                                 <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                                    {bestPerformer?.oee.toFixed(1) || 0}% OEE
+                                                    {bestPerformer?.oee.toFixed(1) || 0}% Efficiency
                                                 </div>
                                             </div>
                                         </div>
@@ -1035,7 +1046,7 @@ const Overview = () => {
                                                 <th style={{ fontSize: '0.8rem' }}>Shift</th>
                                                 <th style={{ fontSize: '0.8rem' }}>Total Production</th>
                                                 <th style={{ fontSize: '0.8rem' }}>Total Downtime</th>
-                                                <th style={{ fontSize: '0.8rem' }}>Avg OEE</th>
+                                                <th style={{ fontSize: '0.8rem' }}>Avg Efficiency</th>
                                                 <th style={{ fontSize: '0.8rem' }}>Stoppages</th>
                                                 <th style={{ fontSize: '0.8rem' }}>Avg Efficiency</th>
                                             </tr>
@@ -1091,11 +1102,11 @@ const Overview = () => {
             {isLoading ? <SkeletonGauges count={4} /> : (
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
-                    <ChartErrorBoundary fallbackMessage="Failed to render OEE gauges">
+                    <ChartErrorBoundary fallbackMessage="Failed to render Efficiency gauges">
                     <div className="card">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">
-                                Overall Equipment Effectiveness (OEE)
+                                Overall Equipment Effectiveness (Efficiency)
                                 {filters.log_date && (
                                     <span className="badge bg-soft-info text-info ms-2 fs-11">
                                         <i className="ti ti-calendar me-1"></i>{filters.log_date}
@@ -1178,7 +1189,7 @@ const Overview = () => {
                                     <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
                                         <GaugeChart 
                                             value={oee.oee} 
-                                            label="OEE" 
+                                            label="Efficiency" 
                                             color={gaugeColor(oee.oee)}
                                             formula="A × Q × P"
                                             calculation={`${(oee.availability/100).toFixed(3)} × ${(oee.quality/100).toFixed(3)} × ${(oee.performance/100).toFixed(3)} = ${oee.oee.toFixed(1)}%`}
@@ -1187,7 +1198,7 @@ const Overview = () => {
                                                 reason: oee.oee === 0 ? (
                                                     oee.availability === 0 ? 'Availability = 0%' :
                                                     oee.quality === 0 ? 'Quality = 0%' :
-                                                    oee.performance === 0 ? 'Performance = 0%' : 'OEE = 0%'
+                                                    oee.performance === 0 ? 'Performance = 0%' : 'Efficiency = 0%'
                                                 ) : null
                                             }}
                                         />
@@ -1226,7 +1237,7 @@ const Overview = () => {
                     {isLoading ? <SkeletonTable rows={4} cols={6} /> : (
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">OEE by Production Line</h6>
+                            <h6 className="mb-0">Efficiency by Production Line</h6>
                             <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-primary btn-xs">View Charts</button>
                         </div>
                         <div className="card-body p-0">
@@ -1235,6 +1246,7 @@ const Overview = () => {
                                     <thead className="table-light">
                                         <tr>
                                             <th className="ps-3">Line</th>
+                                            <th className="text-center">Date</th>
                                             <th className="text-center">Reports</th>
                                             <th className="text-center" title="(Planned - Downtime) / Planned × 100">
                                                 Availability <i className="ti ti-info-circle fs-12 text-muted"></i>
@@ -1246,19 +1258,27 @@ const Overview = () => {
                                                 Performance <i className="ti ti-info-circle fs-12 text-muted"></i>
                                             </th>
                                             <th className="text-center" title="A × Q × P">
-                                                OEE <i className="ti ti-info-circle fs-12 text-muted"></i>
+                                                Efficiency <i className="ti ti-info-circle fs-12 text-muted"></i>
                                             </th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {oeeByLine.length === 0 ? (
                                             <tr>
-                                                <td colSpan="6" className="text-center text-muted py-4">No data available</td>
+                                                <td colSpan="7" className="text-center text-muted py-4">No data available</td>
                                             </tr>
                                         ) : (
                                             oeeByLine.map((line) => (
                                                 <tr key={line.name}>
                                                     <td className="ps-3 fw-medium">{line.name}</td>
+                                                    <td className="text-center text-muted" style={{ fontSize: '0.8rem' }}>
+                                                        {line.date || '-'}
+                                                        {line.shift && (
+                                                            <span className={`badge ms-1 bg-soft-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'} text-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'}`}>
+                                                                {line.shift}
+                                                            </span>
+                                                        )}
+                                                    </td>
                                                     <td className="text-center">{line.reports}</td>
                                                     <td className="text-center">
                                                         <span className={`badge bg-soft-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'} text-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'}`}>
