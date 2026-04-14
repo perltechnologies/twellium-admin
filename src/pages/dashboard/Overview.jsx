@@ -501,7 +501,7 @@ const Overview = () => {
     }, [rawPets]);
 
     /* ── Derived data (recomputed when filter or raw data changes) ── */
-    const { stats, oee, oeeByLine, downtimeCategories } = useMemo(() => {
+    const { stats, oee, oeeByLine, oeeDetailReports, downtimeCategories } = useMemo(() => {
         let reports = oeeReports.length > 0 ? oeeReports : rawReports;
         if (selectedPet) {
             reports = reports.filter(r => r.pet_name === selectedPet);
