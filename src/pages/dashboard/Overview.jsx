@@ -1453,7 +1453,8 @@ const Overview = () => {
                                         const match = r.report_code.match(/PR-(\d{4}-\d{2}-\d{2})/);
                                         if (match) prodDate = match[1];
                                     }
-                                    return { ...r, production_date: prodDate || r.log_date };
+                                    prodDate = (prodDate || r.log_date || '').split('T')[0];
+                                    return { ...r, production_date: prodDate };
                                 });
                                 
                                 if (outputUseRange) {
@@ -1506,7 +1507,7 @@ const Overview = () => {
                                     const key = normalizePet(r.pet_name);
                                     if (!key) return;
                                     if (!grouped[date][key]) grouped[date][key] = 0;
-                                    grouped[date][key] += r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+                                    grouped[date][key] += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                                 });
 
                                 // Discover actual PET names from data, build display map
