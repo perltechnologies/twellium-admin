@@ -166,6 +166,7 @@ const Overview = () => {
     });
     const [oeeReports, setOeeReports] = useState([]);
     const [oeeLoading, setOeeLoading] = useState(false);
+    const [oeeShowDetail, setOeeShowDetail] = useState(false);
     
     // Filters for Production Output by PET
     const [outputUseRange, setOutputUseRange] = useState(true);
@@ -654,7 +655,27 @@ const Overview = () => {
             .filter(d => d.value > 0)
             .sort((a, b) => b.value - a.value);
 
-        return { stats, oee: displayOee, oeeByLine, downtimeCategories };
+        // Individual report rows for detail view
+        const oeeDetailReports = reports.map(r => {
+            const match = r.report_code?.match(/PR-(\d{4}-\d{2}-\d{2})/);
+            return {
+                name: r.pet_name,
+                report_code: r.report_code || '-',
+                date: match ? match[1] : r.log_date || '-',
+                shift: r.shift_name || '-',
+                availability: clamp(r.metrics?.availability || 0),
+                quality: clamp(r.metrics?.quality || 0),
+                performance: clamp(r.metrics?.performance || 0),
+                oee: clamp(r.metrics?.oee || 0),
+                production: r.metrics?.details?.total_output_pcs || 0,
+            };
+        }).sort((a, b) => {
+            const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
+            return aNum - bNum || a.shift.localeCompare(b.shift);
+        });
+
+        return { stats, oee: displayOee, oeeByLine, oeeDetailReports, downtimeCategories };
     }, [oeeReports, rawReports, rawPets, rawStoppages, selectedPet, selectedDate]);
 
     /* Hourly OEE by Line for per-PET gauges */
@@ -1269,16 +1290,22 @@ const Overview = () => {
                     <div className="card flex-fill">
                         <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                             <h6 className="mb-0">Efficiency by Production Line</h6>
-                            <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-primary btn-xs">View Charts</button>
+                            <div className="d-flex gap-2">
+                                <button onClick={() => setOeeShowDetail(v => !v)} className="btn btn-outline-secondary btn-xs">
+                                    <i className={`ti ti-${oeeShowDetail ? 'list' : 'report-analytics'} me-1`}></i>
+                                    {oeeShowDetail ? 'Summary' : 'Detail'}
+                                </button>
+                                <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-primary btn-xs">View Charts</button>
+                            </div>
                         </div>
                         <div className="card-body p-0">
-                            <div className="table-responsive">
+                            <div className="table-responsive" style={{ maxHeight: oeeShowDetail ? '400px' : 'none', overflowY: oeeShowDetail ? 'auto' : 'visible' }}>
                                 <table className="table table-hover mb-0">
-                                    <thead className="table-light">
+                                    <thead className="table-light" style={{ position: oeeShowDetail ? 'sticky' : 'static', top: 0, zIndex: 1 }}>
                                         <tr>
                                             <th className="ps-3">Line</th>
-                                            <th className="text-center">Date</th>
-                                            <th className="text-center">Reports</th>
+                                            <th className="text-center">{oeeShowDetail ? 'Report' : 'Date'}</th>
+                                            <th className="text-center">{oeeShowDetail ? 'Shift' : 'Reports'}</th>
                                             <th className="text-center" title="(Planned - Downtime) / Planned × 100">
                                                 Availability <i className="ti ti-info-circle fs-12 text-muted"></i>
                                             </th>
@@ -1294,23 +1321,33 @@ const Overview = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {oeeByLine.length === 0 ? (
-                                            <tr>
-                                                <td colSpan="7" className="text-center text-muted py-4">No data available</td>
-                                            </tr>
-                                        ) : (
-                                            oeeByLine.map((line) => (
-                                                <tr key={line.name}>
+                                        {(() => {
+                                            const rows = oeeShowDetail ? oeeDetailReports : oeeByLine;
+                                            if (rows.length === 0) return (
+                                                <tr><td colSpan="7" className="text-center text-muted py-4">No data available</td></tr>
+                                            );
+                                            return rows.map((line, idx) => (
+                                                <tr key={oeeShowDetail ? `${line.report_code}-${idx}` : line.name}>
                                                     <td className="ps-3 fw-medium">{line.name}</td>
                                                     <td className="text-center text-muted" style={{ fontSize: '0.8rem' }}>
-                                                        {line.date || '-'}
-                                                        {line.shift && (
-                                                            <span className={`badge ms-1 bg-soft-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'} text-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'}`}>
-                                                                {line.shift}
-                                                            </span>
+                                                        {oeeShowDetail ? line.report_code : (
+                                                            <>
+                                                                {line.date || '-'}
+                                                                {line.shift && line.shift !== '-' && (
+                                                                    <span className={`badge ms-1 bg-soft-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'} text-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'}`}>
+                                                                        {line.shift}
+                                                                    </span>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </td>
-                                                    <td className="text-center">{line.reports}</td>
+                                                    <td className="text-center" style={{ fontSize: '0.8rem' }}>
+                                                        {oeeShowDetail ? (
+                                                            <span className={`badge bg-soft-${line.shift?.toUpperCase() === 'DAY' ? 'warning' : 'dark'} text-${line.shift?.toUpperCase() === 'DAY' ? 'warning' : 'dark'}`}>
+                                                                {line.shift}
+                                                            </span>
+                                                        ) : line.reports}
+                                                    </td>
                                                     <td className="text-center">
                                                         <span className={`badge bg-soft-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'} text-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'}`}>
                                                             {line.availability.toFixed(1)}%
@@ -1332,8 +1369,8 @@ const Overview = () => {
                                                         </span>
                                                     </td>
                                                 </tr>
-                                            ))
-                                        )}
+                                            ));
+                                        })()}
                                     </tbody>
                                 </table>
                             </div>
