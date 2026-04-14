@@ -911,7 +911,7 @@ const Overview = () => {
 
                                 return (
                                     <>
-                                        <div className="col-3">
+                                        <div className="col-4">
                                             <div className="border rounded p-3 bg-light">
                                                 <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Production for all 6 Pets</div>
                                                 <div className="fw-bold" style={{ fontSize: '1.25rem' }}>
@@ -920,7 +920,7 @@ const Overview = () => {
                                                 <div className="text-muted" style={{ fontSize: '0.75rem' }}>bottles</div>
                                             </div>
                                         </div>
-                                        <div className="col-3">
+                                        <div className="col-4">
                                             <div className="border rounded p-3 bg-light">
                                                 <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Downtime across all lines</div>
                                                 <div className={`fw-bold ${totalDowntime <= 60 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
@@ -931,18 +931,7 @@ const Overview = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="col-3">
-                                            <div className="border rounded p-3 bg-light">
-                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Average Efficiency for all lines</div>
-                                                <div className={`fw-bold ${avgOEE >= 85 ? 'text-success' : avgOEE >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
-                                                    {avgOEE}%
-                                                </div>
-                                                <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                                    {avgOEE >= 85 ? 'Excellent' : avgOEE >= 60 ? 'Acceptable' : 'Needs improvement'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="col-3">
+                                        <div className="col-4">
                                             <div className="border rounded p-3 bg-light">
                                                 <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Best Performing Line</div>
                                                 <div className="fw-bold text-dark" style={{ fontSize: '1.25rem' }}>
