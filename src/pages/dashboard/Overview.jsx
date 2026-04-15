@@ -669,7 +669,7 @@ const Overview = () => {
                 shift: r.shift_name || '-',
                 availability: clamp(r.metrics?.availability || 0),
                 quality: clamp(r.metrics?.quality || 0),
-                performance: clamp(r.metrics?.performance || 0),
+                performance: clamp((() => { const pt = r.metrics?.details?.planned_time_mins || 0; const td = r.metrics?.details?.total_downtime_mins || 0; const pd = r.metrics?.details?.planned_downtime_mins || 0; const op = pt - pd; return op > 0 ? ((pt - td) / op) * 100 : 0; })()),
                 oee: clamp(r.metrics?.oee || 0),
                 production: r.metrics?.details?.total_output_pcs || 0,
             };
@@ -753,6 +753,7 @@ const Overview = () => {
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
             performance: clamp(perf),
+            perfRaw: { plannedTime, totalDowntime: l.downtime, plannedDowntime: l.plannedDowntime },
             production: l.production,
             downtime: l.downtime,
             lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
@@ -1089,6 +1090,7 @@ const Overview = () => {
                                         label={line.name}
                                         size={160}
                                         lastUpdated={line.lastUpdated}
+                                        rawValues={line.perfRaw}
                                     />
                                 </div>
                             ))}

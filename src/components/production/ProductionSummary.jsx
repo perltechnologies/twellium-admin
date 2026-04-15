@@ -116,6 +116,10 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             }
         }
 
+        // Cap dates at yesterday (exclude today and future)
+        const today = new Date().toISOString().split('T')[0];
+        dates = dates.filter(d => d < today);
+
         // Group by date
         filtered.forEach(r => {
             const date = r.production_date || r.log_date || '';
@@ -178,12 +182,12 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || r.downtime_minutes || r.total_downtime_mins || 0), 0);
         const plannedDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
         const mechDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
+        const totalPlannedMins = filtered.reduce((s, r) => s + (r.metrics?.details?.planned_time_mins || 0), 0);
         const avgRuntime = filtered.length > 0
             ? filtered.reduce((s, r) => s + (r.metrics?.details?.total_runtime_mins || r.runtime_minutes || 0), 0) / filtered.length
             : 0;
-        const avgPerformance = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (r.metrics?.performance || r.performance || 0), 0) / filtered.length
-            : 0;
+        const opTime = totalPlannedMins - plannedDowntime;
+        const avgPerformance = opTime > 0 ? ((totalPlannedMins - totalDowntime) / opTime) * 100 : 0;
         const avgAvailability = filtered.length > 0
             ? filtered.reduce((s, r) => s + (r.metrics?.availability || r.availability || 0), 0) / filtered.length
             : 0;
