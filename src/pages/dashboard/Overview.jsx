@@ -536,9 +536,10 @@ const Overview = () => {
         const totalRejects = reports.reduce((s, r) => s + (r.metrics?.details?.rejects_pcs || 0), 0);
 
         const availability = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.availability || 0), 0) / reports.length : 0;
-        const performance = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.performance || 0), 0) / reports.length : 0;
+        const operationalTime = totalPlannedMins - plannedDowntime;
+        const performance = operationalTime > 0 ? ((totalPlannedMins - totalDowntime) / operationalTime) * 100 : 0;
         const quality = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.quality || 0), 0) / reports.length : 0;
-        const oeeValue = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.oee || 0), 0) / reports.length : 0;
+        const oeeValue = reports.length > 0 ? (availability / 100) * (performance / 100) * (quality / 100) * 100 : 0;
 
         const oee = {
             availability: clamp(availability),
@@ -560,7 +561,7 @@ const Overview = () => {
         reports.forEach(r => {
             const name = r.pet_name;
             if (!lineMap[name]) {
-                lineMap[name] = { name, reports: 0, availability: 0, quality: 0, performance: 0, oee: 0, production: 0, dates: [] };
+                lineMap[name] = { name, reports: 0, availability: 0, quality: 0, performance: 0, oee: 0, production: 0, dates: [], plannedMins: 0, totalDowntimeMins: 0, plannedDowntimeMins: 0 };
             }
             lineMap[name].reports += 1;
             lineMap[name].availability += r.metrics?.availability || 0;
@@ -568,6 +569,9 @@ const Overview = () => {
             lineMap[name].performance += r.metrics?.performance || 0;
             lineMap[name].oee += r.metrics?.oee || 0;
             lineMap[name].production += r.metrics?.details?.total_output_pcs || 0;
+            lineMap[name].plannedMins += r.metrics?.details?.planned_time_mins || 0;
+            lineMap[name].totalDowntimeMins += r.metrics?.details?.total_downtime_mins || 0;
+            lineMap[name].plannedDowntimeMins += r.metrics?.details?.planned_downtime_mins || 0;
             if (r.report_code) lineMap[name].dates.push({ code: r.report_code, shift: r.shift_name });
         });
 
@@ -583,7 +587,7 @@ const Overview = () => {
                 reports: l.reports,
                 availability: clamp(l.availability / l.reports),
                 quality: clamp(l.quality / l.reports),
-                performance: clamp(l.performance / l.reports),
+                performance: clamp((l.plannedMins - l.plannedDowntimeMins) > 0 ? ((l.plannedMins - l.totalDowntimeMins) / (l.plannedMins - l.plannedDowntimeMins)) * 100 : 0),
                 oee: clamp(l.oee / l.reports),
                 production: l.production,
                 date: latest?.date || null,

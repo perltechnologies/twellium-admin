@@ -315,7 +315,12 @@ const StoppageLogList = () => {
             {/* Table Card */}
             <div className="card">
                 <div className="card-header d-flex align-items-center justify-content-between">
-                    <h6 className="mb-0">All Stoppages ({totalCount})</h6>
+                    <div className="d-flex align-items-center gap-2">
+                        <h6 className="mb-0">All Stoppages ({totalCount})</h6>
+                        <button className="btn btn-sm btn-outline-primary" onClick={() => navigate('/dashboard/production/stoppages-table')}>
+                            <i className="ti ti-table me-1"></i>View Summary
+                        </button>
+                    </div>
                     <div className="position-relative">
                         <button
                             className="btn btn-sm btn-outline-secondary"

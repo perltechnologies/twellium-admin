@@ -25,6 +25,7 @@ const ModeSelection = React.lazy(() => import('../pages/ModeSelection'));
 const PostProductionLayout = React.lazy(() => import('../components/layout/PostProductionLayout'));
 const PostProduction = React.lazy(() => import('../pages/post-production/Production'));
 const StoppageLogList = React.lazy(() => import('../pages/production/stoppages/StoppageLogList'));
+const StoppagesTable = React.lazy(() => import('../pages/production/stoppages/StoppagesTable'));
 const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/StoppageLogForm'));
 const StoppageLogDetails = React.lazy(() => import('../pages/production/stoppages/StoppageLogDetails'));
 const GenericCrudPage = React.lazy(() => import('../pages/production/GenericCrudPage'));
@@ -126,6 +127,7 @@ export const AppRouter = () => {
 
                                 {/* Stoppage Logs */}
                                 <Route path="stoppages" element={<StoppageLogList />} />
+                                <Route path="stoppages-table" element={<StoppagesTable />} />
                                 <Route path="stoppages/new" element={<StoppageLogForm />} />
                                 <Route path="stoppages/:id" element={<StoppageLogDetails />} />
                                 <Route path="stoppages/:id/edit" element={<StoppageLogForm />} />
