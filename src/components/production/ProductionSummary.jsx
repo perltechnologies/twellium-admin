@@ -33,14 +33,10 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             const fetchPeriodData = async () => {
                 setPeriodLoading(true);
                 try {
-                    const startDateTime = new Date(localStartDate);
-                    startDateTime.setHours(0, 0, 0, 0);
-                    const endDateTime = new Date(localEndDate);
-                    endDateTime.setHours(23, 59, 59, 999);
-                    
                     const params = {
-                        datetime_start_time: startDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z'),
-                        datetime_end_time: endDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z')
+                        start_date: localStartDate,
+                        end_date: localEndDate,
+                        page_size: 1000
                     };
                     
                     const response = await productionApi.getOeeSummary(params);
@@ -116,16 +112,15 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             }
         }
 
-        // Cap dates at yesterday (exclude today and future)
+        // Dates from today onward should not plot values
         const today = new Date().toISOString().split('T')[0];
-        dates = dates.filter(d => d < today);
 
         // Group by date
         filtered.forEach(r => {
             const date = r.production_date || r.log_date || '';
             if (!grouped[date]) grouped[date] = {};
 
-            const petName = r.pet_name || 'Unknown';
+            const petName = (r.pet_name || 'Unknown').replace(/\b\w/g, c => c.toUpperCase());
             if (!grouped[date][petName]) {
                 grouped[date][petName] = { oee: 0, count: 0 };
             }
@@ -139,6 +134,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         const series = allPets.map(pet => ({
             name: pet,
             data: dates.map(date => {
+                if (date >= today) return null;
                 const data = grouped[date]?.[pet];
                 return data ? parseFloat((data.oee / data.count).toFixed(1)) : 0;
             })
