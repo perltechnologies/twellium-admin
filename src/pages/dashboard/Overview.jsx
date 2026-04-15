@@ -204,6 +204,7 @@ const Overview = () => {
     const [rawStoppages, setRawStoppages] = useState([]);
     const [allReports, setAllReports] = useState([]);
     const [hourlyReports, setHourlyReports] = useState([]);
+    const [shiftOeeReports, setShiftOeeReports] = useState([]);
     const [shifts, setShifts] = useState([]);
     const [currentShiftInfo, setCurrentShiftInfo] = useState(null);
     const [selectedShiftId, setSelectedShiftId] = useState(null);
@@ -416,7 +417,14 @@ const Overview = () => {
                 shiftParams.pet = filters.pet;
             }
 
-            const shiftReportsRes = await productionApi.getStoppagesSummary(shiftParams);
+            const [shiftReportsRes, shiftOeeRes] = await Promise.all([
+                productionApi.getStoppagesSummary(shiftParams),
+                productionApi.getOeeSummary({ start_date: refDateStr, end_date: refDateStr, shift_name: targetShift.name, page_size: 1000 })
+            ]);
+
+            // OEE data for performance gauges
+            const oeeData = shiftOeeRes?.data?.data || shiftOeeRes?.data?.results || shiftOeeRes?.data || [];
+            setShiftOeeReports(oeeData.filter(r => !r.pet_name?.toLowerCase().includes('can')));
             
             // Handle nested response: response.data.data contains the actual data object
             const outerData = shiftReportsRes?.data?.data || shiftReportsRes?.data || {};
@@ -693,6 +701,17 @@ const Overview = () => {
             if (shiftMins <= 0) shiftMins += 24 * 60; // crosses midnight
         }
 
+        // Build OEE metrics lookup from shiftOeeReports (has planned_time, downtime, planned_downtime)
+        const oeeByPet = {};
+        shiftOeeReports.forEach(r => {
+            const name = r.pet_name?.toLowerCase();
+            if (!name) return;
+            if (!oeeByPet[name]) oeeByPet[name] = { plannedTime: 0, totalDowntime: 0, plannedDowntime: 0 };
+            oeeByPet[name].plannedTime += r.metrics?.details?.planned_time_mins || 0;
+            oeeByPet[name].totalDowntime += r.metrics?.details?.total_downtime_mins || 0;
+            oeeByPet[name].plannedDowntime += r.metrics?.details?.planned_downtime_mins || 0;
+        });
+
         const lineMap = {};
         
         // Start with all available PETs from rawPets
@@ -704,6 +723,7 @@ const Overview = () => {
                 production: 0, 
                 downtime: 0,
                 plannedDowntime: 0,
+                plannedTimeMins: 0,
                 efficiency: 0
             };
         });
@@ -720,6 +740,7 @@ const Overview = () => {
                     production: 0, 
                     downtime: 0,
                     plannedDowntime: 0,
+                    plannedTimeMins: 0,
                     efficiency: 0
                 };
             }
@@ -732,6 +753,7 @@ const Overview = () => {
                 lineMap[name].production += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                 lineMap[name].downtime += r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
                 lineMap[name].plannedDowntime += r.planned_downtime_minutes || r.metrics?.details?.planned_downtime_mins || 0;
+                lineMap[name].plannedTimeMins += r.metrics?.details?.planned_time_mins || 0;
                 
                 // Track last updated time
                 if (r.log_time) {
@@ -745,15 +767,18 @@ const Overview = () => {
 
         return Object.values(lineMap).map(l => {
             // Performance = (Planned Time - Total Downtime) / (Planned Time - Planned Downtime) × 100
-            const plannedTime = shiftMins * l.reports;
-            const operationalTime = plannedTime - l.plannedDowntime;
-            const perf = operationalTime > 0 ? ((plannedTime - l.downtime) / operationalTime) * 100 : 0;
+            const oee = oeeByPet[l.name?.toLowerCase()];
+            const plannedTime = oee?.plannedTime > 0 ? oee.plannedTime : (l.plannedTimeMins > 0 ? l.plannedTimeMins : shiftMins * l.reports);
+            const totalDT = oee?.totalDowntime > 0 ? oee.totalDowntime : l.downtime;
+            const plannedDT = oee?.plannedDowntime > 0 ? oee.plannedDowntime : l.plannedDowntime;
+            const operationalTime = plannedTime - plannedDT;
+            const perf = operationalTime > 0 ? ((plannedTime - totalDT) / operationalTime) * 100 : 0;
             return {
             name: l.name,
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
             performance: clamp(perf),
-            perfRaw: { plannedTime, totalDowntime: l.downtime, plannedDowntime: l.plannedDowntime },
+            perfRaw: { plannedTime, totalDowntime: totalDT, plannedDowntime: plannedDT },
             production: l.production,
             downtime: l.downtime,
             lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
@@ -770,7 +795,7 @@ const Overview = () => {
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [hourlyReports, rawPets, currentShiftInfo]);
+    }, [hourlyReports, rawPets, currentShiftInfo, shiftOeeReports]);
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;

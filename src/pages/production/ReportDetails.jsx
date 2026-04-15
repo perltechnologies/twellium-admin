@@ -562,6 +562,7 @@ const ReportDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [report, setReport] = useState(null);
+    const [shiftData, setShiftData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('batches');
 
@@ -569,7 +570,12 @@ const ReportDetails = () => {
         const fetchReport = async () => {
             try {
                 const res = await productionApi.getReport(id);
-                setReport(res.data.data);
+                const data = res.data.data;
+                setReport(data);
+                if (data.shift) {
+                    const shiftRes = await productionApi.getShift(data.shift);
+                    setShiftData(shiftRes.data.data || shiftRes.data);
+                }
             } catch (err) {
                 console.error("Failed to load report", err);
             } finally {
@@ -664,13 +670,25 @@ const ReportDetails = () => {
         const clampedOee = Math.min(Math.max(oeeVal || 0, 0), 100);
 
         let productionTime = 0;
-        if (report.start_time && report.end_time) {
-            const sTime = new Date(`1970-01-01T${report.start_time}`);
-            const eTime = new Date(`1970-01-01T${report.end_time}`);
-            if (eTime < sTime) eTime.setDate(eTime.getDate() + 1); // Next day
-
-            const diffMs = eTime - sTime;
-            productionTime = (diffMs / (1000 * 60 * 60)).toFixed(1);
+        if (report.metrics?.details?.planned_time_mins > 0) {
+            productionTime = (report.metrics.details.planned_time_mins / 60).toFixed(1);
+        } else if (shiftData?.start_time && shiftData?.end_time) {
+            const [sh, sm] = shiftData.start_time.slice(0, 5).split(':').map(Number);
+            const [eh, em] = shiftData.end_time.slice(0, 5).split(':').map(Number);
+            let mins = (eh * 60 + em) - (sh * 60 + sm);
+            if (mins <= 0) mins += 24 * 60;
+            productionTime = (mins / 60).toFixed(1);
+        } else if (report.user_defined_shift_start_time && report.user_defined_shift_end_time) {
+            const [sh, sm] = report.user_defined_shift_start_time.split(':').map(Number);
+            const [eh, em] = report.user_defined_shift_end_time.split(':').map(Number);
+            let mins = (eh * 60 + em) - (sh * 60 + sm);
+            if (mins <= 0) mins += 24 * 60;
+            productionTime = (mins / 60).toFixed(1);
+        } else if (report.total_production_time_hours && parseFloat(report.total_production_time_hours) > 0) {
+            productionTime = parseFloat(report.total_production_time_hours);
+        } else if (report.production_start_time && report.production_end_time) {
+            const diffMs = new Date(report.production_end_time) - new Date(report.production_start_time);
+            if (diffMs > 0) productionTime = (diffMs / (1000 * 60 * 60)).toFixed(1);
         }
 
         const efficiencyData = [
@@ -884,7 +902,7 @@ const ReportDetails = () => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Prod. Time</small>
-                                        <h6 className="mb-0 text-info fw-bold">{productionTime} hrs</h6>
+                                        <h6 className="mb-0 text-info fw-bold">{productionTime} hrs <small className="fw-normal fs-11">({Math.round(productionTime * 60)} min)</small></h6>
                                     </div>
                                 </div>
                             </div>
