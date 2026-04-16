@@ -378,73 +378,87 @@ const Overview = () => {
                 return;
             }
 
+            // Helper: fetch data for a given shift, optionally extending end time
+            const fetchShiftData = async (shift, endOverride) => {
+                const shiftStart = shift.start_time?.slice(0, 5);
+                const shiftEnd = shift.end_time?.slice(0, 5);
+                let startDateTime, endDateTime;
+                if (endOverride) {
+                    // Use shift's normal start but extend end to the override time
+                    if (shiftStart && shiftEnd && shiftStart > shiftEnd) {
+                        const startDate = new Date(refDateStr + 'T' + shiftStart + ':00Z');
+                        startDateTime = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    } else {
+                        startDateTime = `${refDateStr}T${shiftStart || '06:00'}:00Z`;
+                    }
+                    endDateTime = endOverride;
+                } else if (shiftStart && shiftEnd && shiftStart > shiftEnd) {
+                    const startDate = new Date(refDateStr + 'T' + shiftStart + ':00Z');
+                    const endDate = new Date(refDateStr + 'T' + shiftEnd + ':59Z');
+                    endDate.setDate(endDate.getDate() + 1);
+                    startDateTime = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    endDateTime = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                } else {
+                    startDateTime = `${refDateStr}T${shiftStart || '06:00'}:00Z`;
+                    endDateTime = `${refDateStr}T${shiftEnd || '18:00'}:59Z`;
+                }
+                const shiftParams = { start_datetime: startDateTime, end_datetime: endDateTime, shift: shift.id };
+                if (filters.pet) shiftParams.pet = filters.pet;
+                const [shiftReportsRes, shiftOeeRes] = await Promise.all([
+                    productionApi.getStoppagesSummary(shiftParams),
+                    productionApi.getOeeSummary({ start_date: refDateStr, end_date: refDateStr, shift_name: shift.name, page_size: 1000 })
+                ]);
+                const oeeData = shiftOeeRes?.data?.data || shiftOeeRes?.data?.results || shiftOeeRes?.data || [];
+                const outerData = shiftReportsRes?.data?.data || shiftReportsRes?.data || {};
+                const stoppagesArray = outerData.data || [];
+                const shiftReports = stoppagesArray.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+                const overallTotals = outerData.overall_totals || {};
+                return {
+                    oeeData: oeeData.filter(r => !r.pet_name?.toLowerCase().includes('can')),
+                    shiftReports,
+                    summary: {
+                        total_production: overallTotals.bottles_produced || 0,
+                        total_downtime: overallTotals.downtime_minutes || 0,
+                        total_stoppages: outerData.count || 0,
+                        avg_efficiency: parseFloat(overallTotals.efficiency) || 0,
+                        downtime_breakdown: outerData.downtime_breakdown || {},
+                        top_stoppage_reasons: outerData.top_stoppage_reasons || [],
+                        shift_start_time: outerData.shift_start_time,
+                        shift_end_time: outerData.shift_end_time,
+                    }
+                };
+            };
+
+            let activeShift = targetShift;
+            let result = await fetchShiftData(targetShift);
+
+            // If auto-selected current shift has no reports, fall back to previous shift
+            // extending its end time to now to include minutes elapsed in the new shift
+            if (!selectedShiftId && result.shiftReports.length === 0 && shifts.length > 1) {
+                const currentIdx = shifts.findIndex(s => s.id === targetShift.id);
+                const prevShift = currentIdx > 0 ? shifts[currentIdx - 1] : shifts[shifts.length - 1];
+                if (prevShift && prevShift.id !== targetShift.id) {
+                    const nowUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    const prevResult = await fetchShiftData(prevShift, nowUtc);
+                    if (prevResult.shiftReports.length > 0) {
+                        activeShift = prevShift;
+                        result = prevResult;
+                    }
+                }
+            }
+
             setCurrentShiftInfo({
-                id: targetShift.id,
-                name: targetShift.name,
-                start_time: targetShift.start_time,
-                end_time: targetShift.end_time,
+                id: activeShift.id,
+                name: activeShift.name,
+                start_time: activeShift.start_time,
+                end_time: activeShift.end_time,
                 lastUpdated: null
             });
 
-            // Calculate shift date range based on shift times
-            const shiftStart = targetShift.start_time?.slice(0, 5);
-            const shiftEnd = targetShift.end_time?.slice(0, 5);
-            
-            let startDateTime, endDateTime;
-            
-            if (shiftStart && shiftEnd && shiftStart > shiftEnd) {
-                // Night shift: crosses midnight (e.g., 18:00 to 06:00)
-                // Start on refDateStr, end on next day
-                const startDate = new Date(refDateStr + 'T' + shiftStart + ':00Z');
-                const endDate = new Date(refDateStr + 'T' + shiftEnd + ':59Z');
-                endDate.setDate(endDate.getDate() + 1);
-                startDateTime = startDate.toISOString().replace(/\\.\\d{3}Z$/, 'Z');
-                endDateTime = endDate.toISOString().replace(/\\.\\d{3}Z$/, 'Z');
-            } else {
-                // Day shift: same day
-                startDateTime = `${refDateStr}T${shiftStart || '06:00'}:00Z`;
-                endDateTime = `${refDateStr}T${shiftEnd || '18:00'}:59Z`;
-            }
-
-            const shiftParams = {
-                start_datetime: startDateTime,
-                end_datetime: endDateTime,
-                shift: targetShift.id
-            };
-
-            // Include PET filter if selected
-            if (filters.pet) {
-                shiftParams.pet = filters.pet;
-            }
-
-            const [shiftReportsRes, shiftOeeRes] = await Promise.all([
-                productionApi.getStoppagesSummary(shiftParams),
-                productionApi.getOeeSummary({ start_date: refDateStr, end_date: refDateStr, shift_name: targetShift.name, page_size: 1000 })
-            ]);
-
-            // OEE data for performance gauges
-            const oeeData = shiftOeeRes?.data?.data || shiftOeeRes?.data?.results || shiftOeeRes?.data || [];
-            setShiftOeeReports(oeeData.filter(r => !r.pet_name?.toLowerCase().includes('can')));
-            
-            // Handle nested response: response.data.data contains the actual data object
-            const outerData = shiftReportsRes?.data?.data || shiftReportsRes?.data || {};
-            const stoppagesArray = outerData.data || [];
-            const shiftReports = stoppagesArray.filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            
-            const overallTotals = outerData.overall_totals || {};
-            const stoppagesSummary = {
-                total_production: overallTotals.bottles_produced || 0,
-                total_downtime: overallTotals.downtime_minutes || 0,
-                total_stoppages: outerData.count || 0,
-                avg_efficiency: parseFloat(overallTotals.efficiency) || 0,
-                downtime_breakdown: outerData.downtime_breakdown || {},
-                top_stoppage_reasons: outerData.top_stoppage_reasons || [],
-                shift_start_time: outerData.shift_start_time,
-                shift_end_time: outerData.shift_end_time,
-            };
+            setShiftOeeReports(result.oeeData);
 
             // Get the latest log_time from the reports
-            const latestTime = shiftReports.reduce((latest, report) => {
+            const latestTime = result.shiftReports.reduce((latest, report) => {
                 if (report.log_time) {
                     const time = new Date(report.log_date + 'T' + report.log_time);
                     return !latest || time > latest ? time : latest;
@@ -472,16 +486,16 @@ const Overview = () => {
                 return aNum - bNum;
             });
 
-            setHourlyReports(sortByPet(shiftReports));
+            setHourlyReports(sortByPet(result.shiftReports));
             
             // Store comparison data for shift comparison feature
             setShiftComparisonData(prev => ({
                 ...prev,
-                [`${refDateStr}_${targetShift.id}`]: {
+                [`${refDateStr}_${activeShift.id}`]: {
                     date: refDateStr,
-                    shift: targetShift,
-                    reports: shiftReports,
-                    summary: stoppagesSummary,
+                    shift: activeShift,
+                    reports: result.shiftReports,
+                    summary: result.summary,
                     timestamp: new Date().toISOString()
                 }
             }));
