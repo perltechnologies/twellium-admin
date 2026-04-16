@@ -4,7 +4,6 @@ import { productionApi } from '../../api/production';
 import DowntimeBreakdownList from '../../components/charts/DowntimeBreakdownList';
 import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsChart';
 import ProductionSummary from '../../components/production/ProductionSummary';
-import FilterInputs from '../../components/FilterInputs';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
 import { useFilters } from '../../context/FilterContext';
 import ChartErrorBoundary, { SectionError } from '../../components/ui/ChartErrorBoundary';
@@ -154,8 +153,6 @@ const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
     const { updateFilters } = useFilters();
-    const [selectedPet, setSelectedPet] = useState('');
-    const [selectedDate, setSelectedDate] = useState('');
     const [selectedOutputPets, setSelectedOutputPets] = useState([]);
 
     // Independent OEE gauges date filter (defaults to previous day)
@@ -525,14 +522,8 @@ const Overview = () => {
     /* ── Derived data (recomputed when filter or raw data changes) ── */
     const { stats, oee, oeeByLine, oeeDetailReports, downtimeCategories } = useMemo(() => {
         let reports = oeeReports.length > 0 ? oeeReports : rawReports;
-        if (selectedPet) {
-            reports = reports.filter(r => r.pet_name === selectedPet);
-        }
 
         let stoppages = rawStoppages;
-        if (selectedPet) {
-            stoppages = stoppages.filter(s => (s.pet_name || s.line_name || '') === selectedPet);
-        }
 
         /* Stats from reports (source of truth for downtime) */
         const totalDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
@@ -540,7 +531,7 @@ const Overview = () => {
         const plannedDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
 
         const totalProduced = reports.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
-        const activeLines = selectedPet ? 1 : new Set(reports.map(r => r.pet_name).filter(Boolean)).size;
+        const activeLines = new Set(reports.map(r => r.pet_name).filter(Boolean)).size;
 
         const stats = {
             activeLines,
@@ -567,6 +558,11 @@ const Overview = () => {
                 shiftStart.setDate(shiftStart.getDate() - 1);
             }
             elapsedMins = Math.min(totalPlannedMins, Math.max(0, Math.round((now - shiftStart) / 60000)));
+        }
+
+        // Round elapsed time: min 60 min, otherwise floor to nearest hour (only if planned time exists)
+        if (totalPlannedMins > 0) {
+            elapsedMins = elapsedMins < 60 ? 60 : Math.floor(elapsedMins / 60) * 60;
         }
 
         const availability = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.availability || 0), 0) / reports.length : 0;
@@ -634,34 +630,6 @@ const Overview = () => {
             return aNum - bNum;
         });
 
-        /* If a specific PET is selected, use its OEE */
-        let displayOee = oee;
-        if (selectedPet && oeeByLine.length > 0) {
-            const selectedLineOee = oeeByLine[0];
-            const selectedReports = reports.filter(r => r.pet_name === selectedPet);
-            const linePlannedMins = selectedReports.reduce((s, r) => s + (r.metrics?.details?.planned_time_mins || 0), 0);
-            const lineDowntime = selectedReports.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
-            const lineMechDowntime = selectedReports.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
-            const linePlannedDowntime = selectedReports.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
-            const lineProduced = selectedReports.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
-            const lineRejects = selectedReports.reduce((s, r) => s + (r.metrics?.details?.rejects_pcs || 0), 0);
-
-            displayOee = {
-                availability: selectedLineOee.availability,
-                quality: selectedLineOee.quality,
-                performance: selectedLineOee.performance,
-                oee: selectedLineOee.oee,
-                rawValues: {
-                    plannedMins: linePlannedMins,
-                    totalDowntimeMins: lineDowntime,
-                    mechDowntimeMins: lineMechDowntime,
-                    plannedDowntimeMins: linePlannedDowntime,
-                    totalProduction: lineProduced,
-                    fillerRejects: lineRejects,
-                }
-            };
-        }
-
         /* Downtime breakdown from stoppages incidents */
         const incidentMap = {};
         stoppages.forEach(stoppage => {
@@ -704,7 +672,7 @@ const Overview = () => {
                 shift: r.shift_name || '-',
                 availability: clamp(r.metrics?.availability || 0),
                 quality: clamp(r.metrics?.quality || 0),
-                performance: clamp((() => { const pt = r.metrics?.details?.planned_time_mins || 0; const td = r.metrics?.details?.total_downtime_mins || 0; const pd = r.metrics?.details?.planned_downtime_mins || 0; const et = Math.min(pt, elapsedMins); const op = et - pd; return op > 0 ? ((et - td) / op) * 100 : 0; })()),
+                performance: clamp((() => { const pt = r.metrics?.details?.planned_time_mins || 0; const td = r.metrics?.details?.total_downtime_mins || 0; const pd = r.metrics?.details?.planned_downtime_mins || 0; const etRaw = Math.min(pt, elapsedMins); const et = pt > 0 ? (etRaw < 60 ? 60 : Math.floor(etRaw / 60) * 60) : 0; const op = et - pd; return op > 0 ? ((et - td) / op) * 100 : 0; })()),
                 oee: clamp(r.metrics?.oee || 0),
                 production: r.metrics?.details?.total_output_pcs || 0,
             };
@@ -714,8 +682,8 @@ const Overview = () => {
             return aNum - bNum || a.shift.localeCompare(b.shift);
         });
 
-        return { stats, oee: displayOee, oeeByLine, oeeDetailReports, downtimeCategories };
-    }, [oeeReports, rawReports, rawPets, rawStoppages, selectedPet, selectedDate, currentShiftInfo, shiftFilterDate]);
+        return { stats, oee, oeeByLine, oeeDetailReports, downtimeCategories };
+    }, [oeeReports, rawReports, rawPets, rawStoppages, currentShiftInfo, shiftFilterDate]);
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
@@ -899,9 +867,6 @@ const Overview = () => {
                 </div>
             </div>
 
-            {/* Filters */}
-            <FilterInputs />
-
             {/* Error State */}
             {error && (
                 <div className="alert alert-danger d-flex align-items-center mb-4">
@@ -988,6 +953,21 @@ const Overview = () => {
                                         </button>
                                     ))}
                                 </div>
+                                <select
+                                    className="form-select form-select-sm"
+                                    style={{ width: 'auto' }}
+                                    value={filters.pet || ''}
+                                    onChange={(e) => updateFilters({ pet: e.target.value || null })}
+                                >
+                                    <option value="">All PETs</option>
+                                    {rawPets.sort((a, b) => {
+                                        const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                        const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                                        return aNum - bNum;
+                                    }).map(pet => (
+                                        <option key={pet.id} value={pet.id}>{pet.pet_name}</option>
+                                    ))}
+                                </select>
                                 <button
                                     onClick={() => navigate('/dashboard/production')}
                                     className="btn btn-outline-secondary btn-sm"
