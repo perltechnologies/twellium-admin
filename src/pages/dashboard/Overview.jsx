@@ -705,6 +705,13 @@ const Overview = () => {
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
+        // Count stoppages per PET from rawStoppages
+        const stoppagesPerPet = {};
+        rawStoppages.forEach(s => {
+            const name = s.pet_name || s.line_name || '';
+            stoppagesPerPet[name] = (stoppagesPerPet[name] || 0) + 1;
+        });
+
         // Compute shift duration in minutes from currentShiftInfo
         let shiftMins = 0;
         if (currentShiftInfo?.start_time && currentShiftInfo?.end_time) {
@@ -794,7 +801,8 @@ const Overview = () => {
             // Performance = (Elapsed Time - Total Downtime) / (Elapsed Time - Planned Downtime) × 100
             const oee = oeeByPet[l.name?.toLowerCase()];
             const plannedTime = oee?.plannedTime > 0 ? oee.plannedTime : (l.plannedTimeMins > 0 ? l.plannedTimeMins : shiftMins * l.reports);
-            const elapsedTime = Math.min(plannedTime, shiftElapsedMins > 0 ? shiftElapsedMins : plannedTime);
+            const elapsedTimeRaw = Math.min(plannedTime, shiftElapsedMins > 0 ? shiftElapsedMins : plannedTime);
+            const elapsedTime = plannedTime > 0 ? (elapsedTimeRaw < 60 ? 60 : Math.floor(elapsedTimeRaw / 60) * 60) : 0;
             const totalDT = oee?.totalDowntime > 0 ? oee.totalDowntime : l.downtime;
             const plannedDT = oee?.plannedDowntime > 0 ? oee.plannedDowntime : l.plannedDowntime;
             const operationalTime = elapsedTime - plannedDT;
@@ -804,7 +812,7 @@ const Overview = () => {
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
             performance: clamp(perf),
-            perfRaw: { plannedTime, elapsedTime, totalDowntime: totalDT, plannedDowntime: plannedDT },
+            perfRaw: { plannedTime, elapsedTime, totalDowntime: totalDT, plannedDowntime: plannedDT, reportCount: stoppagesPerPet[l.name] || 0 },
             production: l.production,
             downtime: l.downtime,
             lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
@@ -821,7 +829,7 @@ const Overview = () => {
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [hourlyReports, rawPets, currentShiftInfo, shiftOeeReports, shiftFilterDate]);
+    }, [hourlyReports, rawPets, currentShiftInfo, shiftOeeReports, shiftFilterDate, rawStoppages]);
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;
