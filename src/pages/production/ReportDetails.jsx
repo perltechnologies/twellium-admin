@@ -727,9 +727,22 @@ const ReportDetails = () => {
         }
         const qualVal = fillerReading > 0 ? ((fillerReading - fillerRejects) / fillerReading) * 100 : 0;
 
-        // Performance = (Planned Time - Total Downtime) / (Planned Time - Planned Downtime) × 100
-        const perfNumerator = prodHours - downtimeHours;
-        const perfDenominator = prodHours - plannedDowntimeHours;
+        // Performance = (Elapsed Time - Total Downtime) / (Elapsed Time - Planned Downtime) × 100
+        // Use elapsed shift time (capped at full shift duration) instead of full planned time
+        let elapsedHours = prodHours;
+        if (shiftData?.start_time) {
+            const shiftDate = report.production_date || report.log_date || new Date().toISOString().split('T')[0];
+            const shiftStart = new Date(`${shiftDate}T${shiftData.start_time.slice(0, 5)}:00`);
+            // Handle night shifts crossing midnight
+            if (shiftData.end_time && shiftData.start_time.slice(0, 5) > shiftData.end_time.slice(0, 5)) {
+                // If current time is before the start, shift started previous day
+            }
+            const now = new Date();
+            const elapsedMins = Math.min(prodHours * 60, Math.max(0, Math.round((now - shiftStart) / 60000)));
+            elapsedHours = elapsedMins / 60;
+        }
+        const perfNumerator = elapsedHours - downtimeHours;
+        const perfDenominator = elapsedHours - plannedDowntimeHours;
         const perfVal = perfDenominator > 0 ? (perfNumerator / perfDenominator) * 100 : 0;
 
         // Prefer API-provided metrics when available, fall back to manual calculation

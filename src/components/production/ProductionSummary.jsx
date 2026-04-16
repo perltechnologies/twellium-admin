@@ -4,7 +4,7 @@ import { productionApi } from '../../api/production';
 
 const ReactApexChart = lazy(() => import('react-apexcharts'));
 
-const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
+const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo = null, shiftDate = '' }) => {
     const { filters } = useFilters();
     const [period, setPeriod] = useState('week');
     const [localStartDate, setLocalStartDate] = useState(() => {
@@ -182,8 +182,19 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
         const avgRuntime = filtered.length > 0
             ? filtered.reduce((s, r) => s + (r.metrics?.details?.total_runtime_mins || r.runtime_minutes || 0), 0) / filtered.length
             : 0;
-        const opTime = totalPlannedMins - plannedDowntime;
-        const avgPerformance = opTime > 0 ? ((totalPlannedMins - totalDowntime) / opTime) * 100 : 0;
+        // Compute elapsed shift time (capped at full shift duration) for real-time performance
+        let elapsedMins = totalPlannedMins;
+        if (shiftInfo?.start_time && totalPlannedMins > 0) {
+            const now = new Date();
+            const refDate = shiftDate || now.toISOString().split('T')[0];
+            const shiftStart = new Date(`${refDate}T${shiftInfo.start_time.slice(0, 5)}:00`);
+            if (shiftInfo.end_time && shiftInfo.start_time.slice(0, 5) > shiftInfo.end_time.slice(0, 5) && now < shiftStart) {
+                shiftStart.setDate(shiftStart.getDate() - 1);
+            }
+            elapsedMins = Math.min(totalPlannedMins, Math.max(0, Math.round((now - shiftStart) / 60000)));
+        }
+        const opTime = elapsedMins - plannedDowntime;
+        const avgPerformance = opTime > 0 ? ((elapsedMins - totalDowntime) / opTime) * 100 : 0;
         const avgAvailability = filtered.length > 0
             ? filtered.reduce((s, r) => s + (r.metrics?.availability || r.availability || 0), 0) / filtered.length
             : 0;
@@ -205,7 +216,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [] }) => {
             avgQuality,
             targetMet
         };
-    }, [activeReports, useRange, singleDate, startDate, endDate, selectedPet, pets]);
+    }, [activeReports, useRange, singleDate, startDate, endDate, selectedPet, pets, shiftInfo, shiftDate]);
 
     const hasActiveFilter = !!(singleDate || startDate || endDate || selectedPet);
 

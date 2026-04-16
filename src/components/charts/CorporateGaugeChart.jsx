@@ -149,6 +149,7 @@ const CorporateGaugeChart = ({
                 {rawValues && (
                     <div className="mt-2 text-start" style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: 1.6 }}>
                         <div><strong>Planned:</strong> {Number(rawValues.plannedTime || 0).toFixed(0)} min</div>
+                        <div><strong>Elapsed:</strong> {Number(rawValues.elapsedTime || 0).toFixed(0)} min</div>
                         <div><strong>Total DT:</strong> {Number(rawValues.totalDowntime || 0).toFixed(0)} min</div>
                         <div><strong>Planned DT:</strong> {Number(rawValues.plannedDowntime || 0).toFixed(0)} min</div>
                     </div>
