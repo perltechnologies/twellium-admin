@@ -1,15 +1,56 @@
 import api from './axios';
+import { withEndpointFallbacks } from './fallbacks';
 
 export const productionApi = {
     getLines: () => api.get('/production/lines/'),
     getShifts: () => api.get('/production/shifts/'),
     getShift: (id) => api.get(`/production/shifts/${id}/`),
-    getOeeSummary: (params) => api.get('/production/reports/oee_summary/', { params }),
-    getShiftOeeSummary: (params) => api.get('/production/reports/oee_summary/', { params }),
+    getOeeSummary: async (params) => {
+        try {
+            const res = await api.get('/production/reports/', { params });
+            const envelope = res.data?.data ?? res.data;
+            const reports = Array.isArray(envelope) ? envelope : (envelope?.results ?? []);
+            const results = await Promise.all(reports.map(async (r) => {
+                try {
+                    const m = await api.get(`/production/reports/${r.id}/oee_metrics/`);
+                    const md = m.data?.data ?? m.data ?? {};
+                    return {
+                        ...r,
+                        availability: md.availability || 0,
+                        performance: md.efficiency || 0,
+                        quality: md.quality || 0,
+                        oee: md.oee || 0,
+                        metrics: {
+                            availability: md.availability || 0,
+                            performance: md.efficiency || 0,
+                            quality: md.quality || 0,
+                            oee: md.oee || 0,
+                            details: md.details || {}
+                        }
+                    };
+                } catch (e) {
+                    console.warn(`OEE metrics failed for report ${r.id}:`, e);
+                    return r;
+                }
+            }));
+            return { data: { data: results } };
+        } catch (error) {
+            console.error('getOeeSummary failed:', error);
+            throw error;
+        }
+    },
+    getShiftOeeSummary: async (params) => productionApi.getOeeSummary(params),
+    getReportOeeMetrics: (id) => api.get(`/production/reports/${id}/oee_metrics/`),
 
     getReports: (params) => api.get('/production/reports/', { params }),
     getReport: (id) => api.get(`/production/reports/${id}/`),
-    getMaterialConsumptions: (params) => api.get('/production/material-consumptions/', { params }),
+    getMaterialConsumptions: (params) => withEndpointFallbacks(
+        () => api.get('/production/material-consumptions/', { params }),
+        [
+            () => api.get('/production/material-consumption/', { params }),
+            () => api.get('/production/material_consumptions/', { params }),
+        ]
+    ),
     createReport: (data) => api.post('/production/reports/', data),
     updateReport: (id, data) => api.patch(`/production/reports/${id}/`, data),
     deleteReport: (id) => api.delete(`/production/reports/${id}/`),
@@ -28,8 +69,20 @@ export const productionApi = {
 
 
     getStoppages: (params) => api.get('/production/stoppages/', { params }),
-    getStoppagesSummary: (params) => api.get('/production/stoppages/stoppages_summary/', { params }),
-    getShiftGroupStoppagesSummary: (params) => api.get('/production/stoppages/stoppages_summary/', { params }),
+    getStoppagesSummary: (params) => withEndpointFallbacks(
+        () => api.get('/production/stoppages/stoppages_summary/', { params }),
+        [
+            () => api.get('/production/stoppages/summary/', { params }),
+            () => api.get('/production/stoppages-summary/', { params }),
+        ]
+    ),
+    getShiftGroupStoppagesSummary: (params) => withEndpointFallbacks(
+        () => api.get('/production/stoppages/stoppages_summary/', { params }),
+        [
+            () => api.get('/production/stoppages/summary/', { params }),
+            () => api.get('/production/stoppages-summary/', { params }),
+        ]
+    ),
     getStoppage: (id) => api.get(`/production/stoppages/${id}/`),
     createStoppage: (data) => api.post('/production/stoppages/', data),
     updateStoppage: (id, data) => api.patch(`/production/stoppages/${id}/`, data),
@@ -51,10 +104,10 @@ export const productionApi = {
     updateIncidentCategory: (id, data) => api.patch(`/production/incident-categories/${id}/`, data),
     deleteIncidentCategory: (id) => api.delete(`/production/incident-categories/${id}/`),
 
-    getMaterials: (params) => api.get('/production/materials/', { params }),
-    createMaterial: (data) => api.post('/production/materials/', data),
-    updateMaterial: (id, data) => api.patch(`/production/materials/${id}/`, data),
-    deleteMaterial: (id) => api.delete(`/production/materials/${id}/`),
+    getMaterials: (params) => api.get('/production/report-materials/', { params }),
+    createMaterial: (data) => api.post('/production/report-materials/', data),
+    updateMaterial: (id, data) => api.patch(`/production/report-materials/${id}/`, data),
+    deleteMaterial: (id) => api.delete(`/production/report-materials/${id}/`),
 
     getMeters: (params) => api.get('/production/meters/', { params }),
     createMeter: (data) => api.post('/production/meters/', data),
@@ -70,10 +123,30 @@ export const productionApi = {
     updateShift: (id, data) => api.patch(`/production/shifts/${id}/`, data),
     deleteShift: (id) => api.delete(`/production/shifts/${id}/`),
 
-    getBatches: (params) => api.get('/production/batches/', { params }),
-    createBatch: (data) => api.post('/production/batches/', data),
-    updateBatch: (id, data) => api.patch(`/production/batches/${id}/`, data),
-    deleteBatch: (id) => api.delete(`/production/batches/${id}/`),
+    getBatches: (params) => withEndpointFallbacks(
+        () => api.get('/production/report-batches/', { params }),
+        [
+            () => api.get('/production/batches/', { params }),
+        ]
+    ),
+    createBatch: (data) => withEndpointFallbacks(
+        () => api.post('/production/report-batches/', data),
+        [
+            () => api.post('/production/batches/', data),
+        ]
+    ),
+    updateBatch: (id, data) => withEndpointFallbacks(
+        () => api.patch(`/production/report-batches/${id}/`, data),
+        [
+            () => api.patch(`/production/batches/${id}/`, data),
+        ]
+    ),
+    deleteBatch: (id) => withEndpointFallbacks(
+        () => api.delete(`/production/report-batches/${id}/`),
+        [
+            () => api.delete(`/production/batches/${id}/`),
+        ]
+    ),
 
     getSuppliers: (params) => api.get('/production/suppliers/', { params }),
     createSupplier: (data) => api.post('/production/suppliers/', data),
@@ -183,4 +256,9 @@ export const productionApi = {
     createLineSpeed: (data) => api.post('/production/line-speeds/', data),
     updateLineSpeed: (id, data) => api.patch(`/production/line-speeds/${id}/`, data),
     deleteLineSpeed: (id) => api.delete(`/production/line-speeds/${id}/`),
+
+    // Dashboard endpoints
+    getDashboardMetricsComparison: () => api.get('/production/dashboard/metrics_comparison/'),
+    getDashboardShiftPetMetrics: (params) => api.get('/production/dashboard/shift_pet_metrics/', { params }),
+    getDashboardTodayYesterdayComparison: (params) => api.get('/production/dashboard/today_yesterday_comparison/', { params }),
 };

@@ -18,12 +18,12 @@ const ReactApexChart = lazy(() => import('react-apexcharts'));
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
-    const d = res.data;
-    if (Array.isArray(d)) return d;
-    if (d?.data?.data && Array.isArray(d.data.data)) return d.data.data;
-    if (d?.data?.results && Array.isArray(d.data.results)) return d.data.results;
-    if (d?.results && Array.isArray(d.results)) return d.results;
-    if (d?.data && Array.isArray(d.data)) return d.data;
+    const d = res?.data;
+    if (!d) return [];
+    // Unwrap API envelope: { status_code, message, data: ... }
+    const inner = d?.data ?? d;
+    if (Array.isArray(inner)) return inner;
+    if (inner?.results && Array.isArray(inner.results)) return inner.results;
     return [];
 };
 
@@ -132,18 +132,6 @@ const GaugeChart = ({ value, label, color, formula, tooltip, calculation, rawVal
                     </text>
                 </svg>
             </div>
-            {rawValues && (
-                <div className="mt-3 text-center" style={{ fontSize: '11px', lineHeight: '1.4' }}>
-                    {pct === 0 ? (
-                        <div className="badge bg-soft-warning text-warning px-2 py-1">
-                            <i className="ti ti-alert-circle me-1"></i>
-                            {rawValues.reason || 'No data available'}
-                        </div>
-                    ) : (
-                        <div className="text-muted font-monospace">{rawValues.display}</div>
-                    )}
-                </div>
-            )}
         </div>
     );
 };
@@ -156,13 +144,6 @@ const Overview = () => {
     const [selectedOutputPets, setSelectedOutputPets] = useState([]);
 
     // Independent OEE gauges date filter (defaults to previous day)
-    const [oeeDate, setOeeDate] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 1);
-        return d.toISOString().split('T')[0];
-    });
-    const [oeeReports, setOeeReports] = useState([]);
-    const [oeeLoading, setOeeLoading] = useState(false);
     const [oeeShowDetail, setOeeShowDetail] = useState(false);
     
     // Filters for Production Output by PET
@@ -196,10 +177,7 @@ const Overview = () => {
     const hasFetched = useRef(false);
     const abortRef = useRef(null);
 
-    const [rawReports, setRawReports] = useState([]);
     const [rawPets, setRawPets] = useState([]);
-    const [rawStoppages, setRawStoppages] = useState([]);
-    const [allReports, setAllReports] = useState([]);
     const [hourlyReports, setHourlyReports] = useState([]);
     const [shiftOeeReports, setShiftOeeReports] = useState([]);
     const [shifts, setShifts] = useState([]);
@@ -209,6 +187,9 @@ const Overview = () => {
     const [shiftFilterDate, setShiftFilterDate] = useState('');
     const [shiftComparisonData, setShiftComparisonData] = useState({});
     const [showShiftComparison, setShowShiftComparison] = useState(false);
+    const [metricsComparison, setMetricsComparison] = useState({});
+    const [todayYesterdayComparison, setTodayYesterdayComparison] = useState({});
+    const [oeeDate, setOeeDate] = useState('');
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -226,52 +207,29 @@ const Overview = () => {
 
         try {
             const params = getParams();
-            const stoppageParams = getParams({}, true);
             
-            // Ensure datetime parameters are always set for OEE summary
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            const todayEnd = new Date();
-            todayEnd.setHours(23, 59, 59, 0);
-            
-            const oeeSummaryParams = {
-                ...params,
-                datetime_start_time: params.datetime_start_time || todayStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-                datetime_end_time: params.datetime_end_time || todayEnd.toISOString().replace(/\.\d{3}Z$/, 'Z')
-            };
-            
-            const allReportsParams = { 
-                datetime_start_time: todayStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-                datetime_end_time: todayEnd.toISOString().replace(/\.\d{3}Z$/, 'Z')
-            };
-            
-            // Fetch shifts from API
-            const shiftsRes = await productionApi.getShifts();
-            const shiftsData = shiftsRes?.data?.data || shiftsRes?.data || [];
-            setShifts(shiftsData);
-            
-            const [oeeSummaryRes, petsRes, stoppagesRes, allReportsRes] = await Promise.all([
-                productionApi.getOeeSummary(oeeSummaryParams),
+            // Fetch shifts + new dashboard endpoints in parallel
+            const [shiftsRes, metricsRes, todayYesterdayRes, petsRes] = await Promise.all([
+                productionApi.getShifts(),
+                productionApi.getDashboardMetricsComparison(),
+                productionApi.getDashboardTodayYesterdayComparison(),
                 productionApi.getPets(params),
-                productionApi.getStoppages(stoppageParams),
-                productionApi.getOeeSummary(allReportsParams),
             ]);
 
             if (controller.signal.aborted) return;
 
-            const reports = extractList(oeeSummaryRes || {}).filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            const allReportsData = extractList(allReportsRes || {}).filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            // Sort reports by PET name
-            const sortByPet = (arr) => arr.sort((a, b) => {
-                const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
-                const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
-                return aNum - bNum;
-            });
+            const shiftsData = extractList(shiftsRes);
+            setShifts(shiftsData);
 
-            setRawReports(sortByPet(reports));
+            // Store metrics comparison data (oee, efficiency, stoppages, production, lines)
+            const metricsData = metricsRes?.data?.data ?? metricsRes?.data ?? {};
+            setMetricsComparison(metricsData);
+
+            // Store today/yesterday comparison (oee, total_output, downtime, weighted avgs)
+            const tyData = todayYesterdayRes?.data?.data ?? todayYesterdayRes?.data ?? {};
+            setTodayYesterdayComparison(tyData);
+
             setRawPets(extractList(petsRes || {}).filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
-            setRawStoppages(extractList(stoppagesRes || {}).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can')));
-            setAllReports(sortByPet(allReportsData));
             hasFetched.current = true;
         } catch (err) {
             if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
@@ -290,18 +248,14 @@ const Overview = () => {
             const fetchOutputPeriodData = async () => {
                 setOutputPeriodLoading(true);
                 try {
-                    const startDateTime = new Date(outputStartDate);
-                    startDateTime.setHours(0, 0, 0, 0);
-                    const endDateTime = new Date(outputEndDate);
-                    endDateTime.setHours(23, 59, 59, 999);
-                    
                     const params = {
-                        datetime_start_time: startDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z'),
-                        datetime_end_time: endDateTime.toISOString().replace(/\\.\\d{3}Z$/, 'Z')
+                        start_date: outputStartDate,
+                        end_date: outputEndDate,
+                        page_size: 1000
                     };
                     
                     const response = await productionApi.getOeeSummary(params);
-                    const data = response?.data?.data || response?.data?.results || response?.data || [];
+                    const data = extractList(response);
                     setOutputPeriodReports(data.filter(r => !r.pet_name?.toLowerCase().includes('can')));
                 } catch (error) {
                     console.error('Error fetching output period data:', error);
@@ -314,25 +268,19 @@ const Overview = () => {
         }
     }, [outputPeriod, outputStartDate, outputEndDate]);
 
-    // Fetch OEE data independently based on oeeDate
+    // Re-fetch today_yesterday_comparison when oeeDate filter changes
     useEffect(() => {
         if (!oeeDate) return;
-        const fetchOeeData = async () => {
-            setOeeLoading(true);
+        const fetchComparison = async () => {
             try {
-                const start = `${oeeDate}T00:00:00Z`;
-                const end = `${oeeDate}T23:59:59Z`;
-                const res = await productionApi.getOeeSummary({ datetime_start_time: start, datetime_end_time: end });
-                const data = res?.data?.data || res?.data?.results || res?.data || [];
-                setOeeReports(data.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+                const res = await productionApi.getDashboardTodayYesterdayComparison({ date: oeeDate });
+                const data = res?.data?.data ?? res?.data ?? {};
+                setTodayYesterdayComparison(data);
             } catch (e) {
-                console.error('Error fetching OEE data:', e);
-                setOeeReports([]);
-            } finally {
-                setOeeLoading(false);
+                console.error('Error fetching OEE comparison:', e);
             }
         };
-        fetchOeeData();
+        fetchComparison();
     }, [oeeDate]);
 
     /* Load shift data separately */
@@ -352,17 +300,14 @@ const Overview = () => {
                 todayStr = yesterday.toISOString().split('T')[0];
             }
 
-            // Use shiftFilterDate if set, otherwise use calculated date
             const refDateStr = shiftFilterDate || todayStr;
 
-            // Find which shift the current clock time falls in (for auto-selection)
+            // Find which shift the current clock time falls in
             const currentShift = shifts.find(shift => {
                 const start = shift.start_time?.slice(0, 5);
                 const end = shift.end_time?.slice(0, 5);
                 if (!start || !end) return false;
-                if (start > end) {
-                    return currentTime >= start || currentTime < end;
-                }
+                if (start > end) return currentTime >= start || currentTime < end;
                 return currentTime >= start && currentTime < end;
             });
 
@@ -375,71 +320,49 @@ const Overview = () => {
                 return;
             }
 
-            // Helper: fetch data for a given shift, optionally extending end time
-            const fetchShiftData = async (shift, endOverride) => {
-                const shiftStart = shift.start_time?.slice(0, 5);
-                const shiftEnd = shift.end_time?.slice(0, 5);
-                let startDateTime, endDateTime;
-                if (endOverride) {
-                    // Use shift's normal start but extend end to the override time
-                    if (shiftStart && shiftEnd && shiftStart > shiftEnd) {
-                        const startDate = new Date(refDateStr + 'T' + shiftStart + ':00Z');
-                        startDateTime = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
-                    } else {
-                        startDateTime = `${refDateStr}T${shiftStart || '06:00'}:00Z`;
-                    }
-                    endDateTime = endOverride;
-                } else if (shiftStart && shiftEnd && shiftStart > shiftEnd) {
-                    const startDate = new Date(refDateStr + 'T' + shiftStart + ':00Z');
-                    const endDate = new Date(refDateStr + 'T' + shiftEnd + ':59Z');
-                    endDate.setDate(endDate.getDate() + 1);
-                    startDateTime = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
-                    endDateTime = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
-                } else {
-                    startDateTime = `${refDateStr}T${shiftStart || '06:00'}:00Z`;
-                    endDateTime = `${refDateStr}T${shiftEnd || '18:00'}:59Z`;
-                }
-                const shiftParams = { start_datetime: startDateTime, end_datetime: endDateTime, shift: shift.id };
-                if (filters.pet) shiftParams.pet = filters.pet;
-                const [shiftReportsRes, shiftOeeRes] = await Promise.all([
-                    productionApi.getStoppagesSummary(shiftParams),
-                    productionApi.getOeeSummary({ start_date: refDateStr, end_date: refDateStr, shift_name: shift.name, page_size: 1000 })
-                ]);
-                const oeeData = shiftOeeRes?.data?.data || shiftOeeRes?.data?.results || shiftOeeRes?.data || [];
-                const outerData = shiftReportsRes?.data?.data || shiftReportsRes?.data || {};
-                const stoppagesArray = outerData.data || [];
-                const shiftReports = stoppagesArray.filter(r => !r.pet_name?.toLowerCase().includes('can'));
-                const overallTotals = outerData.overall_totals || {};
-                return {
-                    oeeData: oeeData.filter(r => !r.pet_name?.toLowerCase().includes('can')),
-                    shiftReports,
-                    summary: {
-                        total_production: overallTotals.bottles_produced || 0,
-                        total_downtime: overallTotals.downtime_minutes || 0,
-                        total_stoppages: outerData.count || 0,
-                        avg_efficiency: parseFloat(overallTotals.efficiency) || 0,
-                        downtime_breakdown: outerData.downtime_breakdown || {},
-                        top_stoppage_reasons: outerData.top_stoppage_reasons || [],
-                        shift_start_time: outerData.shift_start_time,
-                        shift_end_time: outerData.shift_end_time,
-                    }
-                };
+            // Fetch all PET metrics for the date
+            const shiftRes = await productionApi.getDashboardShiftPetMetrics({ date: refDateStr });
+            const shiftData = shiftRes?.data?.data ?? shiftRes?.data ?? {};
+            const allPets = Array.isArray(shiftData.pets) ? shiftData.pets : (Array.isArray(shiftData) ? shiftData : []);
+            const allReports = allPets.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+
+            // Filter by target shift (match by shift name or ID)
+            const filterByShift = (reports, shift) => {
+                return reports.filter(r => {
+                    if (!r.shift) return true; // no shift field means include
+                    const shiftStr = String(r.shift).toLowerCase();
+                    return shiftStr === String(shift.id) || shiftStr === shift.name?.toLowerCase();
+                });
             };
 
             let activeShift = targetShift;
-            let result = await fetchShiftData(targetShift);
+            let activeReports = filterByShift(allReports, targetShift);
 
-            // If auto-selected current shift has no reports, fall back to previous shift
-            // extending its end time to now to include minutes elapsed in the new shift
-            if (!selectedShiftId && result.shiftReports.length === 0 && shifts.length > 1) {
+            // If no data for target shift, use all reports (API may have already filtered)
+            if (activeReports.length === 0 && allReports.length > 0) {
+                activeReports = allReports;
+            }
+
+            // If still empty, fall back to previous shift's data
+            if (activeReports.length === 0 && shifts.length > 1) {
                 const currentIdx = shifts.findIndex(s => s.id === targetShift.id);
                 const prevShift = currentIdx > 0 ? shifts[currentIdx - 1] : shifts[shifts.length - 1];
                 if (prevShift && prevShift.id !== targetShift.id) {
-                    const nowUtc = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-                    const prevResult = await fetchShiftData(prevShift, nowUtc);
-                    if (prevResult.shiftReports.length > 0) {
+                    // Try filtering from same response first
+                    const prevFiltered = filterByShift(allReports, prevShift);
+                    if (prevFiltered.length > 0) {
                         activeShift = prevShift;
-                        result = prevResult;
+                        activeReports = prevFiltered;
+                    } else {
+                        // Fetch previous shift explicitly
+                        const prevRes = await productionApi.getDashboardShiftPetMetrics({ date: refDateStr, shift: prevShift.id });
+                        const prevData = prevRes?.data?.data ?? prevRes?.data ?? {};
+                        const prevPets = Array.isArray(prevData.pets) ? prevData.pets : (Array.isArray(prevData) ? prevData : []);
+                        const prevReports = prevPets.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+                        if (prevReports.length > 0) {
+                            activeShift = prevShift;
+                            activeReports = prevReports;
+                        }
                     }
                 }
             }
@@ -452,12 +375,33 @@ const Overview = () => {
                 lastUpdated: null
             });
 
-            setShiftOeeReports(result.oeeData);
+            // Map PetShiftMetric to the format expected by the UI
+            const oeeData = activeReports.map(r => ({
+                ...r,
+                bottles_produced: r.total_bottles,
+                downtime_minutes: r.total_downtime,
+                planned_downtime_minutes: r.planned_downtime,
+                metrics: {
+                    availability: parseFloat(r.efficiency) || 0,
+                    performance: parseFloat(r.performance) || 0,
+                    quality: 100,
+                    oee: parseFloat(r.efficiency) || 0,
+                    details: {
+                        total_downtime_mins: r.total_downtime || 0,
+                        planned_downtime_mins: r.planned_downtime || 0,
+                        mechanical_downtime_mins: r.mechanical_downtime || 0,
+                        planned_time_mins: 0,
+                        total_output_pcs: r.total_bottles || 0,
+                    }
+                }
+            }));
 
-            // Get the latest log_time from the reports
-            const latestTime = result.shiftReports.reduce((latest, report) => {
-                if (report.log_time) {
-                    const time = new Date(report.log_date + 'T' + report.log_time);
+            setShiftOeeReports(oeeData);
+
+            // Get the latest log_time
+            const latestTime = activeReports.reduce((latest, report) => {
+                if (report.last_log_time) {
+                    const time = new Date(report.last_log_time);
                     return !latest || time > latest ? time : latest;
                 }
                 return latest;
@@ -467,12 +411,8 @@ const Overview = () => {
                 setCurrentShiftInfo(prev => ({
                     ...prev,
                     lastUpdated: latestTime.toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hour12: true
+                        month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
                     })
                 }));
             }
@@ -483,16 +423,23 @@ const Overview = () => {
                 return aNum - bNum;
             });
 
-            setHourlyReports(sortByPet(result.shiftReports));
+            setHourlyReports(sortByPet(activeReports));
             
-            // Store comparison data for shift comparison feature
+            // Store comparison data
             setShiftComparisonData(prev => ({
                 ...prev,
                 [`${refDateStr}_${activeShift.id}`]: {
                     date: refDateStr,
                     shift: activeShift,
-                    reports: result.shiftReports,
-                    summary: result.summary,
+                    reports: activeReports,
+                    summary: {
+                        total_production: activeReports.reduce((s, r) => s + (r.total_bottles || 0), 0),
+                        total_downtime: activeReports.reduce((s, r) => s + (r.total_downtime || 0), 0),
+                        total_stoppages: activeReports.reduce((s, r) => s + (r.total_stoppage_reports_submitted || 0), 0),
+                        avg_efficiency: activeReports.length > 0
+                            ? activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0), 0) / activeReports.length
+                            : 0,
+                    },
                     timestamp: new Date().toISOString()
                 }
             }));
@@ -521,32 +468,40 @@ const Overview = () => {
 
     /* ── Derived data (recomputed when filter or raw data changes) ── */
     const { stats, oee, oeeByLine, oeeDetailReports, downtimeCategories } = useMemo(() => {
-        let reports = oeeReports.length > 0 ? oeeReports : rawReports;
+        const reports = [];
 
-        let stoppages = rawStoppages;
+        /* Stats from metricsComparison endpoint */
+        const mc = metricsComparison;
+        const ty = todayYesterdayComparison;
+        const todayMetrics = ty?.today || {};
 
-        /* Stats from reports (source of truth for downtime) */
-        const totalDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
-        const mechDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
-        const plannedDowntime = reports.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
-
-        const totalProduced = reports.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
-        const activeLines = new Set(reports.map(r => r.pet_name).filter(Boolean)).size;
+        const totalDowntime = todayMetrics.downtime || 0;
+        const totalProduced = todayMetrics.total_output || 0;
+        const activeLines = mc?.lines?.active || 0;
 
         const stats = {
             activeLines,
             shiftsStarted: reports.length,
             totalDowntime: Math.round(totalDowntime),
-            mechDowntime: Math.round(mechDowntime),
-            plannedDowntime: Math.round(plannedDowntime),
-            stoppagesToday: stoppages.length,
+            mechDowntime: 0,
+            plannedDowntime: 0,
+            stoppagesToday: mc?.total_stoppages?.today || 0,
             recentReports: reports.length,
             totalProduced,
         };
 
-        /* Global OEE from API */
+        /* Global OEE from today_yesterday_comparison */
+        const availability = todayMetrics.availability_weighted_avg || 0;
+        const quality = todayMetrics.quality_weighted_avg || 0;
+        const performance = todayMetrics.performance_weighted_avg || 0;
+        const oeeValue = todayMetrics.oee || 0;
+
         const totalPlannedMins = reports.reduce((s, r) => s + (r.metrics?.details?.planned_time_mins || 0), 0);
         const totalRejects = reports.reduce((s, r) => s + (r.metrics?.details?.rejects_pcs || 0), 0);
+        const totalDowntimeMins = reports.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || 0), 0);
+        const mechDowntimeMins = reports.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
+        const plannedDowntimeMins = reports.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
+        const totalProducedFromReports = reports.reduce((s, r) => s + (r.metrics?.details?.total_output_pcs || 0), 0);
 
         // Compute elapsed shift time (capped at full shift duration)
         let elapsedMins = totalPlannedMins;
@@ -559,35 +514,27 @@ const Overview = () => {
             }
             elapsedMins = Math.min(totalPlannedMins, Math.max(0, Math.round((now - shiftStart) / 60000)));
         }
-
-        // Round elapsed time: min 60 min, otherwise floor to nearest hour (only if planned time exists)
         if (totalPlannedMins > 0) {
             elapsedMins = elapsedMins < 60 ? 60 : Math.floor(elapsedMins / 60) * 60;
         }
 
-        const availability = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.availability || 0), 0) / reports.length : 0;
-        const operationalTime = elapsedMins - plannedDowntime;
-        const performance = operationalTime > 0 ? ((elapsedMins - totalDowntime) / operationalTime) * 100 : 0;
-        const quality = reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.quality || 0), 0) / reports.length : 0;
-        const oeeValue = reports.length > 0 ? (availability / 100) * (performance / 100) * (quality / 100) * 100 : 0;
-
         const oee = {
-            availability: clamp(availability),
-            quality: clamp(quality),
-            performance: clamp(performance),
-            oee: clamp(oeeValue),
+            availability: clamp(reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.availability || 0), 0) / reports.length : availability),
+            quality: clamp(reports.length > 0 ? reports.reduce((s, r) => s + (r.metrics?.quality || 0), 0) / reports.length : quality),
+            performance: clamp(reports.length > 0 ? (() => { const op = elapsedMins - plannedDowntimeMins; return op > 0 ? ((elapsedMins - totalDowntimeMins) / op) * 100 : 0; })() : performance),
+            oee: clamp(reports.length > 0 ? (() => { const a = reports.reduce((s, r) => s + (r.metrics?.availability || 0), 0) / reports.length; const q = reports.reduce((s, r) => s + (r.metrics?.quality || 0), 0) / reports.length; const op = elapsedMins - plannedDowntimeMins; const p = op > 0 ? ((elapsedMins - totalDowntimeMins) / op) * 100 : 0; return (a / 100) * (q / 100) * (p / 100) * 100; })() : oeeValue),
             rawValues: {
                 plannedMins: totalPlannedMins,
                 elapsedMins,
-                totalDowntimeMins: totalDowntime,
-                mechDowntimeMins: mechDowntime,
-                plannedDowntimeMins: plannedDowntime,
-                totalProduction: totalProduced,
+                totalDowntimeMins,
+                mechDowntimeMins,
+                plannedDowntimeMins,
+                totalProduction: totalProducedFromReports || totalProduced,
                 fillerRejects: totalRejects,
             }
         };
 
-        /* OEE by Line from API */
+        /* OEE by Line from oeeReports */
         const lineMap = {};
         reports.forEach(r => {
             const name = r.pet_name;
@@ -607,7 +554,6 @@ const Overview = () => {
         });
 
         const oeeByLine = Object.values(lineMap).map(l => {
-            // Pick the entry with the most recent date from report_codes (format: PR-YYYY-MM-DD-SHIFT)
             const latest = l.dates.reduce((best, entry) => {
                 const match = entry.code.match(/PR-(\d{4}-\d{2}-\d{2})/);
                 if (!match) return best;
@@ -630,37 +576,8 @@ const Overview = () => {
             return aNum - bNum;
         });
 
-        /* Downtime breakdown from stoppages incidents */
-        const incidentMap = {};
-        stoppages.forEach(stoppage => {
-            (stoppage.incidents || []).forEach(incident => {
-                const category = incident.downtime_category_name || 'Uncategorized';
-                const duration = parseFloat(incident.incident_duration || 0);
-                
-                if (!incidentMap[category]) {
-                    incidentMap[category] = 0;
-                }
-                incidentMap[category] += duration;
-            });
-        });
-
-        const categoryColors = {
-            'Mechanical Downtime': '#ef4444',
-            'Planned Downtime': '#3b82f6',
-            'Electrical': '#f59e0b',
-            'Quality': '#8b5cf6',
-            'Material': '#10b981',
-            'Other': '#6b7280',
-        };
-
-        const downtimeCategories = Object.entries(incidentMap)
-            .map(([name, value]) => ({
-                name,
-                value: Math.round(value),
-                color: categoryColors[name] || categoryColors['Other']
-            }))
-            .filter(d => d.value > 0)
-            .sort((a, b) => b.value - a.value);
+        /* Downtime breakdown - empty since we no longer fetch stoppages with incidents */
+        const downtimeCategories = [];
 
         // Individual report rows for detail view
         const oeeDetailReports = reports.map(r => {
@@ -683,49 +600,10 @@ const Overview = () => {
         });
 
         return { stats, oee, oeeByLine, oeeDetailReports, downtimeCategories };
-    }, [oeeReports, rawReports, rawPets, rawStoppages, currentShiftInfo, shiftFilterDate]);
+    }, [metricsComparison, todayYesterdayComparison, rawPets, currentShiftInfo, shiftFilterDate]);
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
-        // Count stoppages per PET from rawStoppages
-        const stoppagesPerPet = {};
-        rawStoppages.forEach(s => {
-            const name = s.pet_name || s.line_name || '';
-            stoppagesPerPet[name] = (stoppagesPerPet[name] || 0) + 1;
-        });
-
-        // Compute shift duration in minutes from currentShiftInfo
-        let shiftMins = 0;
-        if (currentShiftInfo?.start_time && currentShiftInfo?.end_time) {
-            const [sh, sm] = currentShiftInfo.start_time.slice(0, 5).split(':').map(Number);
-            const [eh, em] = currentShiftInfo.end_time.slice(0, 5).split(':').map(Number);
-            shiftMins = (eh * 60 + em) - (sh * 60 + sm);
-            if (shiftMins <= 0) shiftMins += 24 * 60; // crosses midnight
-        }
-
-        // Compute elapsed shift time (capped at full shift duration)
-        let shiftElapsedMins = shiftMins;
-        if (currentShiftInfo?.start_time) {
-            const now = new Date();
-            const refDate = shiftFilterDate || now.toISOString().split('T')[0];
-            const shiftStart = new Date(`${refDate}T${currentShiftInfo.start_time.slice(0, 5)}:00`);
-            if (currentShiftInfo.end_time && currentShiftInfo.start_time.slice(0, 5) > currentShiftInfo.end_time.slice(0, 5) && now < shiftStart) {
-                shiftStart.setDate(shiftStart.getDate() - 1);
-            }
-            shiftElapsedMins = Math.min(shiftMins, Math.max(0, Math.round((now - shiftStart) / 60000)));
-        }
-
-        // Build OEE metrics lookup from shiftOeeReports (has planned_time, downtime, planned_downtime)
-        const oeeByPet = {};
-        shiftOeeReports.forEach(r => {
-            const name = r.pet_name?.toLowerCase();
-            if (!name) return;
-            if (!oeeByPet[name]) oeeByPet[name] = { plannedTime: 0, totalDowntime: 0, plannedDowntime: 0 };
-            oeeByPet[name].plannedTime += r.metrics?.details?.planned_time_mins || 0;
-            oeeByPet[name].totalDowntime += r.metrics?.details?.total_downtime_mins || 0;
-            oeeByPet[name].plannedDowntime += r.metrics?.details?.planned_downtime_mins || 0;
-        });
-
         const lineMap = {};
         
         // Start with all available PETs from rawPets
@@ -734,6 +612,7 @@ const Overview = () => {
                 name: pet.pet_name, 
                 reports: 0, 
                 oee: 0, 
+                performance: 0,
                 production: 0, 
                 downtime: 0,
                 plannedDowntime: 0,
@@ -751,6 +630,7 @@ const Overview = () => {
                     name: name, 
                     reports: 0, 
                     oee: 0, 
+                    performance: 0,
                     production: 0, 
                     downtime: 0,
                     plannedDowntime: 0,
@@ -764,13 +644,19 @@ const Overview = () => {
                 // Use efficiency from API response (convert string to number), fallback to OEE from metrics
                 const efficiency = parseFloat(r.efficiency) || r.metrics?.oee || 0;
                 lineMap[name].oee += efficiency;
-                lineMap[name].production += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
-                lineMap[name].downtime += r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
-                lineMap[name].plannedDowntime += r.planned_downtime_minutes || r.metrics?.details?.planned_downtime_mins || 0;
+                lineMap[name].performance += parseFloat(r.performance) || 0;
+                lineMap[name].production += r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+                lineMap[name].downtime += r.total_downtime || r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
+                lineMap[name].plannedDowntime += r.planned_downtime || r.planned_downtime_minutes || r.metrics?.details?.planned_downtime_mins || 0;
                 lineMap[name].plannedTimeMins += r.metrics?.details?.planned_time_mins || 0;
                 
                 // Track last updated time
-                if (r.log_time) {
+                if (r.last_log_time) {
+                    const time = new Date(r.last_log_time);
+                    if (!lineMap[name].lastUpdated || time > lineMap[name].lastUpdated) {
+                        lineMap[name].lastUpdated = time;
+                    }
+                } else if (r.log_time) {
                     const time = new Date(r.log_date + 'T' + r.log_time);
                     if (!lineMap[name].lastUpdated || time > lineMap[name].lastUpdated) {
                         lineMap[name].lastUpdated = time;
@@ -780,21 +666,13 @@ const Overview = () => {
         });
 
         return Object.values(lineMap).map(l => {
-            // Performance = (Elapsed Time - Total Downtime) / (Elapsed Time - Planned Downtime) × 100
-            const oee = oeeByPet[l.name?.toLowerCase()];
-            const plannedTime = oee?.plannedTime > 0 ? oee.plannedTime : (l.plannedTimeMins > 0 ? l.plannedTimeMins : shiftMins * l.reports);
-            const elapsedTimeRaw = Math.min(plannedTime, shiftElapsedMins > 0 ? shiftElapsedMins : plannedTime);
-            const elapsedTime = plannedTime > 0 ? (elapsedTimeRaw < 60 ? 60 : Math.floor(elapsedTimeRaw / 60) * 60) : 0;
-            const totalDT = oee?.totalDowntime > 0 ? oee.totalDowntime : l.downtime;
-            const plannedDT = oee?.plannedDowntime > 0 ? oee.plannedDowntime : l.plannedDowntime;
-            const operationalTime = elapsedTime - plannedDT;
-            const perf = operationalTime > 0 ? ((elapsedTime - totalDT) / operationalTime) * 100 : 0;
+            // Use performance directly from API response
             return {
             name: l.name,
             reports: l.reports,
             oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
-            performance: clamp(perf),
-            perfRaw: { plannedTime, elapsedTime, totalDowntime: totalDT, plannedDowntime: plannedDT, reportCount: stoppagesPerPet[l.name] || 0 },
+            performance: l.reports > 0 ? clamp(l.performance / l.reports) : 0,
+            perfRaw: { reportCount: l.reports || 0 },
             production: l.production,
             downtime: l.downtime,
             lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
@@ -811,7 +689,7 @@ const Overview = () => {
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [hourlyReports, rawPets, currentShiftInfo, shiftOeeReports, shiftFilterDate, rawStoppages]);
+    }, [hourlyReports, rawPets]);
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;
@@ -1226,7 +1104,7 @@ const Overview = () => {
                             <h6 className="mb-0">
                                 Overall Equipment Effectiveness (Efficiency)
                                 <span className="badge bg-soft-info text-info ms-2 fs-11">
-                                    <i className="ti ti-calendar me-1"></i>{oeeDate}
+                                    <i className="ti ti-calendar me-1"></i>{oeeDate || 'Yesterday'}
                                 </span>
                             </h6>
                             <div className="d-flex align-items-center gap-2">
@@ -1243,79 +1121,37 @@ const Overview = () => {
                             </div>
                         </div>
                         <div className="card-body">
-                                {oeeLoading ? (
-                                    <div className="text-center py-5">
-                                        <div className="spinner-border text-primary" role="status">
-                                            <span className="visually-hidden">Loading...</span>
+                                {(() => {
+                                    const yesterday = todayYesterdayComparison?.yesterday || {};
+                                    const avail = yesterday.availability_weighted_avg || 0;
+                                    const qual = yesterday.quality_weighted_avg || 0;
+                                    const perf = yesterday.performance_weighted_avg || 0;
+                                    const oeeVal = yesterday.oee || 0;
+                                    if (!yesterday.oee && !yesterday.total_output) {
+                                        return (
+                                            <div className="alert alert-warning d-flex align-items-center">
+                                                <i className="ti ti-alert-circle fs-4 me-2"></i>
+                                                <div><strong>No data available</strong> for yesterday.</div>
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <div className="row g-3">
+                                            <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                                <GaugeChart value={avail} label="Availability" color={gaugeColor(avail)} />
+                                            </div>
+                                            <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                                <GaugeChart value={qual} label="Quality" color={gaugeColor(qual)} />
+                                            </div>
+                                            <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                                <GaugeChart value={perf} label="Performance" color={gaugeColor(perf)} />
+                                            </div>
+                                            <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
+                                                <GaugeChart value={oeeVal} label="Efficiency" color={gaugeColor(oeeVal)} />
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : !error && oeeReports.length === 0 ? (
-                                    <div className="alert alert-warning d-flex align-items-center">
-                                        <i className="ti ti-alert-circle fs-4 me-2"></i>
-                                        <div>
-                                            <strong>No data available</strong> for {oeeDate}. Please select a different date.
-                                        </div>
-                                    </div>
-                                ) : (
-                                <div className="row g-3">
-                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart 
-                                            value={oee.availability} 
-                                            label="Availability" 
-                                            color={gaugeColor(oee.availability)}
-                                            formula="(Planned Time - Total Downtime) / (Planned Time - Mechanical Downtime) × 100"
-                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.mechDowntimeMins || 0).toFixed(0)}) × 100 = ${oee.availability.toFixed(1)}%` : ''}
-                                            rawValues={oee.rawValues ? {
-                                                display: `(${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.plannedMins || 0).toFixed(0)} - ${Number(oee.rawValues.mechDowntimeMins || 0).toFixed(0)}) × 100`,
-                                                reason: oee.availability === 0 ? (oee.rawValues.plannedMins === 0 ? 'Planned Time = 0' : 'Availability = 0%') : null
-                                            } : null}
-                                        />
-                                    </div>
-                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart 
-                                            value={oee.quality} 
-                                            label="Quality" 
-                                            color={gaugeColor(oee.quality)}
-                                            formula="(Total Production - Filler Reject) / Total Production × 100"
-                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.totalProduction || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.totalProduction || 0).toLocaleString()} × 100 = ${oee.quality.toFixed(1)}%` : ''}
-                                            rawValues={oee.rawValues ? {
-                                                display: `(${Number(oee.rawValues.totalProduction || 0).toLocaleString()} - ${Number(oee.rawValues.fillerRejects || 0).toLocaleString()}) / ${Number(oee.rawValues.totalProduction || 0).toLocaleString()} × 100`,
-                                                reason: oee.quality === 0 ? (oee.rawValues.totalProduction === 0 ? 'Total Production = 0' : 'Quality = 0%') : null
-                                            } : null}
-                                        />
-                                    </div>
-                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart 
-                                            value={oee.performance} 
-                                            label="Performance" 
-                                            color={gaugeColor(oee.performance)}
-                                            formula="(Elapsed Time − Total Downtime) / (Elapsed Time − Planned Downtime) × 100"
-                                            calculation={oee.rawValues ? `(${Number(oee.rawValues.elapsedMins || 0).toFixed(0)} − ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.elapsedMins || 0).toFixed(0)} − ${Number(oee.rawValues.plannedDowntimeMins || 0).toFixed(0)}) × 100 = ${oee.performance.toFixed(1)}%` : ''}
-                                            rawValues={oee.rawValues ? {
-                                                display: `(${Number(oee.rawValues.elapsedMins || 0).toFixed(0)} − ${Number(oee.rawValues.totalDowntimeMins || 0).toFixed(0)}) / (${Number(oee.rawValues.elapsedMins || 0).toFixed(0)} − ${Number(oee.rawValues.plannedDowntimeMins || 0).toFixed(0)}) × 100`,
-                                                reason: oee.performance === 0 ? ((oee.rawValues.elapsedMins - oee.rawValues.plannedDowntimeMins) === 0 ? 'Operational Time = 0' : 'Performance = 0%') : null
-                                            } : null}
-                                        />
-                                    </div>
-                                    <div className="col-lg-3 col-sm-6 d-flex justify-content-center">
-                                        <GaugeChart 
-                                            value={oee.oee} 
-                                            label="Efficiency" 
-                                            color={gaugeColor(oee.oee)}
-                                            formula="A × Q × P"
-                                            calculation={`${(oee.availability/100).toFixed(3)} × ${(oee.quality/100).toFixed(3)} × ${(oee.performance/100).toFixed(3)} = ${oee.oee.toFixed(1)}%`}
-                                            rawValues={{
-                                                display: `${(oee.availability/100).toFixed(3)} × ${(oee.quality/100).toFixed(3)} × ${(oee.performance/100).toFixed(3)}`,
-                                                reason: oee.oee === 0 ? (
-                                                    oee.availability === 0 ? 'Availability = 0%' :
-                                                    oee.quality === 0 ? 'Quality = 0%' :
-                                                    oee.performance === 0 ? 'Performance = 0%' : 'Efficiency = 0%'
-                                                ) : null
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                                )}
+                                    );
+                                })()}
                         </div>
                     </div>
                     </ChartErrorBoundary>
@@ -1326,7 +1162,7 @@ const Overview = () => {
             {/* Production Summary */}
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
-                    <ProductionSummary reports={allReports} loading={isLoading} pets={availablePets} shiftInfo={currentShiftInfo} shiftDate={shiftFilterDate} />
+                    <ProductionSummary reports={hourlyReports} loading={isLoading} pets={availablePets} shiftInfo={currentShiftInfo} shiftDate={shiftFilterDate} />
                 </div>
             </div>
 
@@ -1572,8 +1408,8 @@ const Overview = () => {
                                     </div>
                                 </div>
                             ) : (() => {
-                                // Use period reports when week/month is active, otherwise use allReports
-                                let filteredReports = (outputPeriod ? [...outputPeriodReports] : [...allReports]).map(r => {
+                                // Use period reports when week/month is active, otherwise use outputPeriodReports
+                                let filteredReports = [...outputPeriodReports].map(r => {
                                     // Ensure production_date exists — extract from report_code or fall back to log_date
                                     let prodDate = r.production_date;
                                     if (!prodDate && r.report_code) {
