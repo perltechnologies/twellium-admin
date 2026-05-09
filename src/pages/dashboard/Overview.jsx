@@ -189,7 +189,10 @@ const Overview = () => {
     const [showShiftComparison, setShowShiftComparison] = useState(false);
     const [metricsComparison, setMetricsComparison] = useState({});
     const [todayYesterdayComparison, setTodayYesterdayComparison] = useState({});
-    const [oeeDate, setOeeDate] = useState('');
+    const [oeeRangeData, setOeeRangeData] = useState(null);
+    const [oeeDate, setOeeDate] = useState(() => {
+        const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0];
+    });
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -268,19 +271,19 @@ const Overview = () => {
         }
     }, [outputPeriod, outputStartDate, outputEndDate]);
 
-    // Re-fetch today_yesterday_comparison when oeeDate filter changes
+    // Fetch OEE date range (defaults to previous day)
     useEffect(() => {
-        if (!oeeDate) return;
-        const fetchComparison = async () => {
+        const fetchOeeRange = async () => {
             try {
-                const res = await productionApi.getDashboardTodayYesterdayComparison({ date: oeeDate });
-                const data = res?.data?.data ?? res?.data ?? {};
-                setTodayYesterdayComparison(data);
+                const res = await productionApi.getOeeDateRange({ start_date: oeeDate, end_date: oeeDate });
+                const raw = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                const values = Object.values(raw);
+                setOeeRangeData(values[0] || {});
             } catch (e) {
-                console.error('Error fetching OEE comparison:', e);
+                console.error('Error fetching OEE date range:', e);
             }
         };
-        fetchComparison();
+        fetchOeeRange();
     }, [oeeDate]);
 
     /* Load shift data separately */
@@ -436,9 +439,11 @@ const Overview = () => {
                         total_production: activeReports.reduce((s, r) => s + (r.total_bottles || 0), 0),
                         total_downtime: activeReports.reduce((s, r) => s + (r.total_downtime || 0), 0),
                         total_stoppages: activeReports.reduce((s, r) => s + (r.total_stoppage_reports_submitted || 0), 0),
-                        avg_efficiency: activeReports.length > 0
-                            ? activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0), 0) / activeReports.length
-                            : 0,
+                        avg_efficiency: (() => {
+                            const totalBottles = activeReports.reduce((s, r) => s + (r.total_bottles || 0), 0);
+                            if (totalBottles === 0) return activeReports.length > 0 ? activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0), 0) / activeReports.length : 0;
+                            return activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0) * (r.total_bottles || 0), 0) / totalBottles;
+                        })(),
                     },
                     timestamp: new Date().toISOString()
                 }
@@ -605,10 +610,12 @@ const Overview = () => {
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
         const lineMap = {};
+        // key: lowercase pet_name → canonical display name from rawPets
+        const nameKey = (n) => n?.toLowerCase().trim();
         
         // Start with all available PETs from rawPets
         rawPets.forEach(pet => {
-            lineMap[pet.pet_name] = { 
+            lineMap[nameKey(pet.pet_name)] = { 
                 name: pet.pet_name, 
                 reports: 0, 
                 oee: 0, 
@@ -623,11 +630,11 @@ const Overview = () => {
         
         // Add data from hourly reports (from stoppages summary endpoint)
         hourlyReports.forEach(r => {
-            const name = r.pet_name;
+            const name = nameKey(r.pet_name);
             // Create entry if it doesn't exist (for cases where rawPets is empty)
             if (!lineMap[name]) {
                 lineMap[name] = { 
-                    name: name, 
+                    name: r.pet_name, 
                     reports: 0, 
                     oee: 0, 
                     performance: 0,
@@ -1055,8 +1062,12 @@ const Overview = () => {
                                                     const { date, shift, reports, summary } = data;
                                                     const totalProd = reports.reduce((sum, r) => sum + (r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
                                                     const totalDown = reports.reduce((sum, r) => sum + (r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0), 0);
-                                                    const avgOee = reports.length > 0 
-                                                        ? (reports.reduce((sum, r) => sum + (parseFloat(r.efficiency) || r.metrics?.oee || 0), 0) / reports.length).toFixed(1)
+                                                    const _totalBottles = reports.reduce((sum, r) => sum + (r.total_bottles || 0), 0);
+                                                    const avgOee = reports.length > 0
+                                                        ? (_totalBottles > 0
+                                                            ? (reports.reduce((sum, r) => sum + (parseFloat(r.efficiency) || r.metrics?.oee || 0) * (r.total_bottles || 0), 0) / _totalBottles)
+                                                            : reports.reduce((sum, r) => sum + (parseFloat(r.efficiency) || r.metrics?.oee || 0), 0) / reports.length
+                                                          ).toFixed(1)
                                                         : 0;
 
                                                     return (
@@ -1104,7 +1115,15 @@ const Overview = () => {
                             <h6 className="mb-0">
                                 Overall Equipment Effectiveness (Efficiency)
                                 <span className="badge bg-soft-info text-info ms-2 fs-11">
-                                    <i className="ti ti-calendar me-1"></i>{oeeDate || 'Yesterday'}
+                                    <i className="ti ti-calendar me-1"></i>
+                                    {(() => {
+                                        const today = new Date().toISOString().split('T')[0];
+                                        const y = new Date(); y.setDate(y.getDate() - 1);
+                                        const yesterday = y.toISOString().split('T')[0];
+                                        if (oeeDate === today) return 'Today';
+                                        if (oeeDate === yesterday) return 'Yesterday';
+                                        return oeeDate;
+                                    })()}
                                 </span>
                             </h6>
                             <div className="d-flex align-items-center gap-2">
@@ -1112,7 +1131,7 @@ const Overview = () => {
                                     type="date"
                                     className="form-control form-control-sm"
                                     value={oeeDate}
-                                    onChange={(e) => setOeeDate(e.target.value)}
+                                    onChange={(e) => { setOeeRangeData(null); setOeeDate(e.target.value); }}
                                     style={{ width: 'auto' }}
                                 />
                                 <button onClick={() => navigate('/dashboard/formulas')} className="btn btn-outline-light shadow btn-xs">
@@ -1122,16 +1141,18 @@ const Overview = () => {
                         </div>
                         <div className="card-body">
                                 {(() => {
-                                    const yesterday = todayYesterdayComparison?.yesterday || {};
-                                    const avail = yesterday.availability_weighted_avg || 0;
-                                    const qual = yesterday.quality_weighted_avg || 0;
-                                    const perf = yesterday.performance_weighted_avg || 0;
-                                    const oeeVal = yesterday.oee || 0;
-                                    if (!yesterday.oee && !yesterday.total_output) {
+                                    if (!oeeRangeData) {
+                                        return <SkeletonGauges count={4} />;
+                                    }
+                                    const avail = oeeRangeData.availability_weighted_avg || 0;
+                                    const qual = oeeRangeData.quality_weighted_avg || 0;
+                                    const perf = oeeRangeData.performance_weighted_avg || 0;
+                                    const oeeVal = oeeRangeData.oee || 0;
+                                    if (!oeeVal && !avail && !qual && !perf) {
                                         return (
                                             <div className="alert alert-warning d-flex align-items-center">
                                                 <i className="ti ti-alert-circle fs-4 me-2"></i>
-                                                <div><strong>No data available</strong> for yesterday.</div>
+                                                <div><strong>No data available</strong> for this period.</div>
                                             </div>
                                         );
                                     }
