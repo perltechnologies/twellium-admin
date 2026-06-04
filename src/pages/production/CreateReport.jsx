@@ -12,6 +12,7 @@ const CreateReport = () => {
     const [loading, setLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(isEditMode);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     // Form state
     const [formData, setFormData] = useState({
@@ -79,6 +80,7 @@ const CreateReport = () => {
             })));
 
             setStoppages((report.stoppage_logs || []).map(s => ({
+                id: s.id,
                 start_time: s.start_time ? s.start_time.slice(0, 16) : new Date().toISOString().slice(0, 16),
                 end_time: s.end_time ? s.end_time.slice(0, 16) : new Date().toISOString().slice(0, 16),
                 downtime_minutes: s.downtime_minutes || 0,
@@ -207,46 +209,107 @@ const CreateReport = () => {
         e.preventDefault();
         setLoading(true);
         setError('');
+        setSuccess('');
 
         try {
-            const payload = {
-                ...formData,
-                batches: batches.map(b => ({ ...b, report: id || 0 })),
-                stoppage_logs: stoppages.map(s => ({ ...s, pet: formData.pet })),
-                meter_readings: meterReadings.map(m => ({ ...m, report: id || 0 })),
-                materials: [],
-                consumptions: [],
-                runs: [],
-                workers: []
-            };
-
-            // Clean numeric fields
-            ['line', 'bottles_per_pack', 'packs_per_pallet', 'line_speed'].forEach(k => {
-                if (payload[k] === '') payload[k] = null;
-                else if (payload[k]) payload[k] = Number(payload[k]);
+            const stoppageLogs = stoppages.map(s => {
+                const log = {
+                    id: s.id || null,
+                    start_time: s.start_time?.includes('T') ? s.start_time.split('T')[1].slice(0, 5) : s.start_time?.slice(0, 5),
+                    end_time: s.end_time?.includes('T') ? s.end_time.split('T')[1].slice(0, 5) : s.end_time?.slice(0, 5),
+                    downtime_minutes: Number(s.downtime_minutes) || 0,
+                    comments: s.comments || '',
+                    pet: formData.pet
+                };
+                const incidents = (s.incidents || []).filter(inc => inc.downtime_category || inc.incident_description).map(inc => {
+                    const cleaned = {};
+                    if (inc.incident_category) cleaned.incident_category = inc.incident_category;
+                    if (inc.downtime_category) cleaned.downtime_category = inc.downtime_category;
+                    if (inc.sub_downtime_category) cleaned.sub_downtime_category = inc.sub_downtime_category;
+                    if (inc.incident_description) cleaned.incident_description = inc.incident_description;
+                    if (inc.incident_time) cleaned.incident_time = inc.incident_time;
+                    if (inc.incident_duration) cleaned.incident_duration = inc.incident_duration;
+                    if (inc.category) cleaned.category = inc.category;
+                    return cleaned;
+                });
+                if (incidents.length > 0) log.incidents = incidents;
+                return log;
             });
 
-            if (!payload.report_code && !isEditMode) {
-                const shift = shifts.find(s => s.id === Number(payload.shift));
-                payload.report_code = `PR-${payload.production_date}-${shift?.name || 'SHIFT'}`;
-            }
+            const reportPayload = {
+                production_date: formData.production_date || null,
+                report_code: formData.report_code || null,
+                line: formData.line ? Number(formData.line) : null,
+                pet: formData.pet ? Number(formData.pet) : null,
+                shift: formData.shift ? Number(formData.shift) : null,
+                supervisor: formData.supervisor ? Number(formData.supervisor) : null,
+                status: formData.status || null,
+                bottle_size: formData.bottle_size || null,
+                bottles_per_pack: formData.bottles_per_pack || null,
+                packs_per_pallet: formData.packs_per_pallet ? Number(formData.packs_per_pallet) : null,
+                line_speed: formData.line_speed ? Number(formData.line_speed) : null,
+                start_time: formData.start_time || null,
+                end_time: formData.end_time || null,
+                remarks: formData.remarks || null
+            };
 
             if (isEditMode) {
-                await productionApi.updateReport(id, payload);
+                await productionApi.updateReport(id, reportPayload);
+                // Update existing stoppages individually
+                await Promise.all(stoppageLogs.filter(s => s.id).map(s =>
+                    productionApi.updateStoppage(s.id, {
+                        start_time: s.start_time,
+                        end_time: s.end_time,
+                        downtime_minutes: s.downtime_minutes,
+                        comments: s.comments
+                    })
+                ));
             } else {
+                const payload = {
+                    ...reportPayload,
+                    stoppage_logs: stoppageLogs,
+                    batches: batches.map(b => ({
+                        batch_number: b.batch_number || '',
+                        syrup_liters: b.syrup_liters || '',
+                        start_time: b.start_time || null
+                    })),
+                    meter_readings: meterReadings.map(m => ({
+                        reading_type: m.reading_type || null,
+                        start_reading: m.start_reading || null,
+                        end_reading: m.end_reading || null,
+                        remarks: m.remarks || ''
+                    })),
+                    materials: [],
+                    consumptions: [],
+                    runs: [],
+                    workers: []
+                };
+                if (!payload.report_code) {
+                    const shift = shifts.find(s => s.id === Number(payload.shift));
+                    payload.report_code = `PR-${payload.production_date}-${shift?.name || 'SHIFT'}`;
+                }
                 await productionApi.createReport(payload);
             }
-            navigate('/dashboard/production');
+            if (isEditMode) {
+                setSuccess('Report updated successfully');
+            } else {
+                navigate('/dashboard/production');
+            }
         } catch (err) {
-            console.error('Failed to save report:', err);
+            console.error('Failed to save report:', err?.response?.data || err);
             const detail = err.response?.data;
             if (detail && typeof detail === 'object') {
+                const formatVal = (v) => {
+                    if (Array.isArray(v)) return v.join(', ');
+                    if (typeof v === 'object') return JSON.stringify(v);
+                    return String(v);
+                };
                 const msgs = Object.entries(detail)
-                    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+                    .map(([k, v]) => `${k}: ${formatVal(v)}`)
                     .join(' | ');
                 setError(msgs || 'Failed to save report');
             } else {
-                setError('Failed to save report');
+                setError(err.message || 'Failed to save report');
             }
         } finally {
             setLoading(false);
@@ -287,6 +350,12 @@ const CreateReport = () => {
                             <AlertCircle className="me-2" size={20} />
                             <div className="flex-grow-1">{error}</div>
                             <button className="btn-close" onClick={() => setError('')}></button>
+                        </div>
+                    )}
+                    {success && (
+                        <div className="alert alert-success d-flex align-items-center mb-4">
+                            <div className="flex-grow-1">{success}</div>
+                            <button className="btn-close" onClick={() => setSuccess('')}></button>
                         </div>
                     )}
 
