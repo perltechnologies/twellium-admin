@@ -20,15 +20,19 @@ const StoppageLogForm = () => {
         report: '',
         pet: '',
         hour_index: '',
-        minute_index: '', // NEW FIELD
+        minute_index: '',
         efficiency: '',
         downtime_minutes: '',
         bottles_produced: '',
+        start_time: '',
+        end_time: '',
+        manual_time: false,
         comments: '',
-        incidents: [] // Array of { incident_description: '', incident_time: '', downtime_category: '', sub_downtime_category: '' }
+        incidents: []
     });
 
     const [error, setError] = useState('');
+    const [fieldErrors, setFieldErrors] = useState({});
 
     useEffect(() => {
         const loadData = async () => {
@@ -58,17 +62,28 @@ const StoppageLogForm = () => {
 
                 if (isEditMode) {
                     const logRes = await productionApi.getStoppage(id);
-                    const log = logRes.data.data;
+                    const log = logRes.data?.data || logRes.data;
                     setFormData({
                         report: log.report,
                         pet: log.pet,
-                        hour_index: log.hour_index,
-                        minute_index: log.minute_index || '', // NEW FIELD
-                        efficiency: log.efficiency,
-                        downtime_minutes: log.downtime_minutes,
-                        bottles_produced: log.bottles_produced,
+                        hour_index: log.hour_index ?? '',
+                        minute_index: log.minute_index ?? '',
+                        efficiency: log.efficiency ?? '',
+                        downtime_minutes: log.downtime_minutes ?? '',
+                        bottles_produced: log.bottles_produced ?? '',
+                        start_time: log.start_time || '',
+                        end_time: log.end_time || '',
+                        manual_time: log.manual_time || false,
                         comments: log.comments || '',
-                        incidents: log.incidents || []
+                        incidents: (log.incidents || []).map(inc => ({
+                            id: inc.id,
+                            incident_description: inc.incident_description || '',
+                            incident_time: inc.incident_time || '',
+                            incident_duration: inc.incident_duration || '',
+                            incident_category: inc.incident_category || '',
+                            downtime_category: inc.downtime_category || '',
+                            sub_downtime_category: inc.sub_downtime_category || '',
+                        }))
                     });
                 }
             } catch (err) {
@@ -84,6 +99,14 @@ const StoppageLogForm = () => {
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        if (fieldErrors[name]) setFieldErrors(prev => ({ ...prev, [name]: undefined }));
+    };
+
+    const FieldError = ({ name }) => {
+        const errs = fieldErrors[name];
+        if (!errs) return null;
+        const msg = Array.isArray(errs) ? errs.join(', ') : errs;
+        return <div className="invalid-feedback d-block">{msg}</div>;
     };
 
     // Incident Management
@@ -121,35 +144,74 @@ const StoppageLogForm = () => {
         e.preventDefault();
         setLoading(true);
         setError('');
+        setFieldErrors({});
 
         try {
             const payload = {
-                ...formData,
-                hour_index: parseInt(formData.hour_index),
-                minute_index: formData.minute_index ? parseInt(formData.minute_index) : null,
-                downtime_minutes: parseInt(formData.downtime_minutes),
-                bottles_produced: parseInt(formData.bottles_produced),
-                efficiency: formData.efficiency.toString(), // API expects string usually for decimal
-                // Ensure incidents structure matches API expectation
-                incidents: formData.incidents.map(inc => ({
-                    incident_description: inc.incident_description,
+                pet: formData.pet ? parseInt(formData.pet) : null,
+                hour_index: formData.hour_index !== '' ? parseInt(formData.hour_index) : null,
+                minute_index: formData.minute_index !== '' ? parseInt(formData.minute_index) : null,
+                downtime_minutes: formData.downtime_minutes !== '' ? parseInt(formData.downtime_minutes) : null,
+                bottles_produced: formData.bottles_produced !== '' ? parseInt(formData.bottles_produced) : null,
+                efficiency: formData.efficiency ? formData.efficiency.toString() : null,
+                start_time: formData.start_time || null,
+                end_time: formData.end_time || null,
+                manual_time: formData.manual_time || false,
+                comments: formData.comments || null,
+            };
+
+            if (isEditMode) {
+                // Don't send incidents in PATCH - manage via add_incident endpoint
+            } else {
+                payload.report = formData.report ? parseInt(formData.report) : null;
+                payload.incidents = formData.incidents.map(inc => ({
+                    incident_description: inc.incident_description || null,
                     incident_time: inc.incident_time || null,
+                    incident_duration: inc.incident_duration || null,
+                    incident_category: inc.incident_category ? parseInt(inc.incident_category) : null,
                     downtime_category: inc.downtime_category ? parseInt(inc.downtime_category) : null,
                     sub_downtime_category: inc.sub_downtime_category ? parseInt(inc.sub_downtime_category) : null,
-                }))
-            };
+                }));
+            }
 
 
 
             if (isEditMode) {
+                console.log('Update payload:', JSON.stringify(payload, null, 2));
                 await productionApi.updateStoppage(id, payload);
             } else {
                 await productionApi.createStoppage(payload);
             }
+            alert(isEditMode ? 'Stoppage log updated successfully!' : 'Stoppage log created successfully!');
             navigate('/dashboard/production/stoppages');
         } catch (err) {
             console.error("Failed to save stoppage log", err);
-            setError("Failed to save. Please check your inputs.");
+            const respData = err.response?.data;
+            if (respData) {
+                // Format 1: { message, data: { field: [errors] } }
+                if (respData.data && typeof respData.data === 'object' && !Array.isArray(respData.data)) {
+                    setFieldErrors(respData.data);
+                    setError(respData.message || "Please fix the validation errors below.");
+                // Format 2: DRF direct { field: [errors] } (no wrapper)
+                } else if (typeof respData === 'object' && !respData.message && !Array.isArray(respData)) {
+                    const possibleFields = Object.keys(respData).filter(k => 
+                        Array.isArray(respData[k]) || typeof respData[k] === 'string'
+                    );
+                    if (possibleFields.length > 0) {
+                        const errors = {};
+                        possibleFields.forEach(k => { errors[k] = respData[k]; });
+                        setFieldErrors(errors);
+                        setError("Please fix the validation errors below.");
+                    } else {
+                        setError("Failed to save. Please check your inputs.");
+                    }
+                } else {
+                    setError(respData.message || respData.detail || "Failed to save. Please check your inputs.");
+                }
+            } else {
+                setError("Failed to save. Please check your inputs.");
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } finally {
             setLoading(false);
         }
@@ -188,9 +250,20 @@ const StoppageLogForm = () => {
             </div>
 
             {error && (
-                <div className="alert alert-danger d-flex align-items-center mb-4">
-                    <AlertCircle className="h-5 w-5 me-2" />
-                    {error}
+                <div className="alert alert-danger d-flex align-items-start mb-4">
+                    <AlertCircle className="h-5 w-5 me-2 flex-shrink-0 mt-1" />
+                    <div>
+                        <strong>{error}</strong>
+                        {Object.keys(fieldErrors).length > 0 && (
+                            <ul className="mb-0 mt-1 ps-3">
+                                {Object.entries(fieldErrors).map(([field, errs]) => (
+                                    <li key={field} className="small">
+                                        <strong>{field}</strong>: {Array.isArray(errs) ? (typeof errs[0] === 'object' ? `${errs.length} error(s)` : errs.join(', ')) : errs}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -209,14 +282,17 @@ const StoppageLogForm = () => {
                                     name="report"
                                     value={formData.report}
                                     onChange={handleChange}
-                                    className="form-select"
+                                    className={`form-select${fieldErrors.report ? ' is-invalid' : ''}`}
                                     required
+                                    disabled={isEditMode}
                                 >
                                     <option value="">Select Report</option>
                                     {reports.map(r => (
                                         <option key={r.id} value={r.id}>{r.report_code} - {r.shift_name}</option>
                                     ))}
                                 </select>
+                                {isEditMode && <small className="text-muted">Report cannot be changed after creation</small>}
+                                <FieldError name="report" />
                             </div>
 
                             <div className="col-md-6">
@@ -225,7 +301,7 @@ const StoppageLogForm = () => {
                                     name="pet"
                                     value={formData.pet}
                                     onChange={handleChange}
-                                    className="form-select"
+                                    className={`form-select${fieldErrors.pet ? ' is-invalid' : ''}`}
                                     required
                                 >
                                     <option value="">Select PET</option>
@@ -235,6 +311,7 @@ const StoppageLogForm = () => {
                                         </option>
                                     ))}
                                 </select>
+                                <FieldError name="pet" />
                             </div>
 
                             <div className="col-md-3">
@@ -244,10 +321,11 @@ const StoppageLogForm = () => {
                                     name="hour_index"
                                     value={formData.hour_index}
                                     onChange={handleChange}
-                                    className="form-control"
+                                    className={`form-control${fieldErrors.hour_index ? ' is-invalid' : ''}`}
                                     placeholder="e.g. 1"
                                     required
                                 />
+                                <FieldError name="hour_index" />
                             </div>
 
                             <div className="col-md-3">
@@ -257,9 +335,10 @@ const StoppageLogForm = () => {
                                     name="minute_index"
                                     value={formData.minute_index}
                                     onChange={handleChange}
-                                    className="form-control"
+                                    className={`form-control${fieldErrors.minute_index ? ' is-invalid' : ''}`}
                                     placeholder="e.g. 30"
                                 />
+                                <FieldError name="minute_index" />
                             </div>
 
                             <div className="col-md-3">
@@ -270,10 +349,11 @@ const StoppageLogForm = () => {
                                     name="efficiency"
                                     value={formData.efficiency}
                                     onChange={handleChange}
-                                    className="form-control"
+                                    className={`form-control${fieldErrors.efficiency ? ' is-invalid' : ''}`}
                                     placeholder="e.g. 95.5"
                                     required
                                 />
+                                <FieldError name="efficiency" />
                             </div>
 
                             <div className="col-md-3">
@@ -283,10 +363,11 @@ const StoppageLogForm = () => {
                                     name="downtime_minutes"
                                     value={formData.downtime_minutes}
                                     onChange={handleChange}
-                                    className="form-control"
+                                    className={`form-control${fieldErrors.downtime_minutes ? ' is-invalid' : ''}`}
                                     placeholder="0"
                                     required
                                 />
+                                <FieldError name="downtime_minutes" />
                             </div>
 
                             <div className="col-md-6">
@@ -296,10 +377,49 @@ const StoppageLogForm = () => {
                                     name="bottles_produced"
                                     value={formData.bottles_produced}
                                     onChange={handleChange}
-                                    className="form-control"
+                                    className={`form-control${fieldErrors.bottles_produced ? ' is-invalid' : ''}`}
                                     placeholder="0"
                                     required
                                 />
+                                <FieldError name="bottles_produced" />
+                            </div>
+
+                            <div className="col-md-3">
+                                <label className="form-label">Start Time</label>
+                                <input
+                                    type="time"
+                                    name="start_time"
+                                    value={formData.start_time}
+                                    onChange={handleChange}
+                                    className={`form-control${fieldErrors.start_time ? ' is-invalid' : ''}`}
+                                />
+                                <FieldError name="start_time" />
+                            </div>
+
+                            <div className="col-md-3">
+                                <label className="form-label">End Time</label>
+                                <input
+                                    type="time"
+                                    name="end_time"
+                                    value={formData.end_time}
+                                    onChange={handleChange}
+                                    className={`form-control${fieldErrors.end_time ? ' is-invalid' : ''}`}
+                                />
+                                <FieldError name="end_time" />
+                            </div>
+
+                            <div className="col-md-6 d-flex align-items-center">
+                                <div className="form-check">
+                                    <input
+                                        type="checkbox"
+                                        name="manual_time"
+                                        checked={formData.manual_time}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, manual_time: e.target.checked }))}
+                                        className="form-check-input"
+                                        id="manualTimeCheck"
+                                    />
+                                    <label className="form-check-label" htmlFor="manualTimeCheck">Manual Time Entry</label>
+                                </div>
                             </div>
 
                             <div className="col-12">
@@ -309,9 +429,10 @@ const StoppageLogForm = () => {
                                     value={formData.comments}
                                     onChange={handleChange}
                                     rows="3"
-                                    className="form-control"
+                                    className={`form-control${fieldErrors.comments ? ' is-invalid' : ''}`}
                                     placeholder="Optional notes for shift handover, context, or follow-up."
                                 />
+                                <FieldError name="comments" />
                             </div>
                         </div>
                     </div>
@@ -330,6 +451,17 @@ const StoppageLogForm = () => {
                         </button>
                     </div>
                     <div className="card-body">
+                        {fieldErrors.incidents && (
+                            <div className="alert alert-danger py-2 mb-3">
+                                {Array.isArray(fieldErrors.incidents)
+                                    ? fieldErrors.incidents.map((err, i) => (
+                                        typeof err === 'object'
+                                            ? <div key={i}>Incident {i + 1}: {Object.entries(err).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')}</div>
+                                            : <div key={i}>{err}</div>
+                                    ))
+                                    : fieldErrors.incidents}
+                            </div>
+                        )}
                         <div className="vstack gap-3">
                             {formData.incidents.map((incident, index) => (
                                 <div key={index} className="card border-warning">
