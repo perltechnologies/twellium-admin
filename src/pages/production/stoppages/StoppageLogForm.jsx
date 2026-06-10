@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Save, Plus, Trash2, AlertCircle } from 'lucide-react';
+import Swal from 'sweetalert2';
 import { productionApi } from '../../../api/production';
 
 const StoppageLogForm = () => {
@@ -182,7 +183,13 @@ const StoppageLogForm = () => {
             } else {
                 await productionApi.createStoppage(payload);
             }
-            alert(isEditMode ? 'Stoppage log updated successfully!' : 'Stoppage log created successfully!');
+            await Swal.fire({
+                icon: 'success',
+                title: 'Saved!',
+                text: isEditMode ? 'Stoppage log updated successfully!' : 'Stoppage log created successfully!',
+                timer: 2000,
+                showConfirmButton: false
+            });
             navigate('/dashboard/production/stoppages');
         } catch (err) {
             console.error("Failed to save stoppage log", err);
