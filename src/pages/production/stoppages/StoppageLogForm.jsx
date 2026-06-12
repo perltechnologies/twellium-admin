@@ -124,6 +124,17 @@ const StoppageLogForm = () => {
     };
 
     const removeIncident = (index) => {
+        const incident = formData.incidents[index];
+        if (isEditMode && incident.id) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Cannot Remove',
+                text: 'Existing incidents cannot be removed. Please contact admin.',
+                timer: 3000,
+                showConfirmButton: true
+            });
+            return;
+        }
         setFormData(prev => ({
             ...prev,
             incidents: prev.incidents.filter((_, i) => i !== index)
@@ -162,7 +173,21 @@ const StoppageLogForm = () => {
             };
 
             if (isEditMode) {
-                // Don't send incidents in PATCH - manage via add_incident endpoint
+                console.log(`[PATCH /production/stoppages/${id}/] Request Body:`, JSON.stringify(payload, null, 2));
+                await productionApi.updateStoppage(id, payload);
+
+                // Add new incidents
+                const newIncidents = formData.incidents.filter(inc => !inc.id);
+                for (const inc of newIncidents) {
+                    await productionApi.addIncident(id, {
+                        incident_description: inc.incident_description || null,
+                        incident_time: inc.incident_time || null,
+                        incident_duration: inc.incident_duration || null,
+                        incident_category: inc.incident_category ? parseInt(inc.incident_category) : null,
+                        downtime_category: inc.downtime_category ? parseInt(inc.downtime_category) : null,
+                        sub_downtime_category: inc.sub_downtime_category ? parseInt(inc.sub_downtime_category) : null,
+                    });
+                }
             } else {
                 payload.report = formData.report ? parseInt(formData.report) : null;
                 payload.incidents = formData.incidents.map(inc => ({
@@ -173,14 +198,6 @@ const StoppageLogForm = () => {
                     downtime_category: inc.downtime_category ? parseInt(inc.downtime_category) : null,
                     sub_downtime_category: inc.sub_downtime_category ? parseInt(inc.sub_downtime_category) : null,
                 }));
-            }
-
-
-
-            if (isEditMode) {
-                console.log('Update payload:', JSON.stringify(payload, null, 2));
-                await productionApi.updateStoppage(id, payload);
-            } else {
                 await productionApi.createStoppage(payload);
             }
             await Swal.fire({

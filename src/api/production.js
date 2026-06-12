@@ -86,8 +86,10 @@ export const productionApi = {
     getStoppage: (id) => api.get(`/production/stoppages/${id}/`),
     createStoppage: (data) => api.post('/production/stoppages/', data),
     updateStoppage: (id, data) => api.patch(`/production/stoppages/${id}/`, data),
+    replaceStoppage: (id, data) => api.put(`/production/stoppages/${id}/`, data),
     deleteStoppage: (id) => api.delete(`/production/stoppages/${id}/`),
     addIncident: (id, data) => api.post(`/production/stoppages/${id}/add_incident/`, data),
+    deleteIncident: (incidentId) => api.delete(`/production/stoppages/incidents/${incidentId}/`),
 
     getDowntimeCategories: (params) => api.get('/production/downtime-categories/', { params }),
     createDowntimeCategory: (data) => api.post('/production/downtime-categories/', data),
