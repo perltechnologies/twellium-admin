@@ -126,13 +126,7 @@ const StoppageLogForm = () => {
     const removeIncident = (index) => {
         const incident = formData.incidents[index];
         if (isEditMode && incident.id) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Cannot Remove',
-                text: 'Existing incidents cannot be removed. Please contact admin.',
-                timer: 3000,
-                showConfirmButton: true
-            });
+            Swal.fire({ icon: 'info', title: 'Not Supported', text: 'Removing existing incidents is not yet supported.', timer: 2500 });
             return;
         }
         setFormData(prev => ({
@@ -176,7 +170,7 @@ const StoppageLogForm = () => {
                 console.log(`[PATCH /production/stoppages/${id}/] Request Body:`, JSON.stringify(payload, null, 2));
                 await productionApi.updateStoppage(id, payload);
 
-                // Add new incidents
+                // Add new incidents only
                 const newIncidents = formData.incidents.filter(inc => !inc.id);
                 for (const inc of newIncidents) {
                     await productionApi.addIncident(id, {
@@ -207,7 +201,9 @@ const StoppageLogForm = () => {
                 timer: 2000,
                 showConfirmButton: false
             });
-            navigate('/dashboard/production/stoppages');
+            if (!isEditMode) {
+                navigate('/dashboard/production/stoppages');
+            }
         } catch (err) {
             console.error("Failed to save stoppage log", err);
             const respData = err.response?.data;
