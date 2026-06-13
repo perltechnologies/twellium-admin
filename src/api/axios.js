@@ -1,7 +1,6 @@
 import axios from 'axios';
 
-const DEBUG = process.env.REACT_APP_DEBUG === 'true';
-const BASE_URL = DEBUG ? process.env.REACT_APP_BASE_URL : process.env.REACT_APP_BASE_URL_PROD;
+const BASE_URL = process.env.REACT_APP_BASE_URL;
 
 
 const api = axios.create({
@@ -30,7 +29,24 @@ api.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
 
+        // Handle 500 errors
+        if (error.response?.status === 500) {
+            console.error('Server Error (500):', {
+                url: originalRequest?.url,
+                method: originalRequest?.method,
+                data: originalRequest?.data,
+                error: error.response?.data
+            });
+            
+            // Return a more user-friendly error
+            return Promise.reject({
+                ...error,
+                message: error.response?.data?.message || 'Server error occurred. Please try again later.',
+                isServerError: true
+            });
+        }
 
+        // Handle 401 errors
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
             const refreshToken = localStorage.getItem('refresh_token');
@@ -46,7 +62,6 @@ api.interceptors.response.use(
 
                     return api(originalRequest);
                 } catch (refreshError) {
-
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
                     localStorage.removeItem('user');
@@ -55,6 +70,7 @@ api.interceptors.response.use(
                 }
             }
         }
+        
         return Promise.reject(error);
     }
 );

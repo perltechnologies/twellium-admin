@@ -53,7 +53,7 @@ Added a new calculation breakdown panel that displays:
 Filler Reading / (Line Speed × Total Hours) × 100
 ```
 **Variables:**
-- Filler Reading: Meter Reading (Filler)
+- Filler Reading: Metcommit er Reading (Filler)
 - Line Speed: Target Speed (BPH)
 - Total Hours: Total Production Time (Hours)
 

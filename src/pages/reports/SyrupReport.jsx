@@ -13,7 +13,7 @@ const SyrupReport = () => {
 
     useEffect(() => {
         productionApi.getPets({ page_size: 100 })
-            .then(res => setPets((res.data.data || []).filter(p => !p.pet_name?.toLowerCase().includes('can'))))
+            .then(res => { const d = res.data?.data ?? res.data; setPets((Array.isArray(d) ? d : (d?.results || [])).filter(p => !p.pet_name?.toLowerCase().includes('can'))); })
             .catch(err => console.error('Failed to load pets:', err));
     }, []);
 

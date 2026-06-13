@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Input, Select } from '../../components/ui';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
-import { Printer, Package, ChevronRight, Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Printer, Package, CheckCircle2 } from 'lucide-react';
 
 const Production = () => {
     const [formData, setFormData] = useState({
@@ -132,175 +130,147 @@ const Production = () => {
     };
 
 
-    const getPetName = () => pets.find(p => p.value == formData.pet_id)?.label || '';
-    const getProductName = () => products.find(p => p.value == formData.product_id)?.label || '';
+    const getPetName = () => pets.find(p => String(p.value) === String(formData.pet_id))?.label || '';
+    const getProductName = () => products.find(p => String(p.value) === String(formData.product_id))?.label || '';
 
     return (
-        <div className="h-[calc(100vh-140px)] w-full max-w-6xl mx-auto flex flex-col md:flex-row gap-6">
-
-            {/* LEFT COLUMN - INPUT */}
-            <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="flex-1"
-            >
-                <Card className="h-full p-6 flex flex-col relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-bl-full -mr-8 -mt-8" />
-
-                    <div className="mb-8">
-                        <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                            <span className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400">
-                                <Package className="w-6 h-6" />
-                            </span>
-                            Create Unit
-                        </h2>
-                        <p className="text-slate-500 dark:text-slate-400 mt-2">
-                            Enter production details to generate a tracking label.
-                        </p>
-                    </div>
-
-                    <form onSubmit={handleSubmit} className="space-y-8 flex-1 relative">
-
-                        {}
-                        <Select
-                            label="Pet / Line"
-                            name="pet_id"
-                            value={formData.pet_id}
-                            onChange={handleChange}
-                            options={pets}
-                            required
-                            className="text-lg py-3"
-                        />
-
-                        {}
-                        <Select
-                            label="Product"
-                            name="product_id"
-                            value={formData.product_id}
-                            onChange={handleChange}
-                            options={products}
-                            required
-                            className="text-lg py-3"
-                        />
-
-                        {}
-                        <Input
-                            label="Quantity"
-                            name="quantity"
-                            type="number"
-                            value={formData.quantity}
-                            onChange={handleChange}
-                            placeholder="Enter quantity..."
-                            required
-                            className="text-lg py-3"
-                        />
-
-                        {error && (
-                            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
-                                {error}
-                            </div>
-                        )}
-
-                        <div className="pt-4 mt-auto">
-                            <Button
-                                type="submit"
-                                isLoading={loading}
-                                disabled={!formData.product_id || !formData.pet_id}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-lg h-14"
-                            >
-                                Generate Label <ChevronRight className="w-5 h-5" />
-                            </Button>
+        <div className="container-fluid p-0">
+            <div className="row g-4">
+                <div className="col-12 col-xl-6">
+                    <div className="card h-100">
+                        <div className="card-header bg-soft-primary">
+                            <h5 className="mb-1 text-primary d-flex align-items-center gap-2">
+                                <Package size={18} /> Create Unit
+                            </h5>
+                            <small className="text-muted">Enter production details to generate a tracking label.</small>
                         </div>
-                    </form>
-                </Card>
-            </motion.div>
+                        <form onSubmit={handleSubmit} className="card-body d-flex flex-column gap-3">
+                            <div>
+                                <label className="form-label">Pet / Line <span className="text-danger">*</span></label>
+                                <select
+                                    name="pet_id"
+                                    value={formData.pet_id}
+                                    onChange={handleChange}
+                                    className="form-select"
+                                    required
+                                >
+                                    <option value="">Select PET / Line</option>
+                                    {pets.map((pet) => (
+                                        <option key={pet.value} value={pet.value}>{pet.label}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-            {}
-            <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.1 }}
-                className="flex-1"
-            >
-                <Card className={`h-full p-6 flex flex-col items-center justify-center text-center relative transition-colors duration-500 ${generatedLabel ? 'bg-slate-900 text-white border-slate-800' : 'bg-slate-50 dark:bg-slate-900/50 border-dashed'}`}>
+                            <div>
+                                <label className="form-label">Product <span className="text-danger">*</span></label>
+                                <select
+                                    name="product_id"
+                                    value={formData.product_id}
+                                    onChange={handleChange}
+                                    className="form-select"
+                                    required
+                                >
+                                    <option value="">Select Product</option>
+                                    {products.map((product) => (
+                                        <option key={product.value} value={product.value}>{product.label}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                    <AnimatePresence mode="wait">
-                        {generatedLabel ? (
-                            <motion.div
-                                key="result"
-                                initial={{ scale: 0.9, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                exit={{ scale: 0.9, opacity: 0 }}
-                                className="w-full max-w-md space-y-8"
-                            >
-                                <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-green-500/30">
-                                    <Check className="w-10 h-10" />
+                            <div>
+                                <label className="form-label">Quantity <span className="text-danger">*</span></label>
+                                <input
+                                    name="quantity"
+                                    type="number"
+                                    value={formData.quantity}
+                                    onChange={handleChange}
+                                    className="form-control"
+                                    placeholder="Enter quantity..."
+                                    required
+                                />
+                            </div>
+
+                            {error && (
+                                <div className="alert alert-danger mb-0" role="alert">
+                                    {error}
                                 </div>
+                            )}
 
-                                <div>
-                                    <h3 className="text-3xl font-bold text-white mb-2">
-                                        {generatedLabel.label?.barcode}
-                                    </h3>
-                                    <p className="text-slate-400 uppercase tracking-widest text-sm">
-                                        {generatedLabel.label?.stage || 'PRODUCTION'}
-                                    </p>
-                                </div>
+                            <div className="mt-auto pt-2">
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary w-100"
+                                    disabled={loading || !formData.product_id || !formData.pet_id}
+                                >
+                                    {loading && <span className="spinner-border spinner-border-sm me-2"></span>}
+                                    Generate Label
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
 
-                                <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm border border-white/10 space-y-3">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-400">Production Code</span>
-                                        <span className="font-mono text-white">{generatedLabel.actual_production_code}</span>
+                <div className="col-12 col-xl-6">
+                    <div className="card h-100">
+                        <div className="card-header bg-soft-success">
+                            <h5 className="mb-1 text-success d-flex align-items-center gap-2">
+                                <Printer size={18} /> Generated Label
+                            </h5>
+                            <small className="text-muted">Review label details before printing.</small>
+                        </div>
+                        <div className="card-body d-flex flex-column justify-content-center">
+                            {generatedLabel ? (
+                                <div className="text-center">
+                                    <div className="d-flex justify-content-center mb-3">
+                                        <div className="rounded-circle bg-soft-success text-success d-flex align-items-center justify-content-center" style={{ width: 64, height: 64 }}>
+                                            <CheckCircle2 size={30} />
+                                        </div>
                                     </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-400">Date</span>
-                                        <span className="text-white">{new Date().toLocaleDateString()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-400">Line</span>
-                                        <span className="text-white">{getPetName()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-400">Product</span>
-                                        <span className="text-white">{getProductName()}</span>
-                                    </div>
-                                </div>
+                                    <h3 className="mb-1">{generatedLabel.label?.barcode || 'N/A'}</h3>
+                                    <p className="text-muted text-uppercase small mb-4">{generatedLabel.label?.stage || 'PRODUCTION'}</p>
 
-                                <div className="grid grid-cols-2 gap-4 pt-4">
-                                    <Button
-                                        onClick={handleReset}
-                                        variant="secondary"
-                                        className="w-full border-slate-700 bg-transparent text-white hover:bg-white/10"
-                                    >
-                                        New Unit
-                                    </Button>
-                                    <Button
-                                        onClick={handlePrint}
-                                        className="w-full bg-green-600 hover:bg-green-700 text-white"
-                                    >
-                                        <Printer className="w-5 h-5" /> Print Label
-                                    </Button>
+                                    <div className="card bg-light border-0 mb-4">
+                                        <div className="card-body py-3">
+                                            <div className="d-flex justify-content-between py-1">
+                                                <span className="text-muted">Production Code</span>
+                                                <span className="fw-semibold">{generatedLabel.actual_production_code || 'N/A'}</span>
+                                            </div>
+                                            <div className="d-flex justify-content-between py-1">
+                                                <span className="text-muted">Date</span>
+                                                <span className="fw-semibold">{new Date().toLocaleDateString()}</span>
+                                            </div>
+                                            <div className="d-flex justify-content-between py-1">
+                                                <span className="text-muted">Line</span>
+                                                <span className="fw-semibold">{getPetName() || 'N/A'}</span>
+                                            </div>
+                                            <div className="d-flex justify-content-between py-1">
+                                                <span className="text-muted">Product</span>
+                                                <span className="fw-semibold">{getProductName() || 'N/A'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="d-grid d-sm-flex gap-2 justify-content-center">
+                                        <button type="button" onClick={handleReset} className="btn btn-outline-secondary">
+                                            New Unit
+                                        </button>
+                                        <button type="button" onClick={handlePrint} className="btn btn-success">
+                                            <Printer size={16} className="me-2" />
+                                            Print Label
+                                        </button>
+                                    </div>
                                 </div>
-                            </motion.div>
-                        ) : (
-                            <motion.div
-                                key="placeholder"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="text-slate-400 dark:text-slate-600"
-                            >
-                                <div className="w-32 h-32 mx-auto mb-6 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center">
-                                    <Printer className="w-12 h-12 opacity-50" />
+                            ) : (
+                                <div className="text-center text-muted py-5">
+                                    <Printer size={42} className="mb-3 opacity-50" />
+                                    <h6 className="mb-2">No Label Generated</h6>
+                                    <p className="mb-0">Fill out the production details to generate a new unit barcode.</p>
                                 </div>
-                                <h3 className="text-xl font-semibold mb-2">No Label Generated</h3>
-                                <p className="max-w-xs mx-auto">
-                                    Fill out the production details on the left to generate new unit barcodes.
-                                </p>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </Card>
-            </motion.div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

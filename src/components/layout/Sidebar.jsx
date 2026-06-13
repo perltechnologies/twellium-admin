@@ -100,26 +100,25 @@ const navigation = [
         },
     ];
 
-const Sidebar = () => {
+const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
+    const nav = navProp || navigation;
     const location = useLocation();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [openSubmenus, setOpenSubmenus] = useState({ production: false, configs: false, definitions: false, reporting: false });
 
     // Auto-open submenu if current path matches any submenu item
     useEffect(() => {
-        const newOpenSubmenus = { production: false, configs: false, definitions: false, reporting: false };
-        navigation.forEach(section => {
+        const newOpenSubmenus = {};
+        nav.forEach(section => {
             section.items.forEach(item => {
                 if (item.submenu) {
                     const isActive = item.submenu.some(sub => location.pathname === sub.path);
-                    if (isActive) {
-                        newOpenSubmenus[item.key] = true;
-                    }
+                    newOpenSubmenus[item.key] = isActive;
                 }
             });
         });
         setOpenSubmenus(newOpenSubmenus);
-    }, [location.pathname]);
+    }, [location.pathname, nav]);
 
     const toggleSubmenu = (key) => {
         setOpenSubmenus(prev => ({ ...prev, [key]: !prev[key] }));
@@ -137,15 +136,15 @@ const Sidebar = () => {
 
                 <div className="sidebar-logo">
                     <div>
-                        <Link to="/dashboard" className="logo logo-normal">
+                        <Link to={logoLink} className="logo logo-normal">
 
                             <img src="/logo.jpeg" width={100} alt="Logo" />
                         </Link>
 
-                        <Link to="/Dashboard" className="logo-small">
+                        <Link to={logoLink} className="logo-small">
                             <img src="/logo.jpeg" width={100} alt="Logo" />
                         </Link>
-                        <Link to="/Dashboard" className="dark-logo">
+                        <Link to={logoLink} className="dark-logo">
                             <img src="/logo.jpeg" width={100} alt="Logo" />
                         </Link>
                     </div>
@@ -159,7 +158,7 @@ const Sidebar = () => {
                 <div className="sidebar-inner" data-simplebar>
                     <div id="sidebar-menu" className="sidebar-menu">
                         <ul>
-                            {navigation.map((section, idx) => (
+                            {nav.map((section, idx) => (
                                 <React.Fragment key={idx}>
                                     <li className="menu-title"><span>{section.section}</span></li>
                                     <li>

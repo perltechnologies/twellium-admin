@@ -45,7 +45,7 @@ const ProductionAnalytics = () => {
 
     useEffect(() => {
         productionApi.getPets({ page_size: 100 })
-            .then(res => setPets((res.data.data || []).filter(p => !p.pet_name?.toLowerCase().includes('can'))))
+            .then(res => { const d = res.data?.data ?? res.data; setPets((Array.isArray(d) ? d : (d?.results || [])).filter(p => !p.pet_name?.toLowerCase().includes('can'))); })
             .catch(err => console.error('Failed to load pets:', err));
     }, []);
 
@@ -96,22 +96,18 @@ const ProductionAnalytics = () => {
                 if (startDate && endDate) {
                     params.production_date_after = startDate.toISOString().split('T')[0];
                     params.production_date_before = endDate.toISOString().split('T')[0];
-                    oeeParams.datetime_start_time = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
-                    oeeParams.datetime_end_time = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
+                    oeeParams.start_date = startDate.toISOString().split('T')[0];
+                    oeeParams.end_date = endDate.toISOString().split('T')[0];
                 }
             } else if (filters.log_date) {
                 params.production_date = filters.log_date;
-                const startDate = new Date(filters.log_date + 'T00:00:00Z');
-                const endDate = new Date(filters.log_date + 'T23:59:59Z');
-                oeeParams.datetime_start_time = startDate.toISOString();
-                oeeParams.datetime_end_time = endDate.toISOString();
+                oeeParams.start_date = filters.log_date;
+                oeeParams.end_date = filters.log_date;
             } else if (filters.start_date && filters.end_date) {
                 params.production_date_after = filters.start_date;
                 params.production_date_before = filters.end_date;
-                const startDate = new Date(filters.start_date + 'T00:00:00Z');
-                const endDate = new Date(filters.end_date + 'T23:59:59Z');
-                oeeParams.datetime_start_time = startDate.toISOString();
-                oeeParams.datetime_end_time = endDate.toISOString();
+                oeeParams.start_date = filters.start_date;
+                oeeParams.end_date = filters.end_date;
             }
             
             const [oeeRes, reportsRes] = await Promise.all([
@@ -119,8 +115,8 @@ const ProductionAnalytics = () => {
                 productionApi.getReports(params)
             ]);
             
-            let oeeList = Array.isArray(oeeRes.data) ? oeeRes.data : oeeRes.data?.results || oeeRes.data?.data || [];
-            let reportsList = Array.isArray(reportsRes.data) ? reportsRes.data : reportsRes.data?.results || reportsRes.data?.data || [];
+            let oeeList = Array.isArray(oeeRes.data) ? oeeRes.data : (oeeRes.data?.data?.results || oeeRes.data?.data || oeeRes.data?.results || []);
+            let reportsList = Array.isArray(reportsRes.data) ? reportsRes.data : (reportsRes.data?.data?.results || reportsRes.data?.data || reportsRes.data?.results || []);
             
             oeeList = oeeList.filter(r => !r.pet_name?.toLowerCase().includes('can'));
             reportsList = reportsList.filter(r => !r.pet_name?.toLowerCase().includes('can'));

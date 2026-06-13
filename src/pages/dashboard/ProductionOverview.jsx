@@ -20,11 +20,11 @@ import ReactApexChart from 'react-apexcharts';
 
 /* ── helpers ─────────────────────────────────────── */
 const extractList = (res) => {
-    const d = res.data;
-    if (Array.isArray(d)) return d;
-    if (d?.data?.results && Array.isArray(d.data.results)) return d.data.results;
-    if (d?.results && Array.isArray(d.results)) return d.results;
-    if (d?.data && Array.isArray(d.data)) return d.data;
+    const d = res?.data;
+    if (!d) return [];
+    const inner = d?.data ?? d;
+    if (Array.isArray(inner)) return inner;
+    if (inner?.results && Array.isArray(inner.results)) return inner.results;
     return [];
 };
 
@@ -379,7 +379,7 @@ const Overview = () => {
     /* Fetch pets for ProductionSummary */
     useEffect(() => {
         productionApi.getPets({ page_size: 1000 })
-            .then(res => setPets((res.data.data || []).filter(pet => !pet.pet_name?.toLowerCase().includes('can'))))
+            .then(res => { const d = res.data?.data ?? res.data; const list = Array.isArray(d) ? d : (d?.results || []); setPets(list.filter(pet => !pet.pet_name?.toLowerCase().includes('can'))); })
             .catch(err => console.error('Failed to load pets:', err));
     }, []);
 

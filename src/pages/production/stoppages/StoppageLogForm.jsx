@@ -126,7 +126,27 @@ const StoppageLogForm = () => {
     const removeIncident = (index) => {
         const incident = formData.incidents[index];
         if (isEditMode && incident.id) {
-            Swal.fire({ icon: 'info', title: 'Not Supported', text: 'Removing existing incidents is not yet supported.', timer: 2500 });
+            Swal.fire({
+                icon: 'warning',
+                title: 'Remove Incident',
+                text: 'Are you sure you want to remove this incident?',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, remove',
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    try {
+                        await productionApi.removeIncident(id, { id: incident.id });
+                        setFormData(prev => ({
+                            ...prev,
+                            incidents: prev.incidents.filter((_, i) => i !== index)
+                        }));
+                        await Swal.fire({ icon: 'success', title: 'Removed!', timer: 1500, showConfirmButton: false });
+                    } catch (err) {
+                        console.error('Failed to remove incident', err);
+                        Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to remove incident.' });
+                    }
+                }
+            });
             return;
         }
         setFormData(prev => ({

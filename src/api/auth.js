@@ -1,4 +1,5 @@
 import api from './axios';
+import { withEndpointFallbacks } from './fallbacks';
 
 export const login = async (credentials) => {
     const response = await api.post('/auth/token/', credentials);
@@ -13,11 +14,21 @@ export const logout = () => {
 };
 
 export const forgotPassword = async (email) => {
-    const response = await api.post('/core/auth/forgot-password/', { email });
+    const response = await withEndpointFallbacks(
+        () => api.post('/core/auth/forgot-password/', { email }),
+        [
+            () => api.post('/auth/forgot-password/', { email }),
+        ]
+    );
     return response.data;
 };
 
 export const resetPassword = async (data) => {
-    const response = await api.post('/core/auth/reset-password/', data);
+    const response = await withEndpointFallbacks(
+        () => api.post('/core/auth/reset-password/', data),
+        [
+            () => api.post('/auth/reset-password/', data),
+        ]
+    );
     return response.data;
 };

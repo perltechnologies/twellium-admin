@@ -42,7 +42,7 @@ const OeeAnalytics = () => {
 
     useEffect(() => {
         productionApi.getPets({ page_size: 100 })
-            .then(res => setPets((res.data.data || []).filter(p => !p.pet_name?.toLowerCase().includes('can'))))
+            .then(res => { const d = res.data?.data ?? res.data; setPets((Array.isArray(d) ? d : (d?.results || [])).filter(p => !p.pet_name?.toLowerCase().includes('can'))); })
             .catch(err => console.error('Failed to load pets:', err));
     }, []);
 
@@ -174,6 +174,10 @@ const OeeAnalytics = () => {
         const avails = data.map(d => d.metrics?.availability || 0);
         const qualities = data.map(d => d.metrics?.quality || 0);
         const perfs = data.map(d => d.metrics?.performance || 0);
+        const totalPlannedMins = data.reduce((s, d) => s + (d.metrics?.details?.planned_time_mins || 0), 0);
+        const totalDowntimeMins = data.reduce((s, d) => s + (d.metrics?.details?.total_downtime_mins || 0), 0);
+        const totalPlannedDowntimeMins = data.reduce((s, d) => s + (d.metrics?.details?.planned_downtime_mins || 0), 0);
+        const statsOpTime = totalPlannedMins - totalPlannedDowntimeMins;
         const avgOee = oees.reduce((a, b) => a + b, 0) / oees.length;
         
         const bestOee = Math.max(...oees);
@@ -185,7 +189,7 @@ const OeeAnalytics = () => {
             avgOee,
             avgAvail: avails.reduce((a, b) => a + b, 0) / avails.length,
             avgQuality: qualities.reduce((a, b) => a + b, 0) / qualities.length,
-            avgPerf: perfs.reduce((a, b) => a + b, 0) / perfs.length,
+            avgPerf: statsOpTime > 0 ? Math.min(100, Math.max(0, ((totalPlannedMins - totalDowntimeMins) / statsOpTime) * 100)) : 0,
             bestOee,
             worstOee,
             bestPet,
@@ -240,22 +244,30 @@ const OeeAnalytics = () => {
         const grouped = {};
         data.forEach(d => {
             const date = d.production_date?.slice(0, 10) || '';
-            if (!grouped[date]) grouped[date] = { oee: 0, availability: 0, quality: 0, performance: 0, count: 0 };
+            if (!grouped[date]) grouped[date] = { oee: 0, availability: 0, quality: 0, performance: 0, count: 0, plannedMins: 0, totalDowntime: 0, plannedDowntime: 0 };
             grouped[date].oee += parseFloat(d.efficiency) || d.metrics?.oee || 0;
             grouped[date].availability += d.metrics?.availability || 0;
             grouped[date].quality += d.metrics?.quality || 0;
             grouped[date].performance += d.metrics?.performance || 0;
+            grouped[date].plannedMins += d.metrics?.details?.planned_time_mins || 0;
+            grouped[date].totalDowntime += d.metrics?.details?.total_downtime_mins || 0;
+            grouped[date].plannedDowntime += d.metrics?.details?.planned_downtime_mins || 0;
             grouped[date].count += 1;
         });
         
-        return allDates.map(date => ({
+        return allDates.map(date => {
+            const g = grouped[date];
+            const opTime = g ? g.plannedMins - g.plannedDowntime : 0;
+            const perf = opTime > 0 ? ((g.plannedMins - g.totalDowntime) / opTime) * 100 : 0;
+            return {
             date: date.slice(5, 10),
             fullDate: date,
-            oee: grouped[date] ? (grouped[date].oee / grouped[date].count).toFixed(1) : '0.0',
-            availability: grouped[date] ? (grouped[date].availability / grouped[date].count).toFixed(1) : '0.0',
-            quality: grouped[date] ? (grouped[date].quality / grouped[date].count).toFixed(1) : '0.0',
-            performance: grouped[date] ? (grouped[date].performance / grouped[date].count).toFixed(1) : '0.0'
-        }));
+            oee: g ? (g.oee / g.count).toFixed(1) : '0.0',
+            availability: g ? (g.availability / g.count).toFixed(1) : '0.0',
+            quality: g ? (g.quality / g.count).toFixed(1) : '0.0',
+            performance: g ? Math.min(100, Math.max(0, perf)).toFixed(1) : '0.0'
+            };
+        });
     }, [data, timeRange, filters]);
 
     const byPetData = useMemo(() => {
@@ -264,21 +276,28 @@ const OeeAnalytics = () => {
         // Only show PETs that have data
         data.forEach(d => {
             const pet = d.pet_name || 'Unknown';
-            if (!allPets[pet]) allPets[pet] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0 };
+            if (!allPets[pet]) allPets[pet] = { oee: 0, avail: 0, quality: 0, perf: 0, count: 0, plannedMins: 0, totalDowntime: 0, plannedDowntime: 0 };
             allPets[pet].oee += parseFloat(d.efficiency) || d.metrics?.oee || 0;
             allPets[pet].avail += d.metrics?.availability || 0;
             allPets[pet].quality += d.metrics?.quality || 0;
             allPets[pet].perf += d.metrics?.performance || 0;
+            allPets[pet].plannedMins += d.metrics?.details?.planned_time_mins || 0;
+            allPets[pet].totalDowntime += d.metrics?.details?.total_downtime_mins || 0;
+            allPets[pet].plannedDowntime += d.metrics?.details?.planned_downtime_mins || 0;
             allPets[pet].count += 1;
         });
         
-        return Object.entries(allPets).map(([name, vals]) => ({
+        return Object.entries(allPets).map(([name, vals]) => {
+            const opTime = vals.plannedMins - vals.plannedDowntime;
+            const perf = opTime > 0 ? ((vals.plannedMins - vals.totalDowntime) / opTime) * 100 : 0;
+            return {
             name,
             oee: vals.count > 0 ? (vals.oee / vals.count).toFixed(1) : '0.0',
             availability: vals.count > 0 ? (vals.avail / vals.count).toFixed(1) : '0.0',
             quality: vals.count > 0 ? (vals.quality / vals.count).toFixed(1) : '0.0',
-            performance: vals.count > 0 ? (vals.perf / vals.count).toFixed(1) : '0.0'
-        })).sort((a, b) => {
+            performance: vals.count > 0 ? Math.min(100, Math.max(0, perf)).toFixed(1) : '0.0'
+            };
+        }).sort((a, b) => {
             const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;

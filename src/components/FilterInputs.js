@@ -2,16 +2,27 @@ import React, { useEffect, useState } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { productionApi } from '../api/production';
 
-const FilterInputs = ({ showPageSize = false }) => {
+const FilterInputs = ({ showPageSize = false, showPetLine = true }) => {
   const { filters, updateFilters } = useFilters();
   const [pets, setPets] = useState([]);
   const [useRange, setUseRange] = useState(false);
+  const dateColumnClass = showPageSize
+    ? "col-md-3"
+    : showPetLine
+      ? "col-md-4"
+      : "col-md-4";
 
   useEffect(() => {
+    if (!showPetLine) return;
+
     productionApi.getPets({ page_size: 1000 })
-      .then(res => setPets((res.data.data || []).filter(pet => !pet.pet_name?.toLowerCase().includes('can'))))
+      .then(res => {
+        const d = res.data?.data ?? res.data;
+        const list = Array.isArray(d) ? d : (d?.results || []);
+        setPets(list.filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
+      })
       .catch(err => console.error('Failed to load pets:', err));
-  }, []);
+  }, [showPetLine]);
 
   const handleRangeToggle = (checked) => {
     setUseRange(checked);
@@ -26,7 +37,7 @@ const FilterInputs = ({ showPageSize = false }) => {
     <div className="card mb-3">
         <div className="card-body">
             <div className="row align-items-end">
-      <div className={showPageSize ? "col-md-3" : "col-md-4"}>
+      <div className={dateColumnClass}>
         <div className="d-flex align-items-center gap-2 mb-2">
           <label className="form-label mb-0 fw-semibold">Date Filter</label>
           <div className="form-check form-switch">
@@ -65,6 +76,7 @@ const FilterInputs = ({ showPageSize = false }) => {
           </div>
         )}
       </div>
+      {showPetLine && (
       <div className={showPageSize ? "col-md-3" : "col-md-4"}>
         <label className="form-label fw-semibold">PET Line</label>
         <select
@@ -82,6 +94,7 @@ const FilterInputs = ({ showPageSize = false }) => {
           ))}
         </select>
       </div>
+      )}
       {showPageSize && (
         <div className="col-md-3">
           <label className="form-label fw-semibold">Page Size</label>

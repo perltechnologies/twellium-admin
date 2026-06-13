@@ -1,4 +1,5 @@
 import api from './axios';
+import { withEndpointFallbacks } from './fallbacks';
 
 export const usersApi = {
     getUsers: () => api.get('/core/users/'),
@@ -6,5 +7,10 @@ export const usersApi = {
 
     updateUser: (id, data) => api.patch(`/core/users/${id}/`, data),
     deleteUser: (id) => api.delete(`/core/users/${id}/`),
-    getCompanies: () => api.get('/core/companies/'),
+    getCompanies: () => withEndpointFallbacks(
+        () => api.get('/core/companies/'),
+        [
+            () => api.get('/companies/'),
+        ]
+    ),
 };

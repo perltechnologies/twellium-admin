@@ -136,7 +136,7 @@ const StoppageLogList = () => {
         if (!itemToDelete) return;
         setDeleting(true);
         try {
-            await productionApi.deleteStoppage(itemToDelete.id);
+            await productionApi.removeStoppageLog(itemToDelete.report, itemToDelete.id);
             setDeleteModalOpen(false);
             setItemToDelete(null);
             fetchStoppages();

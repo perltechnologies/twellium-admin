@@ -36,12 +36,15 @@ const ProductionReports = () => {
 
         const totalOutput = reports.reduce((sum, r) => sum + (r.metrics?.details?.total_output_pcs || 0), 0);
         const totalDowntime = reports.reduce((sum, r) => sum + (r.metrics?.details?.total_downtime_mins || 0), 0);
+        const totalPlannedMins = reports.reduce((sum, r) => sum + (r.metrics?.details?.planned_time_mins || 0), 0);
+        const totalPlannedDowntime = reports.reduce((sum, r) => sum + (r.metrics?.details?.planned_downtime_mins || 0), 0);
+        const opTime = totalPlannedMins - totalPlannedDowntime;
 
         return {
             avgOee: reports.reduce((sum, r) => sum + (r.metrics?.oee || 0), 0) / reports.length,
             avgAvailability: reports.reduce((sum, r) => sum + (r.metrics?.availability || 0), 0) / reports.length,
             avgQuality: reports.reduce((sum, r) => sum + (r.metrics?.quality || 0), 0) / reports.length,
-            avgPerformance: reports.reduce((sum, r) => sum + (r.metrics?.performance || 0), 0) / reports.length,
+            avgPerformance: opTime > 0 ? ((totalPlannedMins - totalDowntime) / opTime) * 100 : 0,
             totalOutput,
             totalDowntime,
             reportCount: reports.length
@@ -76,15 +79,14 @@ const ProductionReports = () => {
     const fetchOeeTrend = useCallback(async () => {
         setOeeTrendLoading(true);
         try {
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            const todayEnd = new Date();
-            todayEnd.setHours(23, 59, 59, 0);
+            const todayStr = new Date().toISOString().split('T')[0];
             const res = await productionApi.getOeeSummary({ 
-                datetime_start_time: todayStart.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-                datetime_end_time: todayEnd.toISOString().replace(/\.\d{3}Z$/, 'Z')
+                start_date: todayStr,
+                end_date: todayStr,
+                page_size: 1000
             });
-            const trendData = Array.isArray(res.data) ? res.data : res.data?.results || res.data?.data || [];
+            const inner = res.data?.data ?? res.data;
+            const trendData = Array.isArray(inner) ? inner : (inner?.results || []);
             const sortedData = [...trendData].sort((a, b) => 
                 new Date(a.production_date) - new Date(b.production_date)
             );

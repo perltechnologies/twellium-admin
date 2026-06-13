@@ -12,7 +12,7 @@ const StoppageLogDetails = () => {
         const fetchLog = async () => {
             try {
                 const res = await productionApi.getStoppage(id);
-                setLog(res.data.data);
+                setLog(res.data?.data || res.data);
             } catch (err) {
                 console.error("Failed to load stoppage log", err);
             } finally {

@@ -88,7 +88,9 @@ export const productionApi = {
     updateStoppage: (id, data) => api.patch(`/production/stoppages/${id}/`, data),
     replaceStoppage: (id, data) => api.put(`/production/stoppages/${id}/`, data),
     deleteStoppage: (id) => api.delete(`/production/stoppages/${id}/`),
+    removeStoppageLog: (reportId, stoppageId) => api.post(`/production/reports/${reportId}/remove_stoppage_log/`, { id: stoppageId }),
     addIncident: (id, data) => api.post(`/production/stoppages/${id}/add_incident/`, data),
+    removeIncident: (id, data) => api.post(`/production/stoppages/${id}/remove_incident/`, data),
     updateIncident: (incidentId, data) => api.patch(`/production/stoppages/incidents/${incidentId}/`, data),
     deleteIncident: (incidentId) => api.delete(`/production/stoppages/incidents/${incidentId}/`),
 

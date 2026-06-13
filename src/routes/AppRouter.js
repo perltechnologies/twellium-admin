@@ -24,6 +24,23 @@ const ModeSelection = React.lazy(() => import('../pages/ModeSelection'));
 // Post Production Pages
 const PostProductionLayout = React.lazy(() => import('../components/layout/PostProductionLayout'));
 const PostProduction = React.lazy(() => import('../pages/post-production/Production'));
+const PostProductionDashboard = React.lazy(() => import('../pages/inventory/PostProductionDashboard'));
+const InventoryOverview = React.lazy(() => import('../pages/inventory/InventoryOverview'));
+const ProductionMode = React.lazy(() => import('../pages/inventory/ProductionMode'));
+const WarehouseWorkflows = React.lazy(() => import('../pages/inventory/WarehouseWorkflows'));
+const BatchScan = React.lazy(() => import('../pages/inventory/BatchScan'));
+const ActivityLogs = React.lazy(() => import('../pages/inventory/ActivityLogs'));
+const ActivityLogDetails = React.lazy(() => import('../pages/inventory/ActivityLogDetails'));
+const ReprintLabels = React.lazy(() => import('../pages/inventory/ReprintLabels'));
+const UnitLookup = React.lazy(() => import('../pages/inventory/UnitLookup'));
+const StageManagement = React.lazy(() => import('../pages/inventory/StageManagement'));
+const FindBarcode = React.lazy(() => import('../pages/inventory/FindBarcode'));
+const FindRfid = React.lazy(() => import('../pages/inventory/FindRfid'));
+const PalletList = React.lazy(() => import('../pages/inventory/PalletList'));
+const PalletDetails = React.lazy(() => import('../pages/inventory/PalletDetails'));
+const LoadingDispatch = React.lazy(() => import('../pages/logistics/LoadingDispatch'));
+const VehicleList = React.lazy(() => import('../pages/logistics/VehicleList'));
+const DriverList = React.lazy(() => import('../pages/logistics/DriverList'));
 const StoppageLogList = React.lazy(() => import('../pages/production/stoppages/StoppageLogList'));
 const StoppagesTable = React.lazy(() => import('../pages/production/stoppages/StoppagesTable'));
 const StoppageLogForm = React.lazy(() => import('../pages/production/stoppages/StoppageLogForm'));
@@ -86,10 +103,26 @@ export const AppRouter = () => {
                                 <PostProductionLayout />
                             </ProtectedRoute>
                         }>
-                            <Route path="production" element={<PostProduction />} />
-                            {/* Placeholders for now */}
-                            <Route path="warehouse" element={<div className="p-8 text-center text-slate-500">Warehouse Scanning Module Coming Soon</div>} />
-                            <Route path="loading" element={<div className="p-8 text-center text-slate-500">Loading Module Coming Soon</div>} />
+                            <Route index element={<PostProductionDashboard />} />
+                            <Route path="overview" element={<InventoryOverview />} />
+                            <Route path="production" element={<ProductionMode />} />
+                            <Route path="warehouse" element={<WarehouseWorkflows />} />
+                            <Route path="lookup" element={<UnitLookup />} />
+                            <Route path="manage-stages" element={<StageManagement />} />
+                            <Route path="find-barcode" element={<FindBarcode />} />
+                            <Route path="find-rfid" element={<FindRfid />} />
+                            <Route path="activity-logs" element={<ActivityLogs />} />
+                            <Route path="activity-logs/:id" element={<ActivityLogDetails />} />
+                            <Route path="pallets/:stage" element={<PalletList />} />
+                            <Route path="pallets/details/:identifier" element={<PalletDetails />} />
+                            <Route path="reprint" element={<ReprintLabels />} />
+                            <Route path="batch-scan" element={<BatchScan />} />
+                            <Route path="logistics">
+                                <Route index element={<Navigate to="dispatch" replace />} />
+                                <Route path="dispatch" element={<LoadingDispatch />} />
+                                <Route path="vehicles" element={<VehicleList />} />
+                                <Route path="drivers" element={<DriverList />} />
+                            </Route>
                         </Route>
 
                         <Route path="/dashboard" element={
