@@ -201,8 +201,14 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
             }
             elapsedMins = Math.min(totalPlannedMins, Math.max(0, Math.round((now - shiftStart) / 60000)));
         }
+        // Try direct performance field first, fall back to formula if unavailable
+        const directPerformance = filtered.length > 0
+            ? filtered.reduce((s, r) => s + (r.metrics?.performance || r.performance || 0), 0) / filtered.length
+            : 0;
         const opTime = elapsedMins - plannedDowntime;
-        const avgPerformance = opTime > 0 ? ((elapsedMins - totalDowntime) / opTime) * 100 : 0;
+        const avgPerformance = directPerformance > 0
+            ? directPerformance
+            : (opTime > 0 ? ((elapsedMins - totalDowntime) / opTime) * 100 : 0);
         const avgAvailability = filtered.length > 0
             ? filtered.reduce((s, r) => s + (r.metrics?.availability || r.availability || 0), 0) / filtered.length
             : 0;
