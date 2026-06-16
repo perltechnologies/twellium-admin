@@ -211,11 +211,21 @@ const Overview = () => {
         try {
             const params = getParams();
             
+            // Day boundary: 6am-6am. If before 6am, "today" is yesterday.
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+            let boundaryDate = now.toISOString().split('T')[0];
+            if (currentTime < '06:00') {
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                boundaryDate = yesterday.toISOString().split('T')[0];
+            }
+
             // Fetch shifts + new dashboard endpoints in parallel
             const [shiftsRes, metricsRes, todayYesterdayRes, petsRes] = await Promise.all([
                 productionApi.getShifts(),
                 productionApi.getDashboardMetricsComparison(),
-                productionApi.getDashboardTodayYesterdayComparison(),
+                productionApi.getDashboardTodayYesterdayComparison({ date: boundaryDate }),
                 productionApi.getPets(params),
             ]);
 
@@ -296,7 +306,7 @@ const Overview = () => {
             const currentTime = now.toTimeString().slice(0, 5);
             let todayStr = now.toISOString().split('T')[0];
             
-            // If before 6am, use previous day for shift data
+            // Day boundary is 6am. If before 6am, current production day is previous calendar day.
             if (currentTime < '06:00') {
                 const yesterday = new Date(now);
                 yesterday.setDate(yesterday.getDate() - 1);
@@ -323,8 +333,10 @@ const Overview = () => {
                 return;
             }
 
-            // Fetch all PET metrics for the date
-            const shiftRes = await productionApi.getDashboardShiftPetMetrics({ date: refDateStr });
+            // Fetch PET metrics for the date, passing shift if explicitly selected
+            const shiftParams = { date: refDateStr };
+            if (selectedShiftId) shiftParams.shift = targetShift.id;
+            const shiftRes = await productionApi.getDashboardShiftPetMetrics(shiftParams);
             const shiftData = shiftRes?.data?.data ?? shiftRes?.data ?? {};
             const allPets = Array.isArray(shiftData.pets) ? shiftData.pets : (Array.isArray(shiftData) ? shiftData : []);
             const allReports = allPets.filter(r => !r.pet_name?.toLowerCase().includes('can'));
@@ -341,13 +353,13 @@ const Overview = () => {
             let activeShift = targetShift;
             let activeReports = filterByShift(allReports, targetShift);
 
-            // If no data for target shift, use all reports (API may have already filtered)
+            // If no data for target shift, use all reports (API may have already filtered by shift)
             if (activeReports.length === 0 && allReports.length > 0) {
                 activeReports = allReports;
             }
 
-            // If still empty, fall back to previous shift's data
-            if (activeReports.length === 0 && shifts.length > 1) {
+            // Only fall back to previous shift if NOT explicitly selected by user
+            if (activeReports.length === 0 && !selectedShiftId && shifts.length > 1) {
                 const currentIdx = shifts.findIndex(s => s.id === targetShift.id);
                 const prevShift = currentIdx > 0 ? shifts[currentIdx - 1] : shifts[shifts.length - 1];
                 if (prevShift && prevShift.id !== targetShift.id) {
@@ -370,11 +382,13 @@ const Overview = () => {
                 }
             }
 
+            // Always show the explicitly selected shift info, even when data falls back
+            const displayShift = selectedShiftId ? targetShift : activeShift;
             setCurrentShiftInfo({
-                id: activeShift.id,
-                name: activeShift.name,
-                start_time: activeShift.start_time,
-                end_time: activeShift.end_time,
+                id: displayShift.id,
+                name: displayShift.name,
+                start_time: displayShift.start_time,
+                end_time: displayShift.end_time,
                 lastUpdated: null
             });
 
@@ -871,7 +885,7 @@ const Overview = () => {
                                 const avgOEE = hourlyOeeByLine.length > 0
                                     ? (hourlyOeeByLine.reduce((sum, line) => sum + line.oee, 0) / hourlyOeeByLine.length).toFixed(1)
                                     : 0;
-                                const bestPerformer = [...hourlyOeeByLine].sort((a, b) => b.oee - a.oee)[0];
+                                const bestPerformer = [...hourlyOeeByLine].sort((a, b) => b.performance - a.performance)[0];
 
                                 return (
                                     <>
@@ -902,7 +916,7 @@ const Overview = () => {
                                                     {bestPerformer?.name || 'N/A'}
                                                 </div>
                                                 <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                                    {bestPerformer?.oee.toFixed(1) || 0}% Efficiency
+                                                    {bestPerformer?.performance.toFixed(1) || 0}% Performance
                                                 </div>
                                             </div>
                                         </div>

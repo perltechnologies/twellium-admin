@@ -140,11 +140,11 @@ const ProductionAnalytics = () => {
     }, [fetchData]);
 
     useEffect(() => {
-        // Reset timeRange when manual date filters are cleared
-        if (!filters.log_date && !filters.start_date && !filters.end_date && timeRange === 'all') {
-            setTimeRange('month');
+        // When manual date filters are applied, switch to 'all' mode so they take precedence
+        if (filters.log_date || filters.start_date || filters.end_date) {
+            setTimeRange('all');
         }
-    }, [filters.log_date, filters.start_date, filters.end_date, timeRange]);
+    }, [filters.log_date, filters.start_date, filters.end_date]);
 
     const weekRange = useMemo(() => {
         if (timeRange !== 'week') return null;
@@ -167,7 +167,7 @@ const ProductionAnalytics = () => {
         const uniqueDates = new Set(allDates.map(d => d?.slice(0, 10))).size;
         const isSingleDate = uniqueDates === 1 || filters.log_date;
         
-        const totalOutput = reports.reduce((sum, r) => sum + (r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
+        const totalOutput = reports.reduce((sum, r) => sum + (r.total_bottles_produced || r.bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
         const totalDowntime = oeeData.reduce((sum, r) => sum + (r.metrics?.details?.total_downtime_mins || 0), 0);
         const totalOee = oeeData.reduce((sum, r) => sum + (r.metrics?.oee || 0), 0);
         const avgOee = oeeData.length > 0 ? totalOee / oeeData.length : 0;
@@ -195,7 +195,7 @@ const ProductionAnalytics = () => {
         const grouped = {};
         [...reports, ...oeeData].forEach(r => {
             const pet = r.pet_name || 'Unknown';
-            const output = r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+            const output = r.total_bottles_produced || r.bottles_produced || r.metrics?.details?.total_output_pcs || 0;
             if (!grouped[pet]) grouped[pet] = 0;
             grouped[pet] += output;
         });
@@ -208,7 +208,7 @@ const ProductionAnalytics = () => {
         const grouped = {};
         [...reports, ...oeeData].forEach(r => {
             const shift = r.shift_name || 'Unknown';
-            const output = r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+            const output = r.total_bottles_produced || r.bottles_produced || r.metrics?.details?.total_output_pcs || 0;
             if (!grouped[shift]) grouped[shift] = 0;
             grouped[shift] += output;
         });
@@ -262,7 +262,7 @@ const ProductionAnalytics = () => {
         const grouped = {};
         allData.forEach(r => {
             const date = r.production_date?.slice(0, 10) || '';
-            const output = r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+            const output = r.total_bottles_produced || r.bottles_produced || r.metrics?.details?.total_output_pcs || 0;
             if (!grouped[date]) grouped[date] = { output: 0, count: 0 };
             grouped[date].output += output;
             grouped[date].count += 1;
@@ -402,7 +402,7 @@ const ProductionAnalytics = () => {
             Date: r.production_date?.slice(0, 10) || '',
             'PET Line': r.pet_name || 'Unknown',
             Shift: r.shift_name || '-',
-            Output: r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0,
+            Output: r.total_bottles_produced || r.bottles_produced || r.metrics?.details?.total_output_pcs || 0,
             OEE: `${(r.metrics?.oee || 0).toFixed(1)}%`,
             Availability: `${(r.metrics?.availability || 0).toFixed(1)}%`,
             Quality: `${(r.metrics?.quality || 0).toFixed(1)}%`,

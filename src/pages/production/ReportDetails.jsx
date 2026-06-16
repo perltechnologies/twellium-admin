@@ -334,8 +334,8 @@ const StoppageLogsView = ({ logs }) => {
                                 <small className="text-muted text-uppercase d-block mb-1">Logged By</small>
                                 <div className="d-flex align-items-center gap-2">
                                     <User className="h-3 w-3 text-muted" />
-                                    <span className="small text-truncate" style={{ maxWidth: '100px' }} title={log.created_by?.full_name}>
-                                        {log.created_by?.full_name || log.created_by?.username}
+                                    <span className="small text-truncate" style={{ maxWidth: '100px' }} title={log.created_by?.full_name || log.created_by_name}>
+                                        {log.created_by?.full_name || log.created_by?.username || log.created_by_name || '-'}
                                     </span>
                                 </div>
                             </div>
@@ -1367,9 +1367,9 @@ const ReportDetails = () => {
                                             {report.workers?.length > 0 ? (
                                                 report.workers.map((worker, idx) => (
                                                     <tr key={idx}>
-                                                        <td className="fw-medium">{worker.user?.full_name || worker.user?.username}</td>
-                                                        <td><span className="badge bg-info">{worker.user?.role}</span></td>
-                                                        <td>{worker.user?.company_name}</td>
+                                                        <td className="fw-medium">{worker.user?.full_name || worker.user?.username || worker.full_name || worker.username || worker.name || '-'}</td>
+                                                        <td><span className="badge bg-info">{worker.user?.role || worker.role || '-'}</span></td>
+                                                        <td>{worker.user?.company_name || worker.company_name || '-'}</td>
                                                         <td>
                                                             {worker.present ? (
                                                                 <span className="badge bg-success">Yes</span>

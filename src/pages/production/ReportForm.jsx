@@ -21,6 +21,7 @@ const ReportForm = () => {
         bottles_per_pack: '',
         packs_per_pallet: '',
         line_speed: '',
+        bottles_produced: '',
         start_time: '',
         end_time: '',
         remarks: '',
@@ -70,6 +71,7 @@ const ReportForm = () => {
                         bottles_per_pack: r.bottles_per_pack ?? '',
                         packs_per_pallet: r.packs_per_pallet ?? '',
                         line_speed: r.line_speed ?? '',
+                        bottles_produced: r.bottles_produced ?? r.total_bottles_produced ?? '',
                         start_time: r.start_time || '',
                         end_time: r.end_time || '',
                         remarks: r.remarks || '',
@@ -98,7 +100,7 @@ const ReportForm = () => {
         try {
             const payload = { ...formData };
             // Clean optional numeric fields
-            ['line', 'bottles_per_pack', 'packs_per_pallet', 'line_speed'].forEach(k => {
+            ['line', 'bottles_per_pack', 'packs_per_pallet', 'line_speed', 'bottles_produced'].forEach(k => {
                 if (payload[k] === '') payload[k] = null;
                 else if (payload[k] != null) payload[k] = Number(payload[k]);
             });
@@ -350,6 +352,17 @@ const ReportForm = () => {
                                     onChange={handleChange}
                                     className="form-control"
                                     placeholder="Bottles per hour"
+                                />
+                            </div>
+                            <div className="col-md-4">
+                                <label className="form-label">Bottles Produced</label>
+                                <input
+                                    type="number"
+                                    name="bottles_produced"
+                                    value={formData.bottles_produced}
+                                    onChange={handleChange}
+                                    className="form-control"
+                                    placeholder="Total bottles produced"
                                 />
                             </div>
                         </div>

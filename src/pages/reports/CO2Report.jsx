@@ -20,19 +20,52 @@ const CO2Report = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const params = { page_size: 1000 };
+            // Use yields_consumption_date_range endpoint with start_date/end_date
+            const params = {};
             if (filters.pet) params.pet = filters.pet;
-            if (filters.log_date) params.production_date = filters.log_date;
-            if (filters.start_date) params.production_date_after = filters.start_date;
-            if (filters.end_date) params.production_date_before = filters.end_date;
+            if (filters.log_date) {
+                params.start_date = filters.log_date;
+                params.end_date = filters.log_date;
+            } else if (filters.start_date && filters.end_date) {
+                params.start_date = filters.start_date;
+                params.end_date = filters.end_date;
+            } else {
+                // Default to current week
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const sunday = new Date(now);
+                sunday.setDate(now.getDate() - dayOfWeek);
+                params.start_date = sunday.toISOString().split('T')[0];
+                params.end_date = now.toISOString().split('T')[0];
+            }
 
-            const res = await productionApi.getReports(params);
-            const reports = res.data?.data || res.data?.results || [];
+            let reports = [];
+            try {
+                const res = await productionApi.getYieldsConsumptionDateRange(params);
+                const rawData = res.data?.data ?? res.data ?? {};
+                // Try to extract CO2 data from the response
+                if (Array.isArray(rawData)) {
+                    reports = rawData;
+                } else if (rawData.co2) {
+                    reports = Array.isArray(rawData.co2) ? rawData.co2 : [];
+                } else {
+                    reports = Object.values(rawData).flat().filter(v => v && typeof v === 'object');
+                }
+            } catch (e) {
+                // Fallback to production reports endpoint
+                const fallbackParams = { page_size: 1000 };
+                if (filters.pet) fallbackParams.pet = filters.pet;
+                if (filters.log_date) fallbackParams.production_date = filters.log_date;
+                if (filters.start_date) fallbackParams.production_date_after = filters.start_date;
+                if (filters.end_date) fallbackParams.production_date_before = filters.end_date;
+                const res = await productionApi.getReports(fallbackParams);
+                reports = res.data?.data || res.data?.results || [];
+            }
             
             // Group by date and PET from co2_readings
             const co2Map = {};
             reports.forEach(r => {
-                const date = r.production_date;
+                const date = r.production_date || r.date || '';
                 const pet = r.pet_name || 'Unknown';
                 const key = `${date}_${pet}`;
                 
@@ -48,17 +81,24 @@ const CO2Report = () => {
                     };
                 }
                 
-                // Extract from co2_readings object
+                // Extract from co2_readings object or top-level fields
                 if (r.co2_readings) {
                     co2Map[key].co2_used += parseFloat(r.co2_readings.co2_used || r.co2_readings.co2_consumption || 0);
                     co2Map[key].pressure += parseFloat(r.co2_readings.pressure || r.co2_readings.co2_pressure || 0);
                     co2Map[key].temperature += parseFloat(r.co2_readings.temperature || r.co2_readings.co2_temperature || 0);
                     co2Map[key].count += 1;
+                } else {
+                    co2Map[key].co2_used += parseFloat(r.co2_used || r.co2_consumption || 0);
+                    co2Map[key].pressure += parseFloat(r.pressure || r.co2_pressure || 0);
+                    co2Map[key].temperature += parseFloat(r.temperature || r.co2_temperature || 0);
+                    if (r.co2_used || r.co2_consumption) co2Map[key].count += 1;
                 }
                 
-                // Get bottles from production readings
+                // Get bottles from production readings or top-level
                 if (r.production_readings) {
                     co2Map[key].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
+                } else {
+                    co2Map[key].bottles += parseInt(r.bottles_produced || r.total_bottles || r.bottles || 0);
                 }
             });
 

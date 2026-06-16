@@ -27,6 +27,7 @@ const CreateReport = () => {
         bottles_per_pack: '',
         packs_per_pallet: '',
         line_speed: '',
+        bottles_produced: '',
         start_time: '',
         end_time: '',
         remarks: ''
@@ -68,6 +69,7 @@ const CreateReport = () => {
                 bottles_per_pack: report.bottles_per_pack ?? '',
                 packs_per_pallet: report.packs_per_pallet ?? '',
                 line_speed: report.line_speed ?? '',
+                bottles_produced: report.bottles_produced ?? report.total_bottles_produced ?? '',
                 start_time: report.start_time?.slice(0, 5) || '',
                 end_time: report.end_time?.slice(0, 5) || '',
                 remarks: report.remarks || ''
@@ -248,6 +250,7 @@ const CreateReport = () => {
                 bottles_per_pack: formData.bottles_per_pack || null,
                 packs_per_pallet: formData.packs_per_pallet ? Number(formData.packs_per_pallet) : null,
                 line_speed: formData.line_speed ? Number(formData.line_speed) : null,
+                bottles_produced: formData.bottles_produced ? Number(formData.bottles_produced) : null,
                 start_time: formData.start_time || null,
                 end_time: formData.end_time || null,
                 remarks: formData.remarks || null
@@ -487,6 +490,10 @@ const BasicInfoTab = ({ formData, handleChange, pets, shifts, users }) => (
         <div className="col-md-4">
             <label className="form-label">Line Speed</label>
             <input type="number" name="line_speed" value={formData.line_speed} onChange={handleChange} className="form-control" placeholder="BPH" />
+        </div>
+        <div className="col-md-4">
+            <label className="form-label">Bottles Produced</label>
+            <input type="number" name="bottles_produced" value={formData.bottles_produced} onChange={handleChange} className="form-control" placeholder="Total bottles" />
         </div>
         <div className="col-md-6">
             <label className="form-label">Start Time</label>

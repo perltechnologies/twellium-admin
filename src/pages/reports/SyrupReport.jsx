@@ -20,19 +20,52 @@ const SyrupReport = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const params = { page_size: 1000 };
+            // Use yields_consumption_date_range endpoint with start_date/end_date
+            const params = {};
             if (filters.pet) params.pet = filters.pet;
-            if (filters.log_date) params.production_date = filters.log_date;
-            if (filters.start_date) params.production_date_after = filters.start_date;
-            if (filters.end_date) params.production_date_before = filters.end_date;
+            if (filters.log_date) {
+                params.start_date = filters.log_date;
+                params.end_date = filters.log_date;
+            } else if (filters.start_date && filters.end_date) {
+                params.start_date = filters.start_date;
+                params.end_date = filters.end_date;
+            } else {
+                // Default to current week
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const sunday = new Date(now);
+                sunday.setDate(now.getDate() - dayOfWeek);
+                params.start_date = sunday.toISOString().split('T')[0];
+                params.end_date = now.toISOString().split('T')[0];
+            }
 
-            const res = await productionApi.getReports(params);
-            const reports = res.data?.data || res.data?.results || [];
+            let reports = [];
+            try {
+                const res = await productionApi.getYieldsConsumptionDateRange(params);
+                const rawData = res.data?.data ?? res.data ?? {};
+                // Try to extract syrup data from the response
+                if (Array.isArray(rawData)) {
+                    reports = rawData;
+                } else if (rawData.syrup) {
+                    reports = Array.isArray(rawData.syrup) ? rawData.syrup : [];
+                } else {
+                    reports = Object.values(rawData).flat().filter(v => v && typeof v === 'object');
+                }
+            } catch (e) {
+                // Fallback to production reports endpoint
+                const fallbackParams = { page_size: 1000 };
+                if (filters.pet) fallbackParams.pet = filters.pet;
+                if (filters.log_date) fallbackParams.production_date = filters.log_date;
+                if (filters.start_date) fallbackParams.production_date_after = filters.start_date;
+                if (filters.end_date) fallbackParams.production_date_before = filters.end_date;
+                const res = await productionApi.getReports(fallbackParams);
+                reports = res.data?.data || res.data?.results || [];
+            }
             
             // Group by date and PET from syrup_readings
             const syrupMap = {};
             reports.forEach(r => {
-                const date = r.production_date;
+                const date = r.production_date || r.date || '';
                 const pet = r.pet_name || 'Unknown';
                 const key = `${date}_${pet}`;
                 
@@ -48,23 +81,31 @@ const SyrupReport = () => {
                     };
                 }
                 
-                // Extract from syrup_readings object
+                // Extract from syrup_readings object or top-level fields
                 if (r.syrup_readings) {
                     syrupMap[key].brix_level += parseFloat(r.syrup_readings.brix || r.syrup_readings.brix_level || 0);
                     syrupMap[key].count += 1;
+                } else if (r.brix_level || r.brix) {
+                    syrupMap[key].brix_level += parseFloat(r.brix_level || r.brix || 0);
+                    syrupMap[key].count += 1;
                 }
                 
-                // Get bottles from production readings
+                // Get bottles from production readings or top-level
                 if (r.production_readings) {
                     syrupMap[key].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
+                } else {
+                    syrupMap[key].bottles += parseInt(r.bottles_produced || r.total_bottles || r.bottles || 0);
                 }
                 
-                // Extract from batches array for syrup/water usage
+                // Extract syrup/water usage from batches or top-level
                 if (r.batches && Array.isArray(r.batches)) {
                     r.batches.forEach(batch => {
                         syrupMap[key].syrup_used += parseFloat(batch.syrup_used || batch.syrup_quantity || 0);
                         syrupMap[key].water_used += parseFloat(batch.water_used || batch.water_quantity || 0);
                     });
+                } else {
+                    syrupMap[key].syrup_used += parseFloat(r.syrup_used || r.syrup_quantity || 0);
+                    syrupMap[key].water_used += parseFloat(r.water_used || r.water_quantity || 0);
                 }
             });
 

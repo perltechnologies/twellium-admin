@@ -20,14 +20,48 @@ const MaterialReport = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const params = { page_size: 1000 };
+            // Use yields_consumption_date_range endpoint with start_date/end_date
+            const params = {};
             if (filters.pet) params.pet = filters.pet;
-            if (filters.log_date) params.production_date = filters.log_date;
-            if (filters.start_date) params.production_date_after = filters.start_date;
-            if (filters.end_date) params.production_date_before = filters.end_date;
+            if (filters.log_date) {
+                params.start_date = filters.log_date;
+                params.end_date = filters.log_date;
+            } else if (filters.start_date && filters.end_date) {
+                params.start_date = filters.start_date;
+                params.end_date = filters.end_date;
+            } else {
+                // Default to current week
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const sunday = new Date(now);
+                sunday.setDate(now.getDate() - dayOfWeek);
+                params.start_date = sunday.toISOString().split('T')[0];
+                params.end_date = now.toISOString().split('T')[0];
+            }
 
-            const res = await productionApi.getMaterialConsumptions(params);
-            const consumptions = res.data?.data || res.data?.results || [];
+            let consumptions = [];
+            try {
+                const res = await productionApi.getYieldsConsumptionDateRange(params);
+                const rawData = res.data?.data ?? res.data ?? {};
+                // API may return object with pet keys or array
+                if (Array.isArray(rawData)) {
+                    consumptions = rawData;
+                } else if (rawData.materials) {
+                    consumptions = Array.isArray(rawData.materials) ? rawData.materials : [];
+                } else {
+                    // Try extracting from object structure
+                    consumptions = Object.values(rawData).flat().filter(v => v && typeof v === 'object');
+                }
+            } catch (e) {
+                // Fallback to material-consumptions endpoint
+                const fallbackParams = { page_size: 1000 };
+                if (filters.pet) fallbackParams.pet = filters.pet;
+                if (filters.log_date) fallbackParams.production_date = filters.log_date;
+                if (filters.start_date) fallbackParams.production_date_after = filters.start_date;
+                if (filters.end_date) fallbackParams.production_date_before = filters.end_date;
+                const res = await productionApi.getMaterialConsumptions(fallbackParams);
+                consumptions = res.data?.data || res.data?.results || [];
+            }
             
             const materialMap = {};
             consumptions.forEach(c => {
@@ -36,11 +70,11 @@ const MaterialReport = () => {
                     materialMap[pet] = { pet, preforms: 0, caps: 0, labels: 0, shrink: 0, bottles: 0 };
                 }
                 
-                materialMap[pet].preforms += parseInt(c.preforms_used || 0);
-                materialMap[pet].caps += parseInt(c.caps_used || 0);
-                materialMap[pet].labels += parseInt(c.labels_used || 0);
-                materialMap[pet].shrink += parseInt(c.shrink_used || 0);
-                materialMap[pet].bottles += parseInt(c.bottles_produced || 0);
+                materialMap[pet].preforms += parseInt(c.preforms_used || c.preforms || 0);
+                materialMap[pet].caps += parseInt(c.caps_used || c.caps || 0);
+                materialMap[pet].labels += parseInt(c.labels_used || c.labels || 0);
+                materialMap[pet].shrink += parseInt(c.shrink_used || c.shrink || 0);
+                materialMap[pet].bottles += parseInt(c.bottles_produced || c.bottles || c.total_bottles || 0);
             });
 
             setData(Object.values(materialMap).sort((a, b) => {
