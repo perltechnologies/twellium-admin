@@ -36,12 +36,20 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                     const params = {
                         start_date: localStartDate,
                         end_date: localEndDate,
+                        production_date_after: localStartDate,
+                        production_date_before: localEndDate,
                         page_size: 1000
                     };
                     
                     const response = await productionApi.getOeeSummary(params);
                     const data = response?.data?.data || response?.data?.results || response?.data || [];
-                    setPeriodReports(data.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+                    const filtered = data.filter(r => {
+                        if (r.pet_name?.toLowerCase().includes('can')) return false;
+                        const d = (r.production_date || r.log_date || '').slice(0, 10);
+                        if (!d) return false;
+                        return d >= localStartDate && d <= localEndDate;
+                    });
+                    setPeriodReports(filtered);
                 } catch (error) {
                     console.error('Error fetching period data:', error);
                     setPeriodReports([]);
@@ -70,16 +78,16 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
         // Filter by date - use global filters
         if (useRange) {
             if (startDate) filtered = filtered.filter(r => {
-                const reportDate = r.production_date || r.log_date || '';
+                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
                 return reportDate >= startDate;
             });
             if (endDate) filtered = filtered.filter(r => {
-                const reportDate = r.production_date || r.log_date || '';
+                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
                 return reportDate <= endDate;
             });
         } else if (singleDate) {
             filtered = filtered.filter(r => {
-                const reportDate = r.production_date || r.log_date || '';
+                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
                 return reportDate === singleDate;
             });
         }
@@ -149,16 +157,16 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
         // Filter by date - use global filters
         if (useRange) {
             if (startDate) filtered = filtered.filter(r => {
-                const reportDate = r.production_date || r.log_date || '';
+                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
                 return reportDate >= startDate;
             });
             if (endDate) filtered = filtered.filter(r => {
-                const reportDate = r.production_date || r.log_date || '';
+                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
                 return reportDate <= endDate;
             });
         } else if (singleDate) {
             filtered = filtered.filter(r => {
-                const reportDate = r.production_date || r.log_date || '';
+                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
                 return reportDate === singleDate;
             });
         }
