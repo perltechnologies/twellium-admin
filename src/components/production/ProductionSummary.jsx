@@ -70,7 +70,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
     
     // Use period reports when week/month is active, otherwise use passed reports
     const activeReports = useLocalDates ? periodReports : reports;
-    const activeLoading = useLocalDates ? periodLoading : loading;
+    const activeLoading = !loading && (useLocalDates ? periodLoading : false);
 
     const chartData = useMemo(() => {
         let filtered = activeReports;
