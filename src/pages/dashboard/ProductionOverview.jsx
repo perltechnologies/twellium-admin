@@ -387,11 +387,6 @@ const Overview = () => {
 
     // Filtered planVsActual for Bottles by PET - uses global date filters + optional PET filter
     const filteredPlanVsActual = useMemo(() => {
-        console.log('=== Production Output by PET Debug ===');
-        console.log('Total reports:', reports.length);
-        console.log('Reports with pet 6:', reports.filter(r => r.pet_name?.toLowerCase().includes('pet 6')));
-        console.log('All unique pet names:', [...new Set(reports.map(r => r.pet_name))]);
-        
         let filtered = [...reports];
 
         // Apply PET filter if selected
@@ -409,10 +404,7 @@ const Overview = () => {
             lineMap[line].actual += actual;
             lineMap[line].planned += planned;
         });
-        const sorted = Object.values(lineMap).sort((a, b) => b.actual - a.actual).filter(l => l.actual > 0);
-        console.log('Aggregated lines:', sorted);
-        console.log('PET 6 in aggregated:', sorted.find(l => l.name?.toLowerCase().includes('pet 6')));
-        return sorted;
+        return Object.values(lineMap).sort((a, b) => b.actual - a.actual).filter(l => l.actual > 0);
     }, [reports, filters.pet, pets]);
 
     // PET Contribution to Quality - uses OEE summary API, aggregated per PET

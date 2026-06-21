@@ -52,88 +52,102 @@ const ProductionAnalytics = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const params = { page_size: 1000 };
-            const oeeParams = { page_size: 1000 };
+            // Determine date range
+            const now = new Date();
+            const currentTime = now.toTimeString().slice(0, 5);
+            if (currentTime < '06:00') now.setDate(now.getDate() - 1);
             
-            if (filters.pet) {
-                params.pet = filters.pet;
-                oeeParams.pet = filters.pet;
-            }
+            let startDate, endDate;
             
-            // Always use timeRange for data fetching if set, ignore manual date filters for fetching
             if (timeRange && timeRange !== 'all') {
-                const now = new Date();
-                const currentTime = now.toTimeString().slice(0, 5);
-                // If before 6am, use previous day for calculations
-                if (currentTime < '06:00') {
-                    now.setDate(now.getDate() - 1);
-                }
-                let startDate, endDate;
-                
                 if (timeRange === 'week') {
                     const dayOfWeek = now.getDay();
                     startDate = new Date(now);
                     startDate.setDate(now.getDate() - dayOfWeek);
-                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(startDate);
                     endDate.setDate(startDate.getDate() + 6);
-                    endDate.setHours(6, 0, 59, 0);
                 } else if (timeRange === 'month') {
-                    // Current month from 1st to today
                     startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(now);
-                    endDate.setHours(6, 0, 59, 0);
                 } else if (timeRange === 'quarter') {
-                    // Current quarter
                     const quarter = Math.floor(now.getMonth() / 3);
                     startDate = new Date(now.getFullYear(), quarter * 3, 1);
-                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(now);
-                    endDate.setHours(6, 0, 59, 0);
-                }
-                
-                if (startDate && endDate) {
-                    params.production_date_after = startDate.toISOString().split('T')[0];
-                    params.production_date_before = endDate.toISOString().split('T')[0];
-                    oeeParams.start_date = startDate.toISOString().split('T')[0];
-                    oeeParams.end_date = endDate.toISOString().split('T')[0];
                 }
             } else if (filters.log_date) {
-                params.production_date = filters.log_date;
-                oeeParams.start_date = filters.log_date;
-                oeeParams.end_date = filters.log_date;
+                startDate = new Date(filters.log_date);
+                endDate = new Date(filters.log_date);
             } else if (filters.start_date && filters.end_date) {
-                params.production_date_after = filters.start_date;
-                params.production_date_before = filters.end_date;
-                oeeParams.start_date = filters.start_date;
-                oeeParams.end_date = filters.end_date;
+                startDate = new Date(filters.start_date);
+                endDate = new Date(filters.end_date);
             }
-            
-            const [oeeRes, reportsRes] = await Promise.all([
-                productionApi.getOeeSummary(oeeParams),
-                productionApi.getReports(params)
-            ]);
-            
-            let oeeList = Array.isArray(oeeRes.data) ? oeeRes.data : (oeeRes.data?.data?.results || oeeRes.data?.data || oeeRes.data?.results || []);
-            let reportsList = Array.isArray(reportsRes.data) ? reportsRes.data : (reportsRes.data?.data?.results || reportsRes.data?.data || reportsRes.data?.results || []);
-            
-            oeeList = oeeList.filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            reportsList = reportsList.filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            
-            // Don't filter by date when timeRange is active - let the chart show all dates with 0 for missing data
-            
+
+            if (!startDate || !endDate) {
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now);
+            }
+
+            // Build date list
+            const dates = [];
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                dates.push(new Date(d).toISOString().split('T')[0]);
+            }
+
+            // Fetch shift_pet_metrics for each date in parallel
+            const results = await Promise.all(
+                dates.map(date =>
+                    productionApi.getDashboardShiftPetMetrics({ date })
+                        .then(res => {
+                            const raw = res?.data?.data ?? res?.data ?? {};
+                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                .filter(r => !r.pet_name?.toLowerCase().includes('can'))
+                                .map(p => ({ ...p, production_date: date }));
+                        })
+                        .catch(() => [])
+                )
+            );
+
+            let allData = results.flat();
+
+            // Apply PET filter
+            if (filters.pet) {
+                const petObj = pets.find(p => p.id === parseInt(filters.pet));
+                if (petObj) allData = allData.filter(r => r.pet_name === petObj.pet_name);
+            }
+
+            // Map to format expected by UI
+            const oeeList = allData.map(r => ({
+                pet_name: r.pet_name,
+                production_date: r.production_date,
+                efficiency: r.efficiency || 0,
+                bottles_produced: r.total_bottles || 0,
+                total_bottles_produced: r.total_bottles || 0,
+                downtime_minutes: r.total_downtime || 0,
+                shift_name: r.shift || '',
+                metrics: {
+                    oee: r.efficiency || 0,
+                    availability: r.availability || 0,
+                    quality: r.quality || 0,
+                    performance: r.performance || 0,
+                    details: {
+                        planned_time_mins: 0,
+                        total_downtime_mins: r.total_downtime || 0,
+                        planned_downtime_mins: r.planned_downtime || 0,
+                        total_output_pcs: r.total_bottles || 0
+                    }
+                }
+            }));
+
             oeeList.sort((a, b) => new Date(a.production_date) - new Date(b.production_date));
-            reportsList.sort((a, b) => new Date(b.production_date) - new Date(a.production_date));
             
             setOeeData(oeeList);
-            setReports(reportsList);
+            setReports(oeeList);
         } catch (err) {
             console.error('Failed to fetch data:', err);
         } finally {
             setLoading(false);
         }
-    }, [filters.pet, filters.log_date, filters.start_date, filters.end_date, timeRange]);
+    }, [filters.pet, filters.log_date, filters.start_date, filters.end_date, timeRange, pets]);
 
     useEffect(() => {
         fetchData();

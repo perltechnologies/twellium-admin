@@ -49,75 +49,83 @@ const OeeAnalytics = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const params = {};
-            if (filters.pet) params.pet_id = filters.pet;
-            if (filters.shift) params.shift_name = filters.shift;
-            
-            // Always use timeRange for data fetching if set, ignore manual date filters for fetching
+            // Determine date range
+            const now = new Date();
+            let startDate, endDate;
+
             if (timeRange && timeRange !== 'all') {
-                const now = new Date();
-                let startDate, endDate;
-                
                 if (timeRange === 'week') {
                     const dayOfWeek = now.getDay();
                     startDate = new Date(now);
                     startDate.setDate(now.getDate() - dayOfWeek);
-                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(startDate);
                     endDate.setDate(startDate.getDate() + 6);
-                    endDate.setHours(6, 0, 59, 0);
                 } else if (timeRange === 'month') {
-                    // Current month from 1st to today
                     startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(now);
-                    endDate.setHours(6, 0, 59, 0);
                 } else if (timeRange === 'quarter') {
-                    // Current quarter
                     const quarter = Math.floor(now.getMonth() / 3);
                     startDate = new Date(now.getFullYear(), quarter * 3, 1);
-                    startDate.setHours(6, 0, 0, 0);
                     endDate = new Date(now);
-                    endDate.setHours(6, 0, 59, 0);
-                }
-                
-                if (startDate && endDate) {
-                    params.start_datetime = startDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
-                    params.end_datetime = endDate.toISOString().replace(/\.\d{3}Z$/, 'Z');
                 }
             } else if (filters.log_date) {
-                const startDate = new Date(filters.log_date + 'T00:00:00Z');
-                const endDate = new Date(filters.log_date + 'T23:59:59Z');
-                params.start_datetime = startDate.toISOString();
-                params.end_datetime = endDate.toISOString();
+                startDate = new Date(filters.log_date);
+                endDate = new Date(filters.log_date);
             } else if (filters.start_date && filters.end_date) {
-                const startDate = new Date(filters.start_date + 'T00:00:00Z');
-                const endDate = new Date(filters.end_date + 'T23:59:59Z');
-                params.start_datetime = startDate.toISOString();
-                params.end_datetime = endDate.toISOString();
+                startDate = new Date(filters.start_date);
+                endDate = new Date(filters.end_date);
             }
-            
-            const res = await productionApi.getStoppagesSummary(params);
-            let reportData = res.data?.data?.data || res.data?.data || [];
-            reportData = reportData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            
-            // Extract production_date from report_code (e.g., "PR-2026-04-07-NIGHT" -> "2026-04-07")
-            reportData = reportData.map(r => {
-                let prodDate = r.production_date;
-                if (!prodDate && r.report_code) {
-                    const match = r.report_code.match(/PR-(\d{4}-\d{2}-\d{2})/);
-                    if (match) prodDate = match[1];
-                }
-                return {
-                    ...r,
-                    production_date: prodDate || r.log_date
-                };
+
+            if (!startDate || !endDate) {
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now);
+            }
+
+            // Build list of dates to fetch per-PET metrics
+            const dates = [];
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                dates.push(new Date(d).toISOString().split('T')[0]);
+            }
+
+            // Fetch per-PET metrics for each date in parallel
+            const results = await Promise.all(
+                dates.map(date => productionApi.getDashboardShiftPetMetrics({ date }).catch(() => null))
+            );
+
+            let reportData = [];
+            results.forEach((res, idx) => {
+                const petsData = res?.data?.data?.pets || [];
+                petsData.forEach(pet => {
+                    reportData.push({
+                        pet_name: pet.pet_name,
+                        production_date: dates[idx],
+                        efficiency: pet.efficiency || 0,
+                        bottles_produced: pet.total_bottles || 0,
+                        downtime_minutes: pet.total_downtime || 0,
+                        metrics: {
+                            oee: pet.efficiency || 0,
+                            availability: pet.availability || 0,
+                            quality: pet.quality || 0,
+                            performance: pet.performance || 0,
+                            details: {
+                                planned_time_mins: 0,
+                                total_downtime_mins: pet.total_downtime || 0,
+                                planned_downtime_mins: pet.planned_downtime || 0,
+                                total_output_pcs: pet.total_bottles || 0
+                            }
+                        }
+                    });
+                });
             });
-            
-            // Don't filter by date when timeRange is active - let the chart show all dates with 0 for missing data
-            
+
+            // Apply filters
+            reportData = reportData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            if (filters.pet) {
+                const petObj = pets.find(p => p.id === parseInt(filters.pet));
+                if (petObj) reportData = reportData.filter(r => r.pet_name === petObj.pet_name);
+            }
+
             reportData.sort((a, b) => new Date(a.production_date) - new Date(b.production_date));
-            
             setData(reportData);
         } catch (err) {
             console.error('Failed to fetch OEE data:', err);
@@ -125,18 +133,18 @@ const OeeAnalytics = () => {
         } finally {
             setLoading(false);
         }
-    }, [filters.pet, filters.shift, filters.log_date, filters.start_date, filters.end_date, timeRange]);
+    }, [filters.pet, filters.shift, filters.log_date, filters.start_date, filters.end_date, timeRange, pets]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
     useEffect(() => {
-        // Reset timeRange when manual date filters are cleared
-        if (!filters.log_date && !filters.start_date && !filters.end_date && timeRange === 'all') {
-            setTimeRange('month');
+        // Reset timeRange when manual date filters are applied
+        if (filters.log_date || filters.start_date || filters.end_date) {
+            setTimeRange('all');
         }
-    }, [filters.log_date, filters.start_date, filters.end_date, timeRange]);
+    }, [filters.log_date, filters.start_date, filters.end_date]);
 
     const weekRange = useMemo(() => {
         if (timeRange !== 'week') return null;
@@ -189,7 +197,7 @@ const OeeAnalytics = () => {
             avgOee,
             avgAvail: avails.reduce((a, b) => a + b, 0) / avails.length,
             avgQuality: qualities.reduce((a, b) => a + b, 0) / qualities.length,
-            avgPerf: statsOpTime > 0 ? Math.min(100, Math.max(0, ((totalPlannedMins - totalDowntimeMins) / statsOpTime) * 100)) : 0,
+            avgPerf: perfs.reduce((a, b) => a + b, 0) / perfs.length,
             bestOee,
             worstOee,
             bestPet,
@@ -552,8 +560,7 @@ const OeeAnalytics = () => {
                                 </div>
                             </div>
                         </div>
-                {/* Component breakdown cards hidden - stoppages_summary only provides OEE */}
-                {false && stats.isSingleDate ? (
+                {stats.isSingleDate ? (
                     <>
                         <div className="col-xl-3 col-sm-6">
                             <div className="card border-top border-primary border-3 mb-0 h-100">

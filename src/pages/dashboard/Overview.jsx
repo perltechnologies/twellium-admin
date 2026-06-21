@@ -189,6 +189,11 @@ const Overview = () => {
     const [showShiftComparison, setShowShiftComparison] = useState(false);
     const [metricsComparison, setMetricsComparison] = useState({});
     const [todayYesterdayComparison, setTodayYesterdayComparison] = useState({});
+    const [materialConsumptions, setMaterialConsumptions] = useState([]);
+    const [materialReportPetMap, setMaterialReportPetMap] = useState({});
+    const [materialDate, setMaterialDate] = useState(() => {
+        const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0];
+    });
     const [oeeRangeData, setOeeRangeData] = useState(null);
     const [oeeDate, setOeeDate] = useState(() => {
         const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0];
@@ -255,21 +260,67 @@ const Overview = () => {
         }
     }, [filters]);
 
+    // Fetch material consumptions
+    useEffect(() => {
+        if (!materialDate) return;
+        const fetchMaterials = async () => {
+            try {
+                const [materialsRes, reportsRes] = await Promise.all([
+                    productionApi.getMaterialConsumptions({ production_date: materialDate }),
+                    productionApi.getOeeSummary({ production_date: materialDate, page_size: 1000 }),
+                ]);
+                const toList = (payload) => {
+                    if (Array.isArray(payload)) return payload;
+                    if (Array.isArray(payload?.data)) return payload.data;
+                    if (Array.isArray(payload?.results)) return payload.results;
+                    if (Array.isArray(payload?.data?.results)) return payload.data.results;
+                    return [];
+                };
+                const materials = toList(materialsRes.data);
+                const reports = toList(reportsRes.data);
+                const reportMap = {};
+                reports.filter(r => !(r.pet_name || r.line_name || '').toLowerCase().includes('can')).forEach(r => {
+                    const pet = r.pet_name?.match(/(\d+)/)?.[0] ? `Pet ${r.pet_name.match(/(\d+)/)[0]}` : r.pet_name;
+                    if (!pet) return;
+                    [r.id, r.report_id, r.pk].forEach(id => { if (id != null) reportMap[String(id)] = pet; });
+                });
+                setMaterialConsumptions(materials);
+                setMaterialReportPetMap(reportMap);
+            } catch { setMaterialConsumptions([]); setMaterialReportPetMap({}); }
+        };
+        fetchMaterials();
+    }, [materialDate]);
+
     // Fetch data when week/month period is selected for Production Output
     useEffect(() => {
         if (outputPeriod && outputStartDate && outputEndDate) {
             const fetchOutputPeriodData = async () => {
                 setOutputPeriodLoading(true);
                 try {
-                    const params = {
-                        start_date: outputStartDate,
-                        end_date: outputEndDate,
-                        page_size: 1000
-                    };
-                    
-                    const response = await productionApi.getOeeSummary(params);
-                    const data = extractList(response);
-                    setOutputPeriodReports(data.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+                    // Generate date array from range
+                    const dates = [];
+                    let current = new Date(outputStartDate);
+                    const endDate = new Date(outputEndDate);
+                    while (current <= endDate) {
+                        dates.push(current.toISOString().split('T')[0]);
+                        current.setDate(current.getDate() + 1);
+                    }
+
+                    // Fetch shift_pet_metrics for each date in parallel
+                    const results = await Promise.all(
+                        dates.map(date =>
+                            productionApi.getDashboardShiftPetMetrics({ date })
+                                .then(res => {
+                                    const raw = res?.data?.data ?? res?.data ?? {};
+                                    const pets = (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                        .filter(r => !r.pet_name?.toLowerCase().includes('can'));
+                                    return pets.map(p => ({ ...p, production_date: date }));
+                                })
+                                .catch(() => [])
+                        )
+                    );
+
+                    setOutputPeriodReports(results.flat());
                 } catch (error) {
                     console.error('Error fetching output period data:', error);
                     setOutputPeriodReports([]);
@@ -686,31 +737,55 @@ const Overview = () => {
             }
         });
 
+        // Compute elapsed shift time for performance formula
+        let elapsedMins = 0;
+        if (currentShiftInfo?.start_time && currentShiftInfo?.end_time) {
+            const now = new Date();
+            const refDate = shiftFilterDate || now.toISOString().split('T')[0];
+            const shiftStart = new Date(`${refDate}T${currentShiftInfo.start_time.slice(0, 5)}:00`);
+            // Handle overnight shifts
+            if (currentShiftInfo.start_time.slice(0, 5) > currentShiftInfo.end_time.slice(0, 5) && now < shiftStart) {
+                shiftStart.setDate(shiftStart.getDate() - 1);
+            }
+            const shiftEnd = new Date(`${refDate}T${currentShiftInfo.end_time.slice(0, 5)}:00`);
+            if (currentShiftInfo.end_time.slice(0, 5) <= currentShiftInfo.start_time.slice(0, 5)) {
+                shiftEnd.setDate(shiftEnd.getDate() + 1);
+            }
+            const shiftDurationMins = Math.round((shiftEnd - shiftStart) / 60000);
+            elapsedMins = Math.min(shiftDurationMins, Math.max(0, Math.round((now - shiftStart) / 60000)));
+            if (elapsedMins > 0) {
+                elapsedMins = elapsedMins < 60 ? 60 : Math.floor(elapsedMins / 60) * 60;
+            }
+        }
+
         return Object.values(lineMap).map(l => {
-            // Use performance directly from API response
+            const td = l.downtime;
+            const pd = l.plannedDowntime;
+            const op = elapsedMins - pd;
+            const perf = op > 0 ? clamp(((elapsedMins - td) / op) * 100) : 0;
             return {
-            name: l.name,
-            reports: l.reports,
-            oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
-            performance: l.reports > 0 ? clamp(l.performance / l.reports) : 0,
-            perfRaw: { reportCount: l.reports || 0 },
-            production: l.production,
-            downtime: l.downtime,
-            lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true
-            }) : null,
+                name: l.name,
+                reports: l.reports,
+                oee: l.reports > 0 ? clamp(l.oee / l.reports) : 0,
+                performance: perf,
+                perfRaw: { plannedTime: elapsedMins, totalDowntime: td, plannedDowntime: pd },
+                production: l.production,
+                downtime: l.downtime,
+                lastUpdated: l.lastUpdated ? l.lastUpdated.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                }) : null,
             };
         }).sort((a, b) => {
             const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [hourlyReports, rawPets]);
+    }, [hourlyReports, rawPets, currentShiftInfo, shiftFilterDate]);
 
     const gaugeColor = (v) => v >= 85 ? '#22c55e' : v >= 60 ? '#f59e0b' : '#ef4444';
     const isLoading = initialLoading || refreshing;
@@ -1201,114 +1276,130 @@ const Overview = () => {
                 </div>
             </div>
 
-            {/* Downtime Breakdown + OEE by Line */}
-            <div className="row row-gap-3 mb-4">
-                {/* Downtime Breakdown */}
-                <div className="col-5 col-md-5 d-flex">
-                    {isLoading ? <SkeletonDowntimeList /> : (
-                        <DowntimeBreakdownList 
-                            downtimeCategories={downtimeCategories}
-                            loading={false}
-                            showDetailsButton={true}
-                            detailsRoute="/dashboard/production/stoppages"
-                        />
-                    )}
-                </div>
-                {/* OEE by Line Table */}
-                <div className="col-xl-7 d-flex">
-                    {isLoading ? <SkeletonTable rows={4} cols={6} /> : (
-                    <div className="card flex-fill">
-                        <div className="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                            <h6 className="mb-0">Efficiency by Production Line</h6>
-                            <div className="d-flex gap-2">
-                                <button onClick={() => setOeeShowDetail(v => !v)} className="btn btn-outline-secondary btn-xs">
-                                    <i className={`ti ti-${oeeShowDetail ? 'list' : 'report-analytics'} me-1`}></i>
-                                    {oeeShowDetail ? 'Summary' : 'Detail'}
-                                </button>
-                                <button onClick={() => navigate('/dashboard/production/overview')} className="btn btn-primary btn-xs">View Charts</button>
+            {/* Material Consumptions */}
+            {(() => {
+                const normPet = (name) => { const num = name?.match(/(\d+)/)?.[0]; return num ? `Pet ${num}` : name; };
+                const sortPetByNumber = (a, b) => parseInt(a?.match(/(\d+)/)?.[0] || '999') - parseInt(b?.match(/(\d+)/)?.[0] || '999');
+                const resolvePet = (m) => {
+                    const reportRef = m?.report?.id ?? m?.report;
+                    const fromReport = reportRef != null ? materialReportPetMap[String(reportRef)] : null;
+                    if (fromReport) return fromReport;
+                    if (m.pet_name) return normPet(m.pet_name);
+                    if (m.line_name) return normPet(m.line_name);
+                    return 'Unassigned';
+                };
+                const materialTypes = {};
+                materialConsumptions.forEach(m => {
+                    const type = m.material_type;
+                    if (!materialTypes[type]) materialTypes[type] = { label: m.material_type_display, unit: m.unit, pets: {} };
+                    const pet = resolvePet(m);
+                    if (!materialTypes[type].pets[pet]) materialTypes[type].pets[pet] = { used: 0, losses: 0 };
+                    materialTypes[type].pets[pet].used += parseFloat(m.used) || 0;
+                    materialTypes[type].pets[pet].losses += parseFloat(m.losses) || 0;
+                });
+                const COLORS = { PREFORMS: '#f59e0b', CLOSURES: '#8b5cf6', LABELS: '#0ea5e9', SHRINK: '#ec4899', GLUE: '#16a34a' };
+                const types = Object.entries(materialTypes).sort((a, b) => (a[1].label || a[0]).localeCompare(b[1].label || b[0]));
+                const petNames = rawPets.map(p => normPet(p.pet_name)).filter(Boolean);
+                const detectedPets = new Set(types.flatMap(([, info]) => Object.keys(info.pets || {})));
+                const unknownPets = Array.from(detectedPets).filter(n => !/^pet\s*\d+/i.test(n)).sort();
+                const allPets = [...new Set([...petNames, ...unknownPets])].sort(sortPetByNumber);
+                const yieldColor = (v) => v >= 98 ? '#16a34a' : v >= 95 ? '#d97706' : '#dc2626';
+                const totalsByPet = {};
+                allPets.forEach(pet => { totalsByPet[pet] = { used: 0, losses: 0 }; });
+                types.forEach(([, info]) => {
+                    allPets.forEach(pet => {
+                        const v = info.pets[pet];
+                        if (!v) return;
+                        totalsByPet[pet].used += v.used;
+                        totalsByPet[pet].losses += v.losses;
+                    });
+                });
+                const petYieldSummary = allPets.map(pet => {
+                    const v = totalsByPet[pet] || { used: 0, losses: 0 };
+                    const y = v.used > 0 ? ((v.used - v.losses) / v.used * 100) : 0;
+                    return { pet, yield: y };
+                });
+                const bestPet = petYieldSummary.length ? [...petYieldSummary].sort((a, b) => b.yield - a.yield)[0] : null;
+                const worstPet = petYieldSummary.length ? [...petYieldSummary].sort((a, b) => a.yield - b.yield)[0] : null;
+
+                return (
+                    <div className="card mb-4">
+                        <div className="card-header py-2 d-flex align-items-center gap-2 flex-wrap">
+                            <i className="ti ti-stack text-warning"></i>
+                            <h6 className="mb-0 fw-bold" style={{ fontSize: '0.82rem' }}>Material Consumptions</h6>
+                            <div className="d-flex align-items-center gap-1 ms-1 px-1 py-0 rounded-2" style={{ border: '1px solid #fde68a', background: '#fffbeb' }}>
+                                <i className="ti ti-calendar" style={{ fontSize: '0.68rem', color: '#b45309' }}></i>
+                                <input
+                                    type="date"
+                                    className="form-control form-control-sm border-0 p-0"
+                                    value={materialDate}
+                                    onChange={(e) => setMaterialDate(e.target.value)}
+                                    max={new Date().toISOString().split('T')[0]}
+                                    style={{ width: 118, fontSize: '0.65rem', background: 'transparent', boxShadow: 'none' }}
+                                    title="Material consumptions date"
+                                />
                             </div>
+                            <span className="badge bg-soft-secondary text-secondary" style={{ fontSize: '0.65rem' }}>PETs: {allPets.length}</span>
+                            {bestPet && <span className="badge bg-soft-success text-success" style={{ fontSize: '0.65rem' }}>Best: {bestPet.pet} ({bestPet.yield.toFixed(1)}%)</span>}
+                            {worstPet && <span className="badge bg-soft-danger text-danger" style={{ fontSize: '0.65rem' }}>Low: {worstPet.pet} ({worstPet.yield.toFixed(1)}%)</span>}
                         </div>
                         <div className="card-body p-0">
-                            <div className="table-responsive" style={{ maxHeight: oeeShowDetail ? '400px' : 'none', overflowY: oeeShowDetail ? 'auto' : 'visible' }}>
-                                <table className="table table-hover mb-0">
-                                    <thead className="table-light" style={{ position: oeeShowDetail ? 'sticky' : 'static', top: 0, zIndex: 1 }}>
-                                        <tr>
-                                            <th className="ps-3">Line</th>
-                                            <th className="text-center">{oeeShowDetail ? 'Report' : 'Date'}</th>
-                                            <th className="text-center">{oeeShowDetail ? 'Shift' : 'Reports'}</th>
-                                            <th className="text-center" title="(Planned - Downtime) / Planned × 100">
-                                                Availability <i className="ti ti-info-circle fs-12 text-muted"></i>
-                                            </th>
-                                            <th className="text-center" title="(Total - Waste) / Total × 100">
-                                                Quality <i className="ti ti-info-circle fs-12 text-muted"></i>
-                                            </th>
-                                            <th className="text-center" title="Actual / (Speed × Hours) × 100">
-                                                Performance <i className="ti ti-info-circle fs-12 text-muted"></i>
-                                            </th>
-                                            <th className="text-center" title="A × Q × P">
-                                                Efficiency <i className="ti ti-info-circle fs-12 text-muted"></i>
-                                            </th>
+                            {!types.length ? (
+                                <div className="text-center py-4 text-muted">No material consumption data for this date</div>
+                            ) : (
+                            <div className="table-responsive" style={{ maxHeight: 300 }}>
+                                <table className="table table-sm table-bordered mb-0" style={{ fontSize: '0.66rem', lineHeight: 1.2 }}>
+                                    <thead>
+                                        <tr style={{ background: '#f8fafc' }}>
+                                            <th style={{ position: 'sticky', left: 0, zIndex: 2, background: '#f8fafc', fontWeight: 700, whiteSpace: 'nowrap', padding: '2px 6px' }}>Material</th>
+                                            {allPets.map(pet => (
+                                                <th key={pet} className="text-center" style={{ fontWeight: 700, padding: '2px 4px', whiteSpace: 'nowrap' }}>{pet}</th>
+                                            ))}
+                                            <th className="text-center" style={{ position: 'sticky', right: 0, zIndex: 2, background: '#f8fafc', fontWeight: 700, padding: '2px 4px' }}>Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(() => {
-                                            const rows = oeeShowDetail ? oeeDetailReports : oeeByLine;
-                                            if (rows.length === 0) return (
-                                                <tr><td colSpan="7" className="text-center text-muted py-4">No data available</td></tr>
-                                            );
-                                            return rows.map((line, idx) => (
-                                                <tr key={oeeShowDetail ? `${line.report_code}-${idx}` : line.name}>
-                                                    <td className="ps-3 fw-medium">{line.name}</td>
-                                                    <td className="text-center text-muted" style={{ fontSize: '0.8rem' }}>
-                                                        {oeeShowDetail ? line.report_code : (
-                                                            <>
-                                                                {line.date || '-'}
-                                                                {line.shift && line.shift !== '-' && (
-                                                                    <span className={`badge ms-1 bg-soft-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'} text-${line.shift.toUpperCase() === 'DAY' ? 'warning' : 'dark'}`}>
-                                                                        {line.shift}
-                                                                    </span>
-                                                                )}
-                                                            </>
-                                                        )}
+                                        {types.map(([type, info], rowIndex) => {
+                                            const color = COLORS[type] || '#64748b';
+                                            const totalUsed = Object.values(info.pets || {}).reduce((s, v) => s + v.used, 0);
+                                            const totalLosses = Object.values(info.pets || {}).reduce((s, v) => s + v.losses, 0);
+                                            const totalYield = totalUsed > 0 ? ((totalUsed - totalLosses) / totalUsed * 100) : 0;
+                                            return (
+                                                <tr key={type} style={{ background: rowIndex % 2 === 0 ? '#ffffff' : '#f8fafc66' }}>
+                                                    <td style={{ position: 'sticky', left: 0, zIndex: 1, background: rowIndex % 2 === 0 ? '#ffffff' : '#f8fafc', padding: '2px 6px', borderLeft: `3px solid ${color}`, whiteSpace: 'nowrap' }}>
+                                                        <b style={{ color }}>{info.label}</b> <span style={{ color: '#94a3b8' }}>({info.unit})</span>
                                                     </td>
-                                                    <td className="text-center" style={{ fontSize: '0.8rem' }}>
-                                                        {oeeShowDetail ? (
-                                                            <span className={`badge bg-soft-${line.shift?.toUpperCase() === 'DAY' ? 'warning' : 'dark'} text-${line.shift?.toUpperCase() === 'DAY' ? 'warning' : 'dark'}`}>
-                                                                {line.shift}
-                                                            </span>
-                                                        ) : line.reports}
-                                                    </td>
-                                                    <td className="text-center">
-                                                        <span className={`badge bg-soft-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'} text-${line.availability >= 85 ? 'success' : line.availability >= 60 ? 'warning' : 'danger'}`}>
-                                                            {line.availability.toFixed(1)}%
-                                                        </span>
-                                                    </td>
-                                                    <td className="text-center">
-                                                        <span className={`badge bg-soft-${line.quality >= 85 ? 'success' : line.quality >= 60 ? 'warning' : 'danger'} text-${line.quality >= 85 ? 'success' : line.quality >= 60 ? 'warning' : 'danger'}`}>
-                                                            {line.quality.toFixed(1)}%
-                                                        </span>
-                                                    </td>
-                                                    <td className="text-center">
-                                                        <span className={`badge bg-soft-${line.performance >= 85 ? 'success' : line.performance >= 60 ? 'warning' : 'danger'} text-${line.performance >= 85 ? 'success' : line.performance >= 60 ? 'warning' : 'danger'}`}>
-                                                            {line.performance.toFixed(1)}%
-                                                        </span>
-                                                    </td>
-                                                    <td className="text-center">
-                                                        <span className={`fw-bold ${line.oee >= 85 ? 'text-success' : line.oee >= 60 ? 'text-warning' : 'text-danger'}`}>
-                                                            {line.oee.toFixed(1)}%
-                                                        </span>
+                                                    {allPets.map(pet => {
+                                                        const v = info.pets[pet];
+                                                        if (!v) return (
+                                                            <td key={pet} className="text-center" style={{ padding: '2px 4px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                                                <span style={{ fontWeight: 700 }}>0.0%</span><span style={{ color: '#cbd5e1' }}> · 0</span>
+                                                            </td>
+                                                        );
+                                                        const pYield = v.used > 0 ? ((v.used - v.losses) / v.used * 100) : 0;
+                                                        return (
+                                                            <td key={pet} className="text-center" style={{ padding: '2px 4px', whiteSpace: 'nowrap' }}>
+                                                                <span style={{ fontWeight: 800, color: yieldColor(pYield) }}>{pYield.toFixed(1)}%</span>
+                                                                <span style={{ color: '#64748b' }}> · {v.used.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                {v.losses > 0 && <span style={{ color: '#dc2626' }}> / -{v.losses.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td className="text-center" style={{ position: 'sticky', right: 0, zIndex: 1, padding: '2px 4px', background: '#f8fafc', whiteSpace: 'nowrap' }}>
+                                                        <span className="px-1 rounded-pill" style={{ fontWeight: 800, fontSize: '0.72rem', color: '#fff', background: yieldColor(totalYield) }}>{totalYield.toFixed(1)}%</span>
+                                                        <span style={{ color: '#64748b' }}> {totalUsed.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                                                     </td>
                                                 </tr>
-                                            ));
-                                        })()}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
+                            )}
                         </div>
                     </div>
-                    )}
-                </div>
-            </div>
+                );
+            })()}
 
             {/* Stoppage Incidents Chart */}
             <div className="row row-gap-3 mb-4">
@@ -1505,7 +1596,7 @@ const Overview = () => {
                                     const key = normalizePet(r.pet_name);
                                     if (!key) return;
                                     if (!grouped[date][key]) grouped[date][key] = 0;
-                                    grouped[date][key] += r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+                                    grouped[date][key] += r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                                 });
 
                                 // Discover actual PET names from data, build display map

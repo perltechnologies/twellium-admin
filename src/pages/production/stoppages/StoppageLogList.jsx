@@ -27,6 +27,7 @@ const StoppageLogList = () => {
         avgDowntime: 0,
         avgEfficiency: 0
     });
+    const [statsLoading, setStatsLoading] = React.useState(true);
     const [visibleColumns, setVisibleColumns] = React.useState({
         dateTime: true,
         reportCode: true,
@@ -80,18 +81,6 @@ const StoppageLogList = () => {
             setStoppages(listData);
             setTotalCount(count);
             setPaginationLinks({ next, previous });
-
-            const totalDowntime = listData.reduce((sum, s) => sum + (s.downtime_minutes || 0), 0);
-            const avgEfficiency = listData.length > 0
-                ? listData.reduce((sum, s) => sum + (s.efficiency || 0), 0) / listData.length
-                : 0;
-
-            setStats({
-                totalStoppages: count,
-                totalDowntime: Math.round(totalDowntime),
-                avgDowntime: listData.length > 0 ? Math.round(totalDowntime / listData.length) : 0,
-                avgEfficiency: Math.round(avgEfficiency)
-            });
         } catch (error) {
             console.error("Failed to fetch stoppages", error);
         } finally {
@@ -111,6 +100,47 @@ const StoppageLogList = () => {
         };
         loadPets();
     }, []);
+
+    // Fetch stats from shift_pet_metrics
+    React.useEffect(() => {
+        const fetchStats = async () => {
+            setStatsLoading(true);
+            try {
+                const date = filters.log_date || new Date().toISOString().split('T')[0];
+                const res = await productionApi.getDashboardShiftPetMetrics({ date });
+                const raw = res?.data?.data ?? res?.data ?? {};
+                let petsData = Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []);
+                petsData = petsData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+
+                // Filter by selected PET if any
+                if (filters.pet) {
+                    const selectedPet = pets.find(p => String(p.id) === String(filters.pet));
+                    if (selectedPet) {
+                        petsData = petsData.filter(r => r.pet_name === selectedPet.pet_name || r.pet_id === parseInt(filters.pet));
+                    }
+                }
+
+                const totalStoppages = petsData.reduce((sum, p) => sum + (p.total_stoppage_reports_submitted || 0), 0);
+                const totalDowntime = petsData.reduce((sum, p) => sum + (p.total_downtime || 0), 0);
+                const efficiencies = petsData.filter(p => p.efficiency > 0);
+                const avgEfficiency = efficiencies.length > 0
+                    ? efficiencies.reduce((sum, p) => sum + p.efficiency, 0) / efficiencies.length
+                    : 0;
+
+                setStats({
+                    totalStoppages,
+                    totalDowntime: Math.round(totalDowntime),
+                    avgDowntime: totalStoppages > 0 ? Math.round(totalDowntime / totalStoppages) : 0,
+                    avgEfficiency: Math.round(avgEfficiency)
+                });
+            } catch (err) {
+                console.error('Failed to fetch stats:', err);
+            } finally {
+                setStatsLoading(false);
+            }
+        };
+        fetchStats();
+    }, [filters.log_date, filters.pet, pets]);
 
     React.useEffect(() => {
         const timeoutId = setTimeout(() => {
@@ -206,6 +236,12 @@ const StoppageLogList = () => {
             </div>
 
             {/* Stats Cards */}
+            <div className="d-flex align-items-center mb-2">
+                <small className="text-muted me-2">Showing data for:</small>
+                <span className="badge bg-soft-primary text-primary fs-11">
+                    {filters.log_date || new Date().toISOString().split('T')[0]}
+                </span>
+            </div>
             <div className="row row-gap-3 mb-4">
                 <div className="col-xl-3 col-sm-6">
                     <div className="card mb-0">
@@ -213,7 +249,7 @@ const StoppageLogList = () => {
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
                                     <p className="fs-14 mb-1 text-muted">Total Stoppages</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalStoppages}</h2>
+                                    <h2 className="mb-1 fs-16">{statsLoading ? '...' : stats.totalStoppages}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-warning border border-warning">
                                     <i className="ti ti-alert-triangle fs-16 text-warning"></i>
@@ -228,7 +264,7 @@ const StoppageLogList = () => {
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
                                     <p className="fs-14 mb-1 text-muted">Total Downtime</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.totalDowntime} min`}</h2>
+                                    <h2 className="mb-1 fs-16">{statsLoading ? '...' : `${stats.totalDowntime} min`}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-danger border border-danger">
                                     <i className="ti ti-clock-pause fs-16 text-danger"></i>
@@ -243,7 +279,7 @@ const StoppageLogList = () => {
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
                                     <p className="fs-14 mb-1 text-muted">Avg Downtime</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.avgDowntime} min`}</h2>
+                                    <h2 className="mb-1 fs-16">{statsLoading ? '...' : `${stats.avgDowntime} min`}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-info border border-info">
                                     <i className="ti ti-clock fs-16 text-info"></i>
@@ -258,7 +294,7 @@ const StoppageLogList = () => {
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
                                     <p className="fs-14 mb-1 text-muted">Avg Efficiency</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : `${stats.avgEfficiency}%`}</h2>
+                                    <h2 className="mb-1 fs-16">{statsLoading ? '...' : `${stats.avgEfficiency}%`}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-success border border-success">
                                     <i className="ti ti-chart-line fs-16 text-success"></i>

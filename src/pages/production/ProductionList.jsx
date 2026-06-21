@@ -36,13 +36,13 @@ const ProductionList = () => {
         totalDowntime: 0,
         approvalRate: 0
     });
-    const [chartFilter, setChartFilter] = useState('all');
+    const [chartFilter, setChartFilter] = useState('day');
     const [chartDate, setChartDate] = useState('');
     const [chartDateRange, setChartDateRange] = useState({ start: '', end: '' });
     const [useDateRange, setUseDateRange] = useState(false);
     
     // Separate state for second chart
-    const [chart2Filter, setChart2Filter] = useState('all');
+    const [chart2Filter, setChart2Filter] = useState('day');
     const [chart2Date, setChart2Date] = useState('');
     const [chart2DateRange, setChart2DateRange] = useState({ start: '', end: '' });
     const [useDateRange2, setUseDateRange2] = useState(false);
@@ -54,126 +54,125 @@ const ProductionList = () => {
     const [chartDataLoading, setChartDataLoading] = useState(true);
     const [oeeData, setOeeData] = useState([]);
 
-    const extractList = (res) => {
-        const d = res.data;
-        if (Array.isArray(d)) return d;
-        if (d?.data?.results && Array.isArray(d.data.results)) return d.data.results;
-        if (d?.results && Array.isArray(d.results)) return d.results;
-        if (d?.data && Array.isArray(d.data)) return d.data;
-        return [];
-    };
-
-    const getReportDate = useCallback((report) => {
-        const rawDate = report?.production_date || report?.log_date || '';
-        return String(rawDate).split('T')[0];
-    }, []);
-
-    const applyCardFilters = useCallback((sourceReports, { period, singleDate, useRange, startDate, endDate }) => {
-        let filteredReports = [...sourceReports];
-
-        if (useRange) {
-            if (startDate) filteredReports = filteredReports.filter(r => getReportDate(r) >= startDate);
-            if (endDate) filteredReports = filteredReports.filter(r => getReportDate(r) <= endDate);
-        } else if (singleDate) {
-            filteredReports = filteredReports.filter(r => getReportDate(r) === singleDate);
-        }
-
-        if (period !== 'all') {
-            const endDate = new Date();
-            const startDate = new Date();
-            if (period === 'week') startDate.setDate(endDate.getDate() - 6);
-            if (period === 'month') startDate.setMonth(endDate.getMonth() - 1);
-
-            const start = startDate.toISOString().split('T')[0];
-            const end = endDate.toISOString().split('T')[0];
-            filteredReports = filteredReports.filter(r => {
-                const date = getReportDate(r);
-                return date >= start && date <= end;
-            });
-        }
-
-        return filteredReports;
-    }, [getReportDate]);
-
-    const buildLineChartData = useCallback((sourceReports) => {
-        const lineMap = {};
-        
-        // Initialize all pets with 0 values
-        pets.forEach(pet => {
-            lineMap[pet.pet_name] = { name: pet.pet_name, bottles: 0, planned: 0, actual: 0 };
-        });
-        
-        // Add actual data from reports
-        sourceReports.forEach(r => {
-            const line = r.pet_name || 'Unknown';
-            if (!lineMap[line]) lineMap[line] = { name: line, bottles: 0, planned: 0, actual: 0 };
-            const actual = r.total_bottles_produced || 0;
-            const planned = r.target_output || r.planned_output || 0;
-            lineMap[line].bottles += actual;
-            lineMap[line].actual += actual;
-            lineMap[line].planned += planned;
-        });
-        
-        return Object.values(lineMap).sort((a, b) => {
-            const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
-            const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
-            return aNum - bNum;
-        });
-    }, [pets]);
-
-    const bottlesByPetChartData = useMemo(() => {
-        const filteredReports = applyCardFilters(chartReports, {
-            period: chartFilter,
-            singleDate: chartDate,
-            useRange: useDateRange,
-            startDate: chartDateRange.start,
-            endDate: chartDateRange.end
-        });
-        return buildLineChartData(filteredReports);
-    }, [chartReports, chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end, applyCardFilters, buildLineChartData]);
-
-    // Build OEE date params from chart2 filters
-    const oeeParams = useMemo(() => {
-        const params = {};
-        if (useDateRange2) {
-            if (chart2DateRange.start) params.start_date = chart2DateRange.start;
-            if (chart2DateRange.end) params.end_date = chart2DateRange.end;
-        } else if (chart2Date) {
-            params.start_date = chart2Date;
-            params.end_date = chart2Date;
-        }
-        if (chart2Filter !== 'all') {
+    // Compute display date labels for charts
+    const chart1DateLabel = useMemo(() => {
+        if (useDateRange && chartDateRange.start && chartDateRange.end) {
+            return `${chartDateRange.start} – ${chartDateRange.end}`;
+        } else if (chartDate) {
+            return chartDate;
+        } else if (chartFilter === 'day') {
+            return new Date().toISOString().split('T')[0];
+        } else if (chartFilter === 'week') {
             const end = new Date();
             const start = new Date();
-            if (chart2Filter === 'week') start.setDate(end.getDate() - 6);
-            if (chart2Filter === 'month') start.setMonth(end.getMonth() - 1);
-            params.start_date = start.toISOString().split('T')[0];
-            params.end_date = end.toISOString().split('T')[0];
+            start.setDate(end.getDate() - 6);
+            return `${start.toISOString().split('T')[0]} – ${end.toISOString().split('T')[0]}`;
+        } else if (chartFilter === 'month') {
+            const end = new Date();
+            const start = new Date();
+            start.setMonth(end.getMonth() - 1);
+            return `${start.toISOString().split('T')[0]} – ${end.toISOString().split('T')[0]}`;
         }
-        return params;
+        return '';
+    }, [chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end]);
+
+    const chart2DateLabel = useMemo(() => {
+        if (useDateRange2 && chart2DateRange.start && chart2DateRange.end) {
+            return `${chart2DateRange.start} – ${chart2DateRange.end}`;
+        } else if (chart2Date) {
+            return chart2Date;
+        } else if (chart2Filter === 'day') {
+            return new Date().toISOString().split('T')[0];
+        } else if (chart2Filter === 'week') {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - 6);
+            return `${start.toISOString().split('T')[0]} – ${end.toISOString().split('T')[0]}`;
+        } else if (chart2Filter === 'month') {
+            const end = new Date();
+            const start = new Date();
+            start.setMonth(end.getMonth() - 1);
+            return `${start.toISOString().split('T')[0]} – ${end.toISOString().split('T')[0]}`;
+        }
+        return '';
     }, [chart2Filter, chart2Date, useDateRange2, chart2DateRange.start, chart2DateRange.end]);
 
-    // Fetch OEE data when chart2 filters change
+    const bottlesByPetChartData = useMemo(() => {
+        return chartReports;
+    }, [chartReports]);
+
+    // Fetch quality data - shift_pet_metrics for each date in range
     useEffect(() => {
         let cancelled = false;
-        const fetchOee = async () => {
+        const fetchQuality = async () => {
             try {
-                const res = await productionApi.getOeeSummary(oeeParams);
-                if (!cancelled) setOeeData(extractList(res));
+                // Determine date range
+                let start, end;
+                if (useDateRange2 && chart2DateRange.start && chart2DateRange.end) {
+                    start = chart2DateRange.start;
+                    end = chart2DateRange.end;
+                } else if (chart2Date) {
+                    start = chart2Date;
+                    end = chart2Date;
+                } else if (chart2Filter === 'day') {
+                    const today = new Date().toISOString().split('T')[0];
+                    start = today;
+                    end = today;
+                } else if (chart2Filter === 'week') {
+                    const e = new Date();
+                    const s = new Date();
+                    s.setDate(e.getDate() - 6);
+                    start = s.toISOString().split('T')[0];
+                    end = e.toISOString().split('T')[0];
+                } else if (chart2Filter === 'month') {
+                    const e = new Date();
+                    const s = new Date();
+                    s.setMonth(e.getMonth() - 1);
+                    start = s.toISOString().split('T')[0];
+                    end = e.toISOString().split('T')[0];
+                } else {
+                    const today = new Date().toISOString().split('T')[0];
+                    start = today;
+                    end = today;
+                }
+
+                // Generate dates
+                const dates = [];
+                let current = new Date(start);
+                const endDate = new Date(end);
+                while (current <= endDate) {
+                    dates.push(current.toISOString().split('T')[0]);
+                    current.setDate(current.getDate() + 1);
+                }
+
+                const results = await Promise.all(
+                    dates.map(date =>
+                        productionApi.getDashboardShiftPetMetrics({ date })
+                            .then(res => {
+                                const raw = res?.data?.data ?? res?.data ?? {};
+                                return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                    .filter(r => !r.pet_name?.toLowerCase().includes('can'));
+                            })
+                            .catch(() => [])
+                    )
+                );
+
+                if (!cancelled) setOeeData(results.flat());
             } catch (err) {
-                console.error('Failed to fetch OEE data:', err);
+                console.error('Failed to fetch quality data:', err);
             }
         };
-        fetchOee();
+        fetchQuality();
         return () => { cancelled = true; };
-    }, [oeeParams]);
+    }, [chart2Filter, chart2Date, useDateRange2, chart2DateRange.start, chart2DateRange.end]);
 
     const qualityChartData = useMemo(() => {
         const grouped = {};
         oeeData.forEach(entry => {
             const name = entry.pet_name;
             if (!name) return;
-            const q = entry.metrics?.quality ?? entry.quality ?? 0;
+            // Use efficiency as the quality contribution metric
+            const q = parseFloat(entry.efficiency) || parseFloat(entry.quality) || (entry.metrics?.quality ?? 0);
             if (!grouped[name]) grouped[name] = { total: 0, count: 0 };
             grouped[name].total += q;
             grouped[name].count += 1;
@@ -288,18 +287,74 @@ const ProductionList = () => {
     const fetchChartData = useCallback(async () => {
         setChartDataLoading(true);
         try {
-            const [reportsRes, oeeRes] = await Promise.all([
-                productionApi.getReports({ page_size: 1000 }),
-                productionApi.getOeeSummary(oeeParams)
-            ]);
-            setChartReports(extractList(reportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can')));
-            setOeeData(extractList(oeeRes).filter(r => !r.pet_name?.toLowerCase().includes('can')));
+            let lineMap = {};
+
+            // Helper to get date range
+            const getDates = () => {
+                if (useDateRange && chartDateRange.start && chartDateRange.end) {
+                    return { start: chartDateRange.start, end: chartDateRange.end };
+                } else if (chartDate) {
+                    return { start: chartDate, end: chartDate };
+                } else if (chartFilter === 'day') {
+                    const today = new Date().toISOString().split('T')[0];
+                    return { start: today, end: today };
+                } else if (chartFilter === 'week') {
+                    const end = new Date();
+                    const start = new Date();
+                    start.setDate(end.getDate() - 6);
+                    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+                } else if (chartFilter === 'month') {
+                    const end = new Date();
+                    const start = new Date();
+                    start.setMonth(end.getMonth() - 1);
+                    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+                }
+                return { start: new Date().toISOString().split('T')[0], end: new Date().toISOString().split('T')[0] };
+            };
+
+            const { start, end } = getDates();
+
+            // Generate date array
+            const dates = [];
+            let current = new Date(start);
+            const endDate = new Date(end);
+            while (current <= endDate) {
+                dates.push(current.toISOString().split('T')[0]);
+                current.setDate(current.getDate() + 1);
+            }
+
+            // Fetch shift_pet_metrics for each date (parallel, max 7 concurrent)
+            const results = await Promise.all(
+                dates.map(date => 
+                    productionApi.getDashboardShiftPetMetrics({ date })
+                        .then(res => {
+                            const raw = res?.data?.data ?? res?.data ?? {};
+                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                .filter(r => !r.pet_name?.toLowerCase().includes('can'));
+                        })
+                        .catch(() => [])
+                )
+            );
+
+            // Aggregate across all dates
+            results.flat().forEach(r => {
+                const name = r.pet_name || 'Unknown';
+                if (!lineMap[name]) lineMap[name] = { name, bottles: 0, planned: 0, actual: 0 };
+                lineMap[name].bottles += r.total_bottles || 0;
+                lineMap[name].actual += r.total_bottles || 0;
+            });
+
+            setChartReports(Object.values(lineMap).sort((a, b) => {
+                const aNum = parseInt(a.name?.match(/(\d+)/)?.[0] || '999');
+                const bNum = parseInt(b.name?.match(/(\d+)/)?.[0] || '999');
+                return aNum - bNum;
+            }));
         } catch (err) {
             console.error('Failed to fetch chart data:', err);
         } finally {
             setChartDataLoading(false);
         }
-    }, [oeeParams]);
+    }, [chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end]);
 
     useEffect(() => {
         fetchChartData();
@@ -575,6 +630,7 @@ const ProductionList = () => {
                                 <div>
                                     <h6 className="mb-0">Bottles by PET</h6>
                                     <small className="text-muted">Production distribution across lines</small>
+                                    {chart1DateLabel && <span className="badge bg-soft-primary text-primary fs-11 ms-1">{chart1DateLabel}</span>}
                                 </div>
                             </div>
                             <div className="d-flex align-items-center justify-content-between gap-3">
@@ -632,10 +688,10 @@ const ProductionList = () => {
                                 <div className="btn-group btn-sm" role="group" style={{ whiteSpace: 'nowrap' }}>
                                     <button 
                                         type="button" 
-                                        className={`btn ${chartFilter === 'all' ? 'btn-danger' : 'btn-light border'}`}
-                                        onClick={() => setChartFilter('all')}
+                                        className={`btn ${chartFilter === 'day' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChartFilter('day')}
                                     >
-                                        All
+                                        Day
                                     </button>
                                     <button 
                                         type="button" 
@@ -698,6 +754,7 @@ const ProductionList = () => {
                                 <div>
                                     <h6 className="mb-0">PET Contribution to Quality</h6>
                                     <small className="text-muted">Quality performance by line</small>
+                                    {chart2DateLabel && <span className="badge bg-soft-primary text-primary fs-11 ms-1">{chart2DateLabel}</span>}
                                 </div>
                             </div>
                             <div className="d-flex align-items-center justify-content-between gap-3">
@@ -755,10 +812,10 @@ const ProductionList = () => {
                                 <div className="btn-group btn-sm" role="group" style={{ whiteSpace: 'nowrap' }}>
                                     <button 
                                         type="button" 
-                                        className={`btn ${chart2Filter === 'all' ? 'btn-danger' : 'btn-light border'}`}
-                                        onClick={() => setChart2Filter('all')}
+                                        className={`btn ${chart2Filter === 'day' ? 'btn-danger' : 'btn-light border'}`}
+                                        onClick={() => setChart2Filter('day')}
                                     >
-                                        All
+                                        Day
                                     </button>
                                     <button 
                                         type="button" 

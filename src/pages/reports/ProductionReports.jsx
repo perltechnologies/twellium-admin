@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { productionApi } from '../../api/production';
 import { DataTable } from '../../components/ui/DataTable';
 import FilterInputs from '../../components/FilterInputs';
-import { useApiWithFilters } from '../../utils/useApiWithFilters';
+import { useFilters } from '../../context/FilterContext';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { PieChart, Pie, Cell } from 'recharts';
 import { exportToExcel as exportUtil } from '../../utils/exportUtils';
@@ -10,16 +10,96 @@ import { exportToExcel as exportUtil } from '../../utils/exportUtils';
 const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 
 const ProductionReports = () => {
-    const { data, loading, error, refetch } = useApiWithFilters(productionApi.getOeeSummary);
+    const { filters } = useFilters();
+    const [reports, setReports] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [selectedReport, setSelectedReport] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [analyticsMode, setAnalyticsMode] = useState('overview');
     const [oeeTrendData, setOeeTrendData] = useState([]);
     const [oeeTrendLoading, setOeeTrendLoading] = useState(true);
+    const [pets, setPets] = useState([]);
 
-    const reports = useMemo(() => {
-        return Array.isArray(data) ? data : data?.data?.results || data?.results || data?.data || [];
-    }, [data]);
+    useEffect(() => {
+        productionApi.getPets({ page_size: 100 })
+            .then(res => { const d = res.data?.data ?? res.data; setPets((Array.isArray(d) ? d : (d?.results || [])).filter(p => !p.pet_name?.toLowerCase().includes('can'))); })
+            .catch(() => {});
+    }, []);
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const now = new Date();
+            let startDate, endDate;
+
+            if (filters.log_date) {
+                startDate = new Date(filters.log_date);
+                endDate = new Date(filters.log_date);
+            } else if (filters.start_date && filters.end_date) {
+                startDate = new Date(filters.start_date);
+                endDate = new Date(filters.end_date);
+            } else {
+                // Default: current week
+                const dayOfWeek = now.getDay();
+                startDate = new Date(now);
+                startDate.setDate(now.getDate() - dayOfWeek);
+                endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + 6);
+            }
+
+            const dates = [];
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                dates.push(new Date(d).toISOString().split('T')[0]);
+            }
+
+            const results = await Promise.all(
+                dates.map(date =>
+                    productionApi.getDashboardShiftPetMetrics({ date })
+                        .then(res => {
+                            const raw = res?.data?.data ?? res?.data ?? {};
+                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                .filter(r => !r.pet_name?.toLowerCase().includes('can'))
+                                .map(p => ({
+                                    pet_name: p.pet_name,
+                                    production_date: date,
+                                    shift_name: p.shift || '',
+                                    efficiency: p.efficiency || 0,
+                                    metrics: {
+                                        oee: p.efficiency || 0,
+                                        availability: p.availability || 0,
+                                        quality: p.quality || 0,
+                                        performance: p.performance || 0,
+                                        details: {
+                                            planned_time_mins: 0,
+                                            total_downtime_mins: p.total_downtime || 0,
+                                            planned_downtime_mins: p.planned_downtime || 0,
+                                            total_output_pcs: p.total_bottles || 0
+                                        }
+                                    }
+                                }));
+                        })
+                        .catch(() => [])
+                )
+            );
+
+            let allData = results.flat();
+            if (filters.pet) {
+                const petObj = pets.find(p => p.id === parseInt(filters.pet));
+                if (petObj) allData = allData.filter(r => r.pet_name === petObj.pet_name);
+            }
+
+            setReports(allData.sort((a, b) => new Date(a.production_date) - new Date(b.production_date)));
+        } catch (err) {
+            console.error('Failed to fetch data:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [filters.log_date, filters.start_date, filters.end_date, filters.pet, pets]);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
+
+    const refetch = fetchData;
 
     const stats = useMemo(() => {
         if (!reports.length) {
@@ -36,15 +116,12 @@ const ProductionReports = () => {
 
         const totalOutput = reports.reduce((sum, r) => sum + (r.metrics?.details?.total_output_pcs || 0), 0);
         const totalDowntime = reports.reduce((sum, r) => sum + (r.metrics?.details?.total_downtime_mins || 0), 0);
-        const totalPlannedMins = reports.reduce((sum, r) => sum + (r.metrics?.details?.planned_time_mins || 0), 0);
-        const totalPlannedDowntime = reports.reduce((sum, r) => sum + (r.metrics?.details?.planned_downtime_mins || 0), 0);
-        const opTime = totalPlannedMins - totalPlannedDowntime;
 
         return {
             avgOee: reports.reduce((sum, r) => sum + (r.metrics?.oee || 0), 0) / reports.length,
             avgAvailability: reports.reduce((sum, r) => sum + (r.metrics?.availability || 0), 0) / reports.length,
             avgQuality: reports.reduce((sum, r) => sum + (r.metrics?.quality || 0), 0) / reports.length,
-            avgPerformance: opTime > 0 ? ((totalPlannedMins - totalDowntime) / opTime) * 100 : 0,
+            avgPerformance: reports.reduce((sum, r) => sum + (r.metrics?.performance || 0), 0) / reports.length,
             totalOutput,
             totalDowntime,
             reportCount: reports.length
@@ -80,18 +157,22 @@ const ProductionReports = () => {
         setOeeTrendLoading(true);
         try {
             const todayStr = new Date().toISOString().split('T')[0];
-            const res = await productionApi.getOeeSummary({ 
-                start_date: todayStr,
-                end_date: todayStr,
-                page_size: 1000
-            });
-            const inner = res.data?.data ?? res.data;
-            const trendData = Array.isArray(inner) ? inner : (inner?.results || []);
-            const sortedData = [...trendData].sort((a, b) => 
-                new Date(a.production_date) - new Date(b.production_date)
-            );
-            const last30Days = sortedData.slice(-30);
-            setOeeTrendData(last30Days);
+            const res = await productionApi.getDashboardShiftPetMetrics({ date: todayStr });
+            const raw = res?.data?.data ?? res?.data ?? {};
+            const petsData = (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                .filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            const trendData = petsData.map(p => ({
+                production_date: todayStr,
+                pet_name: p.pet_name,
+                metrics: {
+                    oee: p.efficiency || 0,
+                    availability: p.availability || 0,
+                    quality: p.quality || 0,
+                    performance: p.performance || 0,
+                    details: { total_output_pcs: p.total_bottles || 0 }
+                }
+            }));
+            setOeeTrendData(trendData);
         } catch (err) {
             console.error('Failed to fetch OEE trend:', err);
         } finally {
