@@ -761,8 +761,7 @@ const Overview = () => {
         return Object.values(lineMap).map(l => {
             const td = l.downtime;
             const pd = l.plannedDowntime;
-            const op = elapsedMins - pd;
-            const perf = op > 0 ? clamp(((elapsedMins - td) / op) * 100) : 0;
+            const perf = l.reports > 0 ? clamp(l.performance / l.reports) : 0;
             return {
                 name: l.name,
                 reports: l.reports,
