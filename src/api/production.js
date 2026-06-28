@@ -268,4 +268,5 @@ export const productionApi = {
     getDashboardTodayYesterdayComparison: (params) => api.get('/production/dashboard/today_yesterday_comparison/', { params }),
     getOeeDateRange: (params) => api.get('/production/dashboard/oee_date_range/', { params }),
     getYieldsConsumptionDateRange: (params) => api.get('/production/dashboard/yields_consumption_date_range/', { params }),
+    getOeeSummaryByDate: (params) => api.get('/production/reports/oee_summary/', { params }),
 };

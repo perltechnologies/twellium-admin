@@ -297,7 +297,6 @@ const Overview = () => {
             const fetchOutputPeriodData = async () => {
                 setOutputPeriodLoading(true);
                 try {
-                    // Generate date array from range
                     const dates = [];
                     let current = new Date(outputStartDate);
                     const endDate = new Date(outputEndDate);
@@ -306,15 +305,19 @@ const Overview = () => {
                         current.setDate(current.getDate() + 1);
                     }
 
-                    // Fetch shift_pet_metrics for each date in parallel
                     const results = await Promise.all(
                         dates.map(date =>
-                            productionApi.getDashboardShiftPetMetrics({ date })
+                            productionApi.getOeeSummaryByDate({ production_date: date, page_size: 1000 })
                                 .then(res => {
-                                    const raw = res?.data?.data ?? res?.data ?? {};
-                                    const pets = (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
-                                        .filter(r => !r.pet_name?.toLowerCase().includes('can'));
-                                    return pets.map(p => ({ ...p, production_date: date }));
+                                    const data = res?.data?.data || res?.data?.results || res?.data || [];
+                                    const list = Array.isArray(data) ? data : [];
+                                    return list
+                                        .filter(r => !(r.pet_name || r.line_name || '').toLowerCase().includes('can'))
+                                        .map(r => ({
+                                            production_date: date,
+                                            pet_name: r.pet_name || r.line_name || 'Unknown',
+                                            total_bottles: r.metrics?.details?.total_output_pcs || 0
+                                        }));
                                 })
                                 .catch(() => [])
                         )
