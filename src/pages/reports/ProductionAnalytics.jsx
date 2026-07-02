@@ -87,27 +87,71 @@ const ProductionAnalytics = () => {
                 endDate = new Date(now);
             }
 
-            // Build date list
-            const dates = [];
-            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                dates.push(new Date(d).toISOString().split('T')[0]);
+            const startStr = startDate.toISOString().split('T')[0];
+            const endStr = endDate.toISOString().split('T')[0];
+            const today = new Date().toISOString().split('T')[0];
+
+            // Fetch data from efficient endpoints in parallel
+            const [oeeRangeRes, shiftMetricsRes] = await Promise.all([
+                // 1. oee_date_range - aggregated metrics per date (single call)
+                productionApi.getOeeDateRange({ start_date: startStr, end_date: endStr }),
+                // 2. shift_pet_metrics - per-PET breakdown (fetch only dates up to today)
+                (async () => {
+                    // Build date list (only past dates, max 14 for performance)
+                    const dates = [];
+                    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                        const dateStr = d.toISOString().split('T')[0];
+                        if (dateStr <= today) dates.push(dateStr);
+                    }
+                    // Limit parallel calls - batch in groups of 7
+                    const batches = [];
+                    for (let i = 0; i < dates.length; i += 7) {
+                        batches.push(dates.slice(i, i + 7));
+                    }
+                    const allResults = [];
+                    for (const batch of batches) {
+                        const batchResults = await Promise.all(
+                            batch.map(date =>
+                                productionApi.getDashboardShiftPetMetrics({ date })
+                                    .then(res => {
+                                        const raw = res?.data?.data ?? res?.data ?? {};
+                                        return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                            .filter(r => !r.pet_name?.toLowerCase().includes('can'))
+                                            .map(p => ({ ...p, production_date: date }));
+                                    })
+                                    .catch(() => [])
+                            )
+                        );
+                        allResults.push(...batchResults.flat());
+                    }
+                    return allResults;
+                })()
+            ]);
+
+            // Parse oee_date_range response
+            const oeeRaw = oeeRangeRes?.data?.data?.data ?? oeeRangeRes?.data?.data ?? oeeRangeRes?.data ?? {};
+            const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
+
+            let allData = shiftMetricsRes;
+
+            // If shift_pet_metrics returned no data, fall back to oee_date_range (aggregated, no per-PET)
+            if (allData.length === 0 && oeeEntries.length > 0) {
+                allData = oeeEntries
+                    .filter(([date]) => date >= startStr && date <= endStr)
+                    .map(([date, val]) => ({
+                        pet_name: 'All Lines',
+                        production_date: date,
+                        efficiency: val?.oee || 0,
+                        performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
+                        availability: val?.availability_weighted_avg || 0,
+                        quality: val?.quality_weighted_avg || 0,
+                        total_bottles: val?.total_output || 0,
+                        total_downtime: val?.downtime || 0,
+                        planned_downtime: val?.planned_downtime || 0,
+                        mechanical_downtime: val?.mechanical_downtime || 0,
+                        shift: ''
+                    }));
             }
-
-            // Fetch shift_pet_metrics for each date in parallel
-            const results = await Promise.all(
-                dates.map(date =>
-                    productionApi.getDashboardShiftPetMetrics({ date })
-                        .then(res => {
-                            const raw = res?.data?.data ?? res?.data ?? {};
-                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
-                                .filter(r => !r.pet_name?.toLowerCase().includes('can'))
-                                .map(p => ({ ...p, production_date: date }));
-                        })
-                        .catch(() => [])
-                )
-            );
-
-            let allData = results.flat();
 
             // Apply PET filter
             if (filters.pet) {
@@ -119,20 +163,21 @@ const ProductionAnalytics = () => {
             const oeeList = allData.map(r => ({
                 pet_name: r.pet_name,
                 production_date: r.production_date,
-                efficiency: r.efficiency || 0,
+                efficiency: parseFloat(r.efficiency) || 0,
                 bottles_produced: r.total_bottles || 0,
                 total_bottles_produced: r.total_bottles || 0,
                 downtime_minutes: r.total_downtime || 0,
                 shift_name: r.shift || '',
                 metrics: {
-                    oee: r.efficiency || 0,
-                    availability: r.availability || 0,
-                    quality: r.quality || 0,
-                    performance: r.performance || 0,
+                    oee: parseFloat(r.efficiency) || 0,
+                    availability: parseFloat(r.availability) || 0,
+                    quality: parseFloat(r.quality) || 100,
+                    performance: parseFloat(r.performance) || 0,
                     details: {
                         planned_time_mins: 0,
                         total_downtime_mins: r.total_downtime || 0,
                         planned_downtime_mins: r.planned_downtime || 0,
+                        mechanical_downtime_mins: r.mechanical_downtime || 0,
                         total_output_pcs: r.total_bottles || 0
                     }
                 }

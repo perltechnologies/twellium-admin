@@ -40,6 +40,25 @@ const OeeAnalytics = () => {
     const [viewMode, setViewMode] = useState('chart');
     const [timeRange, setTimeRange] = useState('week');
 
+    // Local date range filter for OEE Trend chart
+    const [trendStartDate, setTrendStartDate] = useState(() => {
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const sunday = new Date(now);
+        sunday.setDate(now.getDate() - dayOfWeek);
+        return sunday.toISOString().split('T')[0];
+    });
+    const [trendEndDate, setTrendEndDate] = useState(() => {
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const sunday = new Date(now);
+        sunday.setDate(now.getDate() - dayOfWeek);
+        const saturday = new Date(sunday);
+        saturday.setDate(sunday.getDate() + 6);
+        return saturday.toISOString().split('T')[0];
+    });
+    const [trendUseLocal, setTrendUseLocal] = useState(false);
+
     useEffect(() => {
         productionApi.getPets({ page_size: 100 })
             .then(res => { const d = res.data?.data ?? res.data; setPets((Array.isArray(d) ? d : (d?.results || [])).filter(p => !p.pet_name?.toLowerCase().includes('can'))); })
@@ -81,42 +100,107 @@ const OeeAnalytics = () => {
                 endDate = new Date(now);
             }
 
-            // Build list of dates to fetch per-PET metrics
+            const startStr = startDate.toISOString().split('T')[0];
+            const endStr = endDate.toISOString().split('T')[0];
+            const today = new Date().toISOString().split('T')[0];
+
+            // Build list of dates (only up to today)
             const dates = [];
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                dates.push(new Date(d).toISOString().split('T')[0]);
+                const dateStr = d.toISOString().split('T')[0];
+                if (dateStr <= today) dates.push(dateStr);
             }
 
-            // Fetch per-PET metrics for each date in parallel
-            const results = await Promise.all(
-                dates.map(date => productionApi.getDashboardShiftPetMetrics({ date }).catch(() => null))
-            );
+            // Fetch oee_date_range (has availability, quality, performance) + shift_pet_metrics (per-PET) in parallel
+            const [oeeRangeRes, ...shiftResults] = await Promise.all([
+                productionApi.getOeeDateRange({ start_date: startStr, end_date: endStr }),
+                // Batch shift_pet_metrics calls in groups of 7
+                ...(() => {
+                    const batches = [];
+                    for (let i = 0; i < dates.length; i += 7) {
+                        batches.push(
+                            Promise.all(
+                                dates.slice(i, i + 7).map(date =>
+                                    productionApi.getDashboardShiftPetMetrics({ date })
+                                        .then(res => {
+                                            const raw = res?.data?.data ?? res?.data ?? {};
+                                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                                .filter(r => !r.pet_name?.toLowerCase().includes('can'))
+                                                .map(p => ({ ...p, production_date: date }));
+                                        })
+                                        .catch(() => [])
+                                )
+                            )
+                        );
+                    }
+                    return batches;
+                })()
+            ]);
 
-            let reportData = [];
-            results.forEach((res, idx) => {
-                const petsData = res?.data?.data?.pets || [];
-                petsData.forEach(pet => {
-                    reportData.push({
-                        pet_name: pet.pet_name,
-                        production_date: dates[idx],
-                        efficiency: pet.efficiency || 0,
-                        bottles_produced: pet.total_bottles || 0,
-                        downtime_minutes: pet.total_downtime || 0,
+            // Parse oee_date_range for accurate aggregated metrics
+            const oeeRaw = oeeRangeRes?.data?.data?.data ?? oeeRangeRes?.data?.data ?? oeeRangeRes?.data ?? {};
+            const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
+
+            // Flatten shift_pet_metrics results
+            const petMetrics = shiftResults.flat(2);
+
+            // Build report data from per-PET metrics, enriched with oee_date_range availability/quality
+            const oeeByDate = {};
+            oeeEntries.forEach(([date, val]) => {
+                oeeByDate[date] = val;
+            });
+
+            let reportData = petMetrics.map(pet => {
+                const dateMetrics = oeeByDate[pet.production_date] || {};
+                return {
+                    pet_name: pet.pet_name,
+                    production_date: pet.production_date,
+                    efficiency: parseFloat(pet.efficiency) || 0,
+                    bottles_produced: pet.total_bottles || 0,
+                    total_bottles_produced: pet.total_bottles || 0,
+                    downtime_minutes: pet.total_downtime || 0,
+                    metrics: {
+                        oee: parseFloat(pet.efficiency) || 0,
+                        availability: dateMetrics.availability_weighted_avg || 0,
+                        quality: dateMetrics.quality_weighted_avg || 100,
+                        performance: parseFloat(pet.performance) || dateMetrics.performance_weighted_avg || 0,
+                        details: {
+                            planned_time_mins: 0,
+                            total_downtime_mins: pet.total_downtime || 0,
+                            planned_downtime_mins: pet.planned_downtime || 0,
+                            mechanical_downtime_mins: pet.mechanical_downtime || 0,
+                            total_output_pcs: pet.total_bottles || 0
+                        }
+                    }
+                };
+            });
+
+            // If no per-PET data, fall back to oee_date_range entries
+            if (reportData.length === 0 && oeeEntries.length > 0) {
+                reportData = oeeEntries
+                    .filter(([date]) => date >= startStr && date <= today)
+                    .map(([date, val]) => ({
+                        pet_name: 'All Lines',
+                        production_date: date,
+                        efficiency: val?.oee || 0,
+                        bottles_produced: val?.total_output || 0,
+                        total_bottles_produced: val?.total_output || 0,
+                        downtime_minutes: val?.downtime || 0,
                         metrics: {
-                            oee: pet.efficiency || 0,
-                            availability: pet.availability || 0,
-                            quality: pet.quality || 0,
-                            performance: pet.performance || 0,
+                            oee: val?.oee || 0,
+                            availability: val?.availability_weighted_avg || 0,
+                            quality: val?.quality_weighted_avg || 0,
+                            performance: val?.performance_weighted_avg || 0,
                             details: {
                                 planned_time_mins: 0,
-                                total_downtime_mins: pet.total_downtime || 0,
-                                planned_downtime_mins: pet.planned_downtime || 0,
-                                total_output_pcs: pet.total_bottles || 0
+                                total_downtime_mins: val?.downtime || 0,
+                                planned_downtime_mins: val?.planned_downtime || 0,
+                                mechanical_downtime_mins: val?.mechanical_downtime || 0,
+                                total_output_pcs: val?.total_output || 0
                             }
                         }
-                    });
-                });
-            });
+                    }));
+            }
 
             // Apply filters
             reportData = reportData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
@@ -324,10 +408,14 @@ const OeeAnalytics = () => {
     const dailyOeeData = useMemo(() => {
         if (!data.length) return [];
         
-        // Determine date range based on time range selection
+        // Determine date range based on local filter or time range selection
         let minDate, maxDate;
         
-        if (timeRange === 'week') {
+        if (trendUseLocal && trendStartDate && trendEndDate) {
+            // Use the local date range filter
+            minDate = new Date(trendStartDate);
+            maxDate = new Date(trendEndDate);
+        } else if (timeRange === 'week') {
             // Always show full week from Sunday to Saturday when week is selected
             const now = new Date();
             const dayOfWeek = now.getDay();
@@ -379,7 +467,7 @@ const OeeAnalytics = () => {
             avgOee: grouped[date] ? (grouped[date].oee / grouped[date].count).toFixed(1) : '0.0',
             output: grouped[date] ? grouped[date].output : 0
         }));
-    }, [data, timeRange, filters]);
+    }, [data, timeRange, filters, trendUseLocal, trendStartDate, trendEndDate]);
 
     const oeeDistribution = useMemo(() => {
         const ranges = { 'Below 60%': 0, '60-70%': 0, '70-80%': 0, '80-85%': 0, '85-90%': 0, 'Above 90%': 0 };
@@ -660,20 +748,68 @@ const OeeAnalytics = () => {
                     <div className="row mb-4">
                         <div className="col-lg-8">
                             <div className="card">
-                                <div className="card-header d-flex align-items-center justify-content-between">
-                                    <div>
-                                        <h6 className="mb-0">OEE Trend Over Time</h6>
-                                        <small className="text-muted">Daily average OEE performance {dateRangeLabel && `(${dateRangeLabel})`}</small>
-                                    </div>
-                                    <div className="d-flex gap-2">
-                                        <div className="btn-group btn-group-sm">
-                                            <button type="button" className={`btn ${chartType === 'line' ? 'btn-primary' : 'btn-light'}`} onClick={() => setChartType('line')}>Line</button>
-                                            <button type="button" className={`btn ${chartType === 'area' ? 'btn-primary' : 'btn-light'}`} onClick={() => setChartType('area')}>Area</button>
-                                            <button type="button" className={`btn ${chartType === 'bar' ? 'btn-primary' : 'btn-light'}`} onClick={() => setChartType('bar')}>Bar</button>
+                                <div className="card-header">
+                                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                        <div>
+                                            <h6 className="mb-0">OEE Trend Over Time</h6>
+                                            <small className="text-muted">Daily average OEE performance {dateRangeLabel && `(${dateRangeLabel})`}</small>
                                         </div>
-                                        <button className="btn btn-danger btn-sm" onClick={() => exportChart('oee-trend-chart', 'oee_trend')}>
-                                            <i className="ti ti-file-type-pdf me-1"></i>Export
-                                        </button>
+                                        <div className="d-flex gap-2">
+                                            <div className="btn-group btn-group-sm">
+                                                <button type="button" className={`btn ${chartType === 'line' ? 'btn-primary' : 'btn-light'}`} onClick={() => setChartType('line')}>Line</button>
+                                                <button type="button" className={`btn ${chartType === 'area' ? 'btn-primary' : 'btn-light'}`} onClick={() => setChartType('area')}>Area</button>
+                                                <button type="button" className={`btn ${chartType === 'bar' ? 'btn-primary' : 'btn-light'}`} onClick={() => setChartType('bar')}>Bar</button>
+                                            </div>
+                                            <button className="btn btn-danger btn-sm" onClick={() => exportChart('oee-trend-chart', 'oee_trend')}>
+                                                <i className="ti ti-file-type-pdf me-1"></i>Export
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                                        <input
+                                            type="date"
+                                            className="form-control form-control-sm"
+                                            style={{ width: 140 }}
+                                            value={trendStartDate}
+                                            onChange={(e) => { setTrendStartDate(e.target.value); setTrendUseLocal(true); }}
+                                            max={trendEndDate || new Date().toISOString().split('T')[0]}
+                                        />
+                                        <span className="text-muted">to</span>
+                                        <input
+                                            type="date"
+                                            className="form-control form-control-sm"
+                                            style={{ width: 140 }}
+                                            value={trendEndDate}
+                                            onChange={(e) => { setTrendEndDate(e.target.value); setTrendUseLocal(true); }}
+                                            min={trendStartDate}
+                                            max={new Date().toISOString().split('T')[0]}
+                                        />
+                                        <div className="btn-group btn-group-sm">
+                                            <button
+                                                className={`btn ${!trendUseLocal && timeRange === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                                onClick={() => {
+                                                    const now = new Date();
+                                                    const dayOfWeek = now.getDay();
+                                                    const sunday = new Date(now);
+                                                    sunday.setDate(now.getDate() - dayOfWeek);
+                                                    const saturday = new Date(sunday);
+                                                    saturday.setDate(sunday.getDate() + 6);
+                                                    setTrendStartDate(sunday.toISOString().split('T')[0]);
+                                                    setTrendEndDate(saturday.toISOString().split('T')[0]);
+                                                    setTrendUseLocal(true);
+                                                }}
+                                            >Week</button>
+                                            <button
+                                                className={`btn ${trendUseLocal && trendStartDate === new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0] ? 'btn-primary' : 'btn-outline-primary'}`}
+                                                onClick={() => {
+                                                    const now = new Date();
+                                                    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+                                                    setTrendStartDate(firstDay.toISOString().split('T')[0]);
+                                                    setTrendEndDate(now.toISOString().split('T')[0]);
+                                                    setTrendUseLocal(true);
+                                                }}
+                                            >Month</button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="card-body" id="oee-trend-chart">
