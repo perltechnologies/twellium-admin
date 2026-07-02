@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
-import { Button } from './index';
+import { Button } from './base';
 
 export const ConfirmationModal = ({
     isOpen,

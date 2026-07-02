@@ -4,7 +4,7 @@ import { workersApi } from '../../api/workers';
 import { productionApi } from '../../api/production';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
+import { ConfirmationModal } from '../../components/ui';
 
 const WorkerList = () => {
     const [workers, setWorkers] = useState([]);
