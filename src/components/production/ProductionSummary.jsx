@@ -1,4 +1,4 @@
-import React, { useState, useMemo, lazy, Suspense, useEffect } from 'react';
+import React, { useState, useMemo, lazy, Suspense, useEffect, useRef } from 'react';
 import { useFilters } from '../../context/FilterContext';
 import { productionApi } from '../../api/production';
 
@@ -26,38 +26,169 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
     const [useLocalDates, setUseLocalDates] = useState(true);
     const [periodReports, setPeriodReports] = useState([]);
     const [periodLoading, setPeriodLoading] = useState(false);
+    const fetchAbortRef = useRef(null);
 
     // Fetch data when week/month period is selected
     useEffect(() => {
         if (useLocalDates && localStartDate && localEndDate) {
+            // Abort previous fetch to prevent stale data from overwriting fresh data
+            if (fetchAbortRef.current) {
+                fetchAbortRef.current.abort();
+            }
+            const controller = new AbortController();
+            fetchAbortRef.current = controller;
+
             const fetchPeriodData = async () => {
                 setPeriodLoading(true);
+                setPeriodReports([]); // Clear stale data immediately so stats reset
                 try {
-                    const params = {
-                        start_date: localStartDate,
-                        end_date: localEndDate,
-                        production_date_after: localStartDate,
-                        production_date_before: localEndDate,
-                        page_size: 1000
-                    };
-                    
-                    const response = await productionApi.getOeeSummary(params);
-                    const data = response?.data?.data || response?.data?.results || response?.data || [];
-                    const filtered = data.filter(r => {
-                        if (r.pet_name?.toLowerCase().includes('can')) return false;
-                        const d = (r.production_date || r.log_date || '').slice(0, 10);
-                        if (!d) return false;
-                        return d >= localStartDate && d <= localEndDate;
-                    });
-                    setPeriodReports(filtered);
+                    // Fetch both aggregated stats (oee_date_range) and per-PET data (oee_summary) in parallel
+                    const [oeeRes, perPetData] = await Promise.all([
+                        // 1. Fast aggregated stats per date
+                        productionApi.getOeeDateRange({ 
+                            start_date: localStartDate, 
+                            end_date: localEndDate 
+                        }),
+                        // 2. Per-PET data for the chart - fetch each date individually
+                        (async () => {
+                            const dates = [];
+                            let current = new Date(localStartDate);
+                            const endDate = new Date(localEndDate);
+                            const today = new Date().toISOString().split('T')[0];
+                            while (current <= endDate) {
+                                const dateStr = current.toISOString().split('T')[0];
+                                // Only fetch dates before today (no future dates)
+                                if (dateStr < today) {
+                                    dates.push(dateStr);
+                                }
+                                current.setDate(current.getDate() + 1);
+                            }
+                            
+                            const results = await Promise.all(
+                                dates.map(date =>
+                                    productionApi.getOeeSummaryByDate({ production_date: date, page_size: 1000 })
+                                        .then(res => {
+                                            if (controller.signal.aborted) return [];
+                                            const data = res?.data?.data || res?.data?.results || res?.data || [];
+                                            const list = Array.isArray(data) ? data : [];
+                                            return list
+                                                .filter(r => !(r.pet_name || r.line_name || '').toLowerCase().includes('can'))
+                                                .map(r => ({
+                                                    production_date: date,
+                                                    pet_name: r.pet_name || r.line_name || 'Unknown',
+                                                    oee: r.metrics?.oee || r.oee || 0,
+                                                    efficiency: r.metrics?.oee || r.efficiency || r.oee || 0,
+                                                    availability: r.metrics?.availability || r.availability || 0,
+                                                    performance: r.metrics?.performance || r.performance || 0,
+                                                    quality: r.metrics?.quality || r.quality || 0,
+                                                    total_bottles_produced: r.metrics?.details?.total_output_pcs || r.total_bottles_produced || 0,
+                                                    metrics: r.metrics || {
+                                                        oee: r.oee || 0,
+                                                        availability: r.availability || 0,
+                                                        performance: r.performance || 0,
+                                                        quality: r.quality || 0,
+                                                        details: {
+                                                            total_output_pcs: r.total_bottles_produced || 0,
+                                                            total_downtime_mins: r.downtime_minutes || 0,
+                                                            planned_downtime_mins: r.planned_downtime_minutes || 0,
+                                                            mechanical_downtime_mins: r.mechanical_downtime_minutes || 0,
+                                                        }
+                                                    }
+                                                }));
+                                        })
+                                        .catch(() => [])
+                                )
+                            );
+                            return results.flat();
+                        })()
+                    ]);
+
+                    if (controller.signal.aborted) return;
+
+                    // If per-PET data is available, use it (has pet_name for chart grouping)
+                    if (perPetData.length > 0) {
+                        // Enrich with aggregated stats from oee_date_range for summary accuracy
+                        const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
+                        const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
+                        
+                        // Add aggregated date entries (without pet_name) for overall summary stats
+                        const aggregatedEntries = oeeEntries
+                            .filter(([date]) => date >= localStartDate && date <= localEndDate)
+                            .map(([date, val]) => ({
+                                production_date: date,
+                                _aggregated: true, // marker to distinguish from per-PET entries
+                                oee: val?.oee || 0,
+                                availability: val?.availability_weighted_avg || 0,
+                                performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
+                                quality: val?.quality_weighted_avg || 0,
+                                total_bottles_produced: val?.total_output || 0,
+                                metrics: {
+                                    oee: val?.oee || 0,
+                                    availability: val?.availability_weighted_avg || 0,
+                                    performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
+                                    quality: val?.quality_weighted_avg || 0,
+                                    details: {
+                                        total_output_pcs: val?.total_output || 0,
+                                        total_downtime_mins: val?.downtime || 0,
+                                        planned_downtime_mins: val?.planned_downtime || 0,
+                                        mechanical_downtime_mins: val?.mechanical_downtime || 0,
+                                    }
+                                }
+                            }));
+
+                        if (!controller.signal.aborted) {
+                            // Use per-PET data (chart needs pet_name) with aggregated fallback for summary
+                            setPeriodReports(perPetData.length > 0 ? perPetData : aggregatedEntries);
+                        }
+                    } else {
+                        // Fallback: use oee_date_range aggregated data (no per-PET breakdown)
+                        const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
+                        const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
+                        
+                        const transformed = oeeEntries
+                            .filter(([date]) => date >= localStartDate && date <= localEndDate)
+                            .map(([date, val]) => ({
+                                production_date: date,
+                                oee: val?.oee || 0,
+                                availability: val?.availability_weighted_avg || 0,
+                                performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
+                                quality: val?.quality_weighted_avg || 0,
+                                total_bottles_produced: val?.total_output || 0,
+                                metrics: {
+                                    oee: val?.oee || 0,
+                                    availability: val?.availability_weighted_avg || 0,
+                                    performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
+                                    quality: val?.quality_weighted_avg || 0,
+                                    details: {
+                                        total_output_pcs: val?.total_output || 0,
+                                        total_downtime_mins: val?.downtime || 0,
+                                        planned_downtime_mins: val?.planned_downtime || 0,
+                                        mechanical_downtime_mins: val?.mechanical_downtime || 0,
+                                    }
+                                }
+                            }));
+                        
+                        if (!controller.signal.aborted) {
+                            setPeriodReports(transformed);
+                        }
+                    }
                 } catch (error) {
+                    if (error?.name === 'CanceledError' || error?.name === 'AbortError') return;
                     console.error('Error fetching period data:', error);
-                    setPeriodReports([]);
+                    if (!controller.signal.aborted) {
+                        setPeriodReports([]);
+                    }
                 } finally {
-                    setPeriodLoading(false);
+                    if (!controller.signal.aborted) {
+                        setPeriodLoading(false);
+                    }
                 }
             };
             fetchPeriodData();
+
+            return () => {
+                controller.abort();
+            };
         }
     }, [useLocalDates, localStartDate, localEndDate]);
 
@@ -149,7 +280,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
         }));
 
         return { dates, series };
-    }, [activeReports, period, useRange, singleDate, startDate, endDate, selectedPet, pets]);
+    }, [activeReports, period, useRange, singleDate, startDate, endDate, localStartDate, localEndDate, selectedPet, pets]);
 
     const summary = useMemo(() => {
         let filtered = activeReports;
@@ -340,6 +471,14 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
             <div className="card-body">
 
                 {/* Summary Stats */}
+                <div className={`position-relative${periodLoading ? ' opacity-50' : ''}`} style={{ transition: 'opacity 0.2s' }}>
+                {periodLoading && (
+                    <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ zIndex: 10 }}>
+                        <div className="spinner-border spinner-border-sm text-primary" role="status">
+                            <span className="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                )}
                 <div className="row row-cols-1 row-cols-sm-2 row-cols-md-4 g-2 mb-2">
                     <div className="col">
                         <div className="card production-summary-stat-card border-0 shadow-sm bg-soft-primary h-100">
@@ -471,6 +610,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                         </div>
                     </div>
                 </div>
+                </div>{/* end loading wrapper */}
 
                 {/* Chart */}
                 {activeLoading ? (
