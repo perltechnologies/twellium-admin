@@ -74,6 +74,7 @@ const ProductList = React.lazy(() => import('../pages/inventory/ProductList'));
 const ProductForm = React.lazy(() => import('../pages/inventory/ProductForm'));
 const ShiftMetricsByCode = React.lazy(() => import('../pages/production/ShiftMetricsByCode'));
 const CreateReport = React.lazy(() => import('../pages/production/CreateReport'));
+const WorkerList = React.lazy(() => import('../pages/production/WorkerList'));
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useAuth();
@@ -261,6 +262,7 @@ export const AppRouter = () => {
                                 />
                                 <Route path="downtime-sub-categories" element={<DowntimeSubCategoryList />} />
                                 <Route path="downtime-breakdown" element={<DowntimeBreakdown />} />
+                                <Route path="workers" element={<WorkerList />} />
 
                                 {/* Production Sub-modules */}
                                 <Route

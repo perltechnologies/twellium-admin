@@ -96,6 +96,7 @@ const navigation = [
             section: 'User Management',
             items: [
                 { name: 'Manage Users', icon: 'ti-users', path: '/dashboard/users' },
+                { name: 'Workers', icon: 'ti-id-badge-2', path: '/dashboard/production/workers' },
             ],
         },
     ];
