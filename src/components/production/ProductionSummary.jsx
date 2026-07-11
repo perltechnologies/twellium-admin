@@ -81,14 +81,14 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                                     availability: r.metrics?.availability || r.availability || 0,
                                                     performance: r.metrics?.performance || r.performance || 0,
                                                     quality: r.metrics?.quality || r.quality || 0,
-                                                    total_bottles_produced: r.metrics?.details?.total_output_pcs || r.total_bottles_produced || 0,
+                                                    total_bottles_produced: r.metrics?.details?.total_output_pcs || r.total_output || r.total_bottles_produced || 0,
                                                     metrics: r.metrics || {
                                                         oee: r.oee || 0,
                                                         availability: r.availability || 0,
                                                         performance: r.performance || 0,
                                                         quality: r.quality || 0,
                                                         details: {
-                                                            total_output_pcs: r.total_bottles_produced || 0,
+                                                            total_output_pcs: r.total_output || r.total_bottles_produced || 0,
                                                             total_downtime_mins: r.downtime_minutes || 0,
                                                             planned_downtime_mins: r.planned_downtime_minutes || 0,
                                                             mechanical_downtime_mins: r.mechanical_downtime_minutes || 0,

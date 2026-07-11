@@ -74,7 +74,7 @@ const MaterialReport = () => {
                 materialMap[pet].caps += parseInt(c.caps_used || c.caps || 0);
                 materialMap[pet].labels += parseInt(c.labels_used || c.labels || 0);
                 materialMap[pet].shrink += parseInt(c.shrink_used || c.shrink || 0);
-                materialMap[pet].bottles += parseInt(c.bottles_produced || c.bottles || c.total_bottles || 0);
+                materialMap[pet].bottles += parseInt(c.bottles_produced || c.total_output || c.bottles || c.total_bottles || 0);
             });
 
             setData(Object.values(materialMap).sort((a, b) => {

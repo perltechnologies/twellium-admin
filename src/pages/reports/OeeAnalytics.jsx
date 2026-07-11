@@ -156,8 +156,8 @@ const OeeAnalytics = () => {
                     pet_name: pet.pet_name,
                     production_date: pet.production_date,
                     efficiency: parseFloat(pet.efficiency) || 0,
-                    bottles_produced: pet.total_bottles || 0,
-                    total_bottles_produced: pet.total_bottles || 0,
+                    bottles_produced: pet.total_output || 0,
+                    total_bottles_produced: pet.total_output || 0,
                     downtime_minutes: pet.total_downtime || 0,
                     metrics: {
                         oee: parseFloat(pet.efficiency) || 0,
@@ -169,7 +169,7 @@ const OeeAnalytics = () => {
                             total_downtime_mins: pet.total_downtime || 0,
                             planned_downtime_mins: pet.planned_downtime || 0,
                             mechanical_downtime_mins: pet.mechanical_downtime || 0,
-                            total_output_pcs: pet.total_bottles || 0
+                            total_output_pcs: pet.total_output || 0
                         }
                     }
                 };

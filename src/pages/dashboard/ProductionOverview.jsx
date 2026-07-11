@@ -139,6 +139,7 @@ const Overview = () => {
     const [downtimeTypes, setDowntimeTypes] = useState([]);
     const [downtimeByLine, setDowntimeByLine] = useState([]);
     const [oeeSummary, setOeeSummary] = useState([]); // OEE data from API
+    const [shiftOutputByPet, setShiftOutputByPet] = useState({}); // total_output from shift_pet_metrics
 
     // Downtime chart local filters
     const [dtFilter, setDtFilter] = useState('all');
@@ -238,29 +239,99 @@ const Overview = () => {
 
             const stoppageParams = getParams({}, true);
 
+            // Build date range for oee_date_range endpoint
+            const today = new Date();
+            let oeeStartDate, oeeEndDate;
+            if (oeeParams.start_date && oeeParams.end_date) {
+                oeeStartDate = oeeParams.start_date;
+                oeeEndDate = oeeParams.end_date;
+            } else {
+                // Default to current week (Sun–Sat) if only single date
+                const dayOfWeek = today.getDay();
+                const sunday = new Date(today);
+                sunday.setDate(today.getDate() - dayOfWeek);
+                const saturday = new Date(sunday);
+                saturday.setDate(sunday.getDate() + 6);
+                oeeStartDate = oeeParams.production_date || sunday.toISOString().split('T')[0];
+                oeeEndDate = oeeParams.production_date || saturday.toISOString().split('T')[0];
+            }
+
             const [reportsRes, stoppagesRes, oeeRes] = await Promise.all([
                 productionApi.getReports(params),
                 productionApi.getStoppages(stoppageParams),
-                productionApi.getOeeSummary(oeeParams),
+                productionApi.getOeeDateRange({ start_date: oeeStartDate, end_date: oeeEndDate }),
             ]);
 
             if (controller.signal.aborted) return;
 
             const reports = extractList(reportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
             const stoppages = extractList(stoppagesRes).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
-            const oeeData = extractList(oeeRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
 
-            console.log('OEE Summary Response:', oeeRes);
-            console.log('OEE Data (extracted):', oeeData);
+            // Fetch shift_pet_metrics for each date in the range for accurate output values
+            const dateList = [];
+            {
+                const todayStr = new Date().toISOString().split('T')[0];
+                let current = new Date(oeeStartDate);
+                const endDate = new Date(oeeEndDate);
+                while (current <= endDate) {
+                    const dateStr = current.toISOString().split('T')[0];
+                    if (dateStr <= todayStr) dateList.push(dateStr);
+                    current.setDate(current.getDate() + 1);
+                }
+            }
+            const shiftMetricsResults = await Promise.all(
+                dateList.map(date =>
+                    productionApi.getDashboardShiftPetMetrics({ date })
+                        .then(res => {
+                            const raw = res?.data?.data ?? res?.data ?? {};
+                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                .filter(r => !r.pet_name?.toLowerCase().includes('can'));
+                        })
+                        .catch(() => [])
+                )
+            );
+            // Aggregate total_output by PET from shift_pet_metrics
+            const shiftMetricsOutputByPet = {};
+            shiftMetricsResults.flat().forEach(r => {
+                const name = r.pet_name || 'Unknown';
+                if (!shiftMetricsOutputByPet[name]) shiftMetricsOutputByPet[name] = 0;
+                shiftMetricsOutputByPet[name] += r.total_output || 0;
+            });
+            setShiftOutputByPet(shiftMetricsOutputByPet);
+            
+            // oee_date_range returns { "2026-06-28": { oee, total_output, downtime, ... }, ... }
+            const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
+            const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
 
-            /* Store OEE summary from API */
+            console.log('OEE Date Range Response:', oeeRaw);
+
+            /* Build oeeData array for downstream usage (oeeSummary state) */
+            const oeeData = oeeEntries.map(([date, val]) => ({
+                production_date: date,
+                oee: val?.oee || 0,
+                availability: val?.availability_weighted_avg || 0,
+                performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
+                quality: val?.quality_weighted_avg || 0,
+                total_output: val?.total_output || 0,
+                downtime: val?.downtime || 0,
+                planned_downtime: val?.planned_downtime || 0,
+                mechanical_downtime: val?.mechanical_downtime || 0,
+            }));
             setOeeSummary(oeeData);
 
-            /* totals */
+            /* totals from oee_date_range */
             let totalDowntime = 0;
-            stoppages.forEach(s => { totalDowntime += s.downtime_minutes || s.duration || 0; });
             let totalProduced = 0;
-            reports.forEach(r => { totalProduced += r.total_bottles_produced || 0; });
+            oeeEntries.forEach(([, val]) => {
+                totalProduced += val?.total_output || 0;
+                totalDowntime += val?.downtime || 0;
+            });
+
+            // Fallback: if oee_date_range returned no data, use shift_pet_metrics output
+            if (oeeEntries.length === 0) {
+                stoppages.forEach(s => { totalDowntime += s.downtime_minutes || s.duration || 0; });
+                totalProduced = Object.values(shiftMetricsOutputByPet).reduce((s, v) => s + v, 0);
+            }
             
             // Get unique PET lines from reports
             const uniquePets = new Set(reports.map(r => r.pet_name).filter(Boolean));
@@ -288,14 +359,14 @@ const Overview = () => {
             );
             setRecentStoppages(sortedStops.slice(0, 5));
 
-            /* plan vs actual per line */
+            /* plan vs actual per line - use total_output from shift_pet_metrics */
             const lineMap = {};
-            reports.forEach(r => {
-                const line = r.pet_name || 'Unknown';
+            Object.entries(shiftMetricsOutputByPet).forEach(([line, totalOutput]) => {
                 if (!lineMap[line]) lineMap[line] = { name: line, planned: 0, actual: 0 };
-                const actual = r.total_bottles_produced || 0;
-                const planned = r.target_output || r.planned_output || Math.round(actual * 1.05);
-                lineMap[line].actual += actual;
+                lineMap[line].actual += totalOutput;
+                // Use target_output from reports if available, else estimate
+                const reportForLine = reports.find(r => r.pet_name === line);
+                const planned = reportForLine?.target_output || reportForLine?.planned_output || Math.round(totalOutput * 1.05);
                 lineMap[line].planned += planned;
             });
             const pvData = Object.values(lineMap).sort((a, b) => b.actual - a.actual).slice(0, 6);
@@ -387,25 +458,24 @@ const Overview = () => {
 
     // Filtered planVsActual for Bottles by PET - uses global date filters + optional PET filter
     const filteredPlanVsActual = useMemo(() => {
-        let filtered = [...reports];
+        let outputEntries = Object.entries(shiftOutputByPet);
 
         // Apply PET filter if selected
         if (filters.pet) {
             const selectedPetName = pets.find(p => p.id === parseInt(filters.pet))?.pet_name;
-            if (selectedPetName) filtered = filtered.filter(r => r.pet_name === selectedPetName);
+            if (selectedPetName) outputEntries = outputEntries.filter(([name]) => name === selectedPetName);
         }
 
         const lineMap = {};
-        filtered.forEach(r => {
-            const line = r.pet_name || 'Unknown';
+        outputEntries.forEach(([line, totalOutput]) => {
             if (!lineMap[line]) lineMap[line] = { name: line, planned: 0, actual: 0 };
-            const actual = r.total_bottles_produced || 0;
-            const planned = r.target_output || r.planned_output || Math.round(actual * 1.05);
-            lineMap[line].actual += actual;
+            lineMap[line].actual += totalOutput;
+            const reportForLine = reports.find(r => r.pet_name === line);
+            const planned = reportForLine?.target_output || reportForLine?.planned_output || Math.round(totalOutput * 1.05);
             lineMap[line].planned += planned;
         });
         return Object.values(lineMap).sort((a, b) => b.actual - a.actual).filter(l => l.actual > 0);
-    }, [reports, filters.pet, pets]);
+    }, [shiftOutputByPet, reports, filters.pet, pets]);
 
     // PET Contribution to Quality - uses OEE summary API, aggregated per PET
     const petQuality = useMemo(() => {

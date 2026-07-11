@@ -242,20 +242,57 @@ const ProductionList = () => {
 
             // Calculate stats
             const completed = listData.filter(r => r.status === 'COMPLETED' || r.status === 'APPROVED').length;
-            const totalOutput = listData.reduce((sum, r) => sum + (r.total_bottles_produced || 0), 0);
             const approved = listData.filter(r => r.status === 'APPROVED').length;
             const uniquePets = new Set(listData.map(r => r.pet_name).filter(Boolean));
-            
-            setStats({
-                totalReports: count,
-                completedReports: completed,
-                totalOutput: totalOutput,
-                avgOutput: listData.length > 0 ? Math.round(totalOutput / listData.length) : 0,
-                activeLines: uniquePets.size,
-                totalStoppages: 0,
-                totalDowntime: 0,
-                approvalRate: listData.length > 0 ? Math.round((approved / listData.length) * 100) : 0
-            });
+
+            // Fetch oee_date_range for accurate stats
+            const today = new Date().toISOString().split('T')[0];
+            const oeeStart = globalFilters.start_date || globalFilters.log_date || today;
+            const oeeEnd = globalFilters.end_date || oeeStart;
+            try {
+                const [oeeRes, stoppagesRes] = await Promise.all([
+                    productionApi.getOeeDateRange({ start_date: oeeStart, end_date: oeeEnd }),
+                    productionApi.getStoppagesSummary({ production_date: oeeStart }),
+                ]);
+
+                const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
+                const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
+
+                let totalOutput = 0;
+                let totalDowntime = 0;
+                oeeEntries.forEach(([, val]) => {
+                    totalOutput += val?.total_output || 0;
+                    totalDowntime += val?.downtime || 0;
+                });
+
+                // Stoppages count from stoppages_summary
+                const stoppagesData = stoppagesRes?.data?.data ?? stoppagesRes?.data ?? {};
+                const totalStoppages = stoppagesData?.count || (Array.isArray(stoppagesData?.data) ? stoppagesData.data.length : 0);
+
+                setStats({
+                    totalReports: count,
+                    completedReports: completed,
+                    totalOutput,
+                    avgOutput: oeeEntries.length > 0 ? Math.round(totalOutput / oeeEntries.length) : 0,
+                    activeLines: uniquePets.size,
+                    totalStoppages,
+                    totalDowntime: Math.round(totalDowntime),
+                    approvalRate: listData.length > 0 ? Math.round((approved / listData.length) * 100) : 0
+                });
+            } catch (oeeErr) {
+                console.error('Failed to fetch stats:', oeeErr);
+                const totalOutput = listData.reduce((sum, r) => sum + (r.total_bottles_produced || 0), 0);
+                setStats({
+                    totalReports: count,
+                    completedReports: completed,
+                    totalOutput,
+                    avgOutput: listData.length > 0 ? Math.round(totalOutput / listData.length) : 0,
+                    activeLines: uniquePets.size,
+                    totalStoppages: 0,
+                    totalDowntime: 0,
+                    approvalRate: listData.length > 0 ? Math.round((approved / listData.length) * 100) : 0
+                });
+            }
 
             // Fetch pets for dropdown if not already loaded
             if (pets.length === 0) {
@@ -340,8 +377,8 @@ const ProductionList = () => {
             results.flat().forEach(r => {
                 const name = r.pet_name || 'Unknown';
                 if (!lineMap[name]) lineMap[name] = { name, bottles: 0, planned: 0, actual: 0 };
-                lineMap[name].bottles += r.total_bottles || 0;
-                lineMap[name].actual += r.total_bottles || 0;
+                lineMap[name].bottles += r.total_output || 0;
+                lineMap[name].actual += r.total_output || 0;
             });
 
             setChartReports(Object.values(lineMap).sort((a, b) => {

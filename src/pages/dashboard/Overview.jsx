@@ -449,7 +449,7 @@ const Overview = () => {
             // Map PetShiftMetric to the format expected by the UI
             const oeeData = activeReports.map(r => ({
                 ...r,
-                bottles_produced: r.total_bottles,
+                bottles_produced: r.total_output,
                 downtime_minutes: r.total_downtime,
                 planned_downtime_minutes: r.planned_downtime,
                 metrics: {
@@ -462,7 +462,7 @@ const Overview = () => {
                         planned_downtime_mins: r.planned_downtime || 0,
                         mechanical_downtime_mins: r.mechanical_downtime || 0,
                         planned_time_mins: 0,
-                        total_output_pcs: r.total_bottles || 0,
+                        total_output_pcs: r.total_output || 0,
                     }
                 }
             }));
@@ -504,13 +504,13 @@ const Overview = () => {
                     shift: activeShift,
                     reports: activeReports,
                     summary: {
-                        total_production: activeReports.reduce((s, r) => s + (r.total_bottles || 0), 0),
+                        total_production: activeReports.reduce((s, r) => s + (r.total_output || 0), 0),
                         total_downtime: activeReports.reduce((s, r) => s + (r.total_downtime || 0), 0),
                         total_stoppages: activeReports.reduce((s, r) => s + (r.total_stoppage_reports_submitted || 0), 0),
                         avg_efficiency: (() => {
-                            const totalBottles = activeReports.reduce((s, r) => s + (r.total_bottles || 0), 0);
+                            const totalBottles = activeReports.reduce((s, r) => s + (r.total_output || 0), 0);
                             if (totalBottles === 0) return activeReports.length > 0 ? activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0), 0) / activeReports.length : 0;
-                            return activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0) * (r.total_bottles || 0), 0) / totalBottles;
+                            return activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0) * (r.total_output || 0), 0) / totalBottles;
                         })(),
                     },
                     timestamp: new Date().toISOString()
@@ -720,7 +720,7 @@ const Overview = () => {
                 const efficiency = parseFloat(r.efficiency) || r.metrics?.oee || 0;
                 lineMap[name].oee += efficiency;
                 lineMap[name].performance += parseFloat(r.performance) || 0;
-                lineMap[name].production += r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+                lineMap[name].production += r.total_output || r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                 lineMap[name].downtime += r.total_downtime || r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
                 lineMap[name].plannedDowntime += r.planned_downtime || r.planned_downtime_minutes || r.metrics?.details?.planned_downtime_mins || 0;
                 lineMap[name].plannedTimeMins += r.metrics?.details?.planned_time_mins || 0;
@@ -1153,10 +1153,10 @@ const Overview = () => {
                                                     const { date, shift, reports, summary } = data;
                                                     const totalProd = reports.reduce((sum, r) => sum + (r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
                                                     const totalDown = reports.reduce((sum, r) => sum + (r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0), 0);
-                                                    const _totalBottles = reports.reduce((sum, r) => sum + (r.total_bottles || 0), 0);
+                                                    const _totalBottles = reports.reduce((sum, r) => sum + (r.total_output || r.total_bottles || 0), 0);
                                                     const avgOee = reports.length > 0
                                                         ? (_totalBottles > 0
-                                                            ? (reports.reduce((sum, r) => sum + (parseFloat(r.efficiency) || r.metrics?.oee || 0) * (r.total_bottles || 0), 0) / _totalBottles)
+                                                            ? (reports.reduce((sum, r) => sum + (parseFloat(r.efficiency) || r.metrics?.oee || 0) * (r.total_output || r.total_bottles || 0), 0) / _totalBottles)
                                                             : reports.reduce((sum, r) => sum + (parseFloat(r.efficiency) || r.metrics?.oee || 0), 0) / reports.length
                                                           ).toFixed(1)
                                                         : 0;
@@ -1598,7 +1598,7 @@ const Overview = () => {
                                     const key = normalizePet(r.pet_name);
                                     if (!key) return;
                                     if (!grouped[date][key]) grouped[date][key] = 0;
-                                    grouped[date][key] += r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
+                                    grouped[date][key] += r.total_output || r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
                                 });
 
                                 // Discover actual PET names from data, build display map

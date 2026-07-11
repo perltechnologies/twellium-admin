@@ -98,7 +98,7 @@ const CO2Report = () => {
                 if (r.production_readings) {
                     co2Map[key].bottles += parseInt(r.production_readings.total_output || r.production_readings.total_output_pcs || 0);
                 } else {
-                    co2Map[key].bottles += parseInt(r.bottles_produced || r.total_bottles || r.bottles || 0);
+                    co2Map[key].bottles += parseInt(r.bottles_produced || r.total_output || r.total_bottles || r.bottles || 0);
                 }
             });
 
