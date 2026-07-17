@@ -28,10 +28,28 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
     const [periodLoading, setPeriodLoading] = useState(false);
     const fetchAbortRef = useRef(null);
 
+    // Sync local dates when global filters change (e.g. from FilterInputs at page top)
+    const initialFiltersRef = useRef(true);
+    useEffect(() => {
+        // Skip the initial render - don't override the default week range with log_date
+        if (initialFiltersRef.current) {
+            initialFiltersRef.current = false;
+            return;
+        }
+        if (filters.start_date && filters.end_date) {
+            setLocalStartDate(filters.start_date);
+            setLocalEndDate(filters.end_date);
+            setUseLocalDates(true);
+        } else if (filters.log_date) {
+            setLocalStartDate(filters.log_date);
+            setLocalEndDate(filters.log_date);
+            setUseLocalDates(true);
+        }
+    }, [filters.start_date, filters.end_date, filters.log_date]);
+
     // Fetch data when week/month period is selected
     useEffect(() => {
         if (useLocalDates && localStartDate && localEndDate) {
-            // Abort previous fetch to prevent stale data from overwriting fresh data
             if (fetchAbortRef.current) {
                 fetchAbortRef.current.abort();
             }
@@ -40,141 +58,81 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
 
             const fetchPeriodData = async () => {
                 setPeriodLoading(true);
-                setPeriodReports([]); // Clear stale data immediately so stats reset
+                setPeriodReports([]);
                 try {
-                    // Fetch both aggregated stats (oee_date_range) and per-PET data (oee_summary) in parallel
-                    const [oeeRes, perPetData] = await Promise.all([
-                        // 1. Fast aggregated stats per date
-                        productionApi.getOeeDateRange({ 
-                            start_date: localStartDate, 
-                            end_date: localEndDate 
-                        }),
-                        // 2. Per-PET data for the chart - fetch each date individually
-                        (async () => {
-                            const dates = [];
-                            let current = new Date(localStartDate);
-                            const endDate = new Date(localEndDate);
-                            const today = new Date().toISOString().split('T')[0];
-                            while (current <= endDate) {
-                                const dateStr = current.toISOString().split('T')[0];
-                                // Only fetch dates before today (no future dates)
-                                if (dateStr < today) {
-                                    dates.push(dateStr);
-                                }
-                                current.setDate(current.getDate() + 1);
-                            }
-                            
-                            const results = await Promise.all(
-                                dates.map(date =>
-                                    productionApi.getOeeSummaryByDate({ production_date: date, page_size: 1000 })
-                                        .then(res => {
-                                            if (controller.signal.aborted) return [];
-                                            const data = res?.data?.data || res?.data?.results || res?.data || [];
-                                            const list = Array.isArray(data) ? data : [];
-                                            return list
-                                                .filter(r => !(r.pet_name || r.line_name || '').toLowerCase().includes('can'))
-                                                .map(r => ({
-                                                    production_date: date,
-                                                    pet_name: r.pet_name || r.line_name || 'Unknown',
-                                                    oee: r.metrics?.oee || r.oee || 0,
-                                                    efficiency: r.metrics?.oee || r.efficiency || r.oee || 0,
-                                                    availability: r.metrics?.availability || r.availability || 0,
-                                                    performance: r.metrics?.performance || r.performance || 0,
-                                                    quality: r.metrics?.quality || r.quality || 0,
-                                                    total_bottles_produced: r.metrics?.details?.total_output_pcs || r.total_output || r.total_bottles_produced || 0,
-                                                    metrics: r.metrics || {
-                                                        oee: r.oee || 0,
-                                                        availability: r.availability || 0,
-                                                        performance: r.performance || 0,
-                                                        quality: r.quality || 0,
-                                                        details: {
-                                                            total_output_pcs: r.total_output || r.total_bottles_produced || 0,
-                                                            total_downtime_mins: r.downtime_minutes || 0,
-                                                            planned_downtime_mins: r.planned_downtime_minutes || 0,
-                                                            mechanical_downtime_mins: r.mechanical_downtime_minutes || 0,
-                                                        }
-                                                    }
-                                                }));
-                                        })
-                                        .catch(() => [])
-                                )
-                            );
-                            return results.flat();
-                        })()
-                    ]);
+                    const res = await productionApi.getProductionSummary({
+                        start_date: localStartDate,
+                        end_date: localEndDate,
+                    });
 
                     if (controller.signal.aborted) return;
 
-                    // If per-PET data is available, use it (has pet_name for chart grouping)
-                    if (perPetData.length > 0) {
-                        // Enrich with aggregated stats from oee_date_range for summary accuracy
-                        const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
-                        const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
-                        
-                        // Add aggregated date entries (without pet_name) for overall summary stats
-                        const aggregatedEntries = oeeEntries
-                            .filter(([date]) => date >= localStartDate && date <= localEndDate)
-                            .map(([date, val]) => ({
-                                production_date: date,
-                                _aggregated: true, // marker to distinguish from per-PET entries
-                                oee: val?.oee || 0,
-                                availability: val?.availability_weighted_avg || 0,
-                                performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
-                                quality: val?.quality_weighted_avg || 0,
-                                total_bottles_produced: val?.total_output || 0,
-                                metrics: {
-                                    oee: val?.oee || 0,
-                                    availability: val?.availability_weighted_avg || 0,
-                                    performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
-                                    quality: val?.quality_weighted_avg || 0,
-                                    details: {
-                                        total_output_pcs: val?.total_output || 0,
-                                        total_downtime_mins: val?.downtime || 0,
-                                        planned_downtime_mins: val?.planned_downtime || 0,
-                                        mechanical_downtime_mins: val?.mechanical_downtime || 0,
-                                    }
-                                }
-                            }));
+                    // Unwrap nested envelope: response may have data.data.data structure
+                    const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                    const dailyBreakdown = envelope.daily_breakdown || [];
 
-                        if (!controller.signal.aborted) {
-                            // Use per-PET data (chart needs pet_name) with aggregated fallback for summary
-                            setPeriodReports(perPetData.length > 0 ? perPetData : aggregatedEntries);
-                        }
-                    } else {
-                        // Fallback: use oee_date_range aggregated data (no per-PET breakdown)
-                        const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
-                        const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
-                        
-                        const transformed = oeeEntries
-                            .filter(([date]) => date >= localStartDate && date <= localEndDate)
-                            .map(([date, val]) => ({
-                                production_date: date,
-                                oee: val?.oee || 0,
-                                availability: val?.availability_weighted_avg || 0,
-                                performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
-                                quality: val?.quality_weighted_avg || 0,
-                                total_bottles_produced: val?.total_output || 0,
+                    // Map API response to the flat records format used by summary and chart
+                    const records = [];
+                    dailyBreakdown.forEach(day => {
+                        const pets = day.pets || [];
+                        if (pets.length > 0) {
+                            pets.forEach(p => {
+                                records.push({
+                                    production_date: day.date,
+                                    pet_name: p.pet_name || 'Unknown',
+                                    oee: p.oee || 0,
+                                    efficiency: p.efficiency || 0,
+                                    availability: p.availability || 0,
+                                    performance: p.performance || 0,
+                                    quality: p.quality || 0,
+                                    total_bottles_produced: p.total_output || 0,
+                                    metrics: {
+                                        oee: p.oee || 0,
+                                        availability: p.availability || 0,
+                                        performance: p.performance || 0,
+                                        quality: p.quality || 0,
+                                        details: {
+                                            total_output_pcs: p.total_output || 0,
+                                            total_downtime_mins: p.total_downtime_minutes || 0,
+                                            planned_downtime_mins: p.planned_downtime_mins || 0,
+                                            mechanical_downtime_mins: p.mechanical_downtime_mins || 0,
+                                        }
+                                    }
+                                });
+                            });
+                        } else {
+                            // Day-level only (no per-pet breakdown)
+                            records.push({
+                                production_date: day.date,
+                                pet_name: 'All',
+                                oee: day.oee || 0,
+                                efficiency: day.avg_efficiency || 0,
+                                availability: day.avg_availability || 0,
+                                performance: day.avg_performance || 0,
+                                quality: day.avg_quality || 0,
+                                total_bottles_produced: day.total_output || 0,
                                 metrics: {
-                                    oee: val?.oee || 0,
-                                    availability: val?.availability_weighted_avg || 0,
-                                    performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
-                                    quality: val?.quality_weighted_avg || 0,
+                                    oee: day.oee || 0,
+                                    availability: day.avg_availability || 0,
+                                    performance: day.avg_performance || 0,
+                                    quality: day.avg_quality || 0,
                                     details: {
-                                        total_output_pcs: val?.total_output || 0,
-                                        total_downtime_mins: val?.downtime || 0,
-                                        planned_downtime_mins: val?.planned_downtime || 0,
-                                        mechanical_downtime_mins: val?.mechanical_downtime || 0,
+                                        total_output_pcs: day.total_output || 0,
+                                        total_downtime_mins: day.total_downtime_minutes || 0,
+                                        planned_downtime_mins: day.planned_downtime_mins || 0,
+                                        mechanical_downtime_mins: day.mechanical_downtime_mins || 0,
                                     }
                                 }
-                            }));
-                        
-                        if (!controller.signal.aborted) {
-                            setPeriodReports(transformed);
+                            });
                         }
+                    });
+
+                    if (!controller.signal.aborted) {
+                        setPeriodReports(records);
                     }
                 } catch (error) {
                     if (error?.name === 'CanceledError' || error?.name === 'AbortError') return;
-                    console.error('Error fetching period data:', error);
+                    console.error('Error fetching production summary:', error);
                     if (!controller.signal.aborted) {
                         setPeriodReports([]);
                     }
@@ -259,7 +217,11 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
             const date = r.production_date || r.log_date || '';
             if (!grouped[date]) grouped[date] = {};
 
-            const petName = (r.pet_name || 'Unknown').replace(/\b\w/g, c => c.toUpperCase());
+            // Normalize pet name to title case "Pet X" format
+            const rawName = (r.pet_name || 'Unknown').toLowerCase().trim();
+            const petNum = rawName.match(/pet\s*(\d+)/);
+            const petName = petNum ? `Pet ${petNum[1]}` : rawName.replace(/\b\w/g, c => c.toUpperCase());
+            
             if (!grouped[date][petName]) {
                 grouped[date][petName] = { oee: 0, count: 0 };
             }
@@ -267,13 +229,23 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
             grouped[date][petName].count += 1;
         });
 
-        // Define all PETs from Pet 1 to Pet 6
-        const allPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
+        // Discover all PET names from the data, sorted by number
+        const discoveredPets = new Set();
+        Object.values(grouped).forEach(dateGroup => {
+            Object.keys(dateGroup).forEach(pet => discoveredPets.add(pet));
+        });
+        const allPets = Array.from(discoveredPets).sort((a, b) => {
+            const aNum = parseInt(a.match(/(\d+)/)?.[0] || '999');
+            const bNum = parseInt(b.match(/(\d+)/)?.[0] || '999');
+            return aNum - bNum;
+        });
+        // Fallback to default if no data
+        const petList = allPets.length > 0 ? allPets : ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
 
-        const series = allPets.map(pet => ({
+        const series = petList.map(pet => ({
             name: pet,
             data: dates.map(date => {
-                if (date >= today) return null;
+                if (date > today) return null;
                 const data = grouped[date]?.[pet];
                 return data ? parseFloat((data.oee / data.count).toFixed(1)) : 0;
             })
@@ -488,9 +460,9 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                         <i className="ti ti-bottle text-white fs-5"></i>
                                     </div>
                                 </div>
-                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Total Production</small>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Total Output</small>
                                 <h6 className="mb-0 text-primary fw-bold">{summary.totalProduction.toLocaleString()}</h6>
-                                <small className="text-muted fs-11">bottles</small>
+                                <small className="text-muted fs-11">pcs</small>
                             </div>
                         </div>
                     </div>

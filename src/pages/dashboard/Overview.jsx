@@ -350,7 +350,7 @@ const Overview = () => {
         fetchOeeRange();
     }, [oeeDate]);
 
-    /* Load shift data separately */
+    /* Load shift data using production_summary endpoint */
     const loadShiftData = useCallback(async () => {
         if (!shifts.length) return;
 
@@ -387,56 +387,55 @@ const Overview = () => {
                 return;
             }
 
-            // Fetch PET metrics for the date, passing shift if explicitly selected
-            const shiftParams = { date: refDateStr };
-            if (selectedShiftId) shiftParams.shift = targetShift.id;
-            const shiftRes = await productionApi.getDashboardShiftPetMetrics(shiftParams);
-            const shiftData = shiftRes?.data?.data ?? shiftRes?.data ?? {};
-            const allPets = Array.isArray(shiftData.pets) ? shiftData.pets : (Array.isArray(shiftData) ? shiftData : []);
-            const allReports = allPets.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            // Fetch production summary for the date, with optional shift filter
+            const params = { start_date: refDateStr, end_date: refDateStr };
+            if (selectedShiftId) params.shift = targetShift.id;
 
-            // Filter by target shift (match by shift name or ID)
-            const filterByShift = (reports, shift) => {
-                return reports.filter(r => {
-                    if (!r.shift) return true; // no shift field means include
-                    const shiftStr = String(r.shift).toLowerCase();
-                    return shiftStr === String(shift.id) || shiftStr === shift.name?.toLowerCase();
-                });
-            };
+            const res = await productionApi.getProductionSummary(params);
+            const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+            const dailyBreakdown = envelope.daily_breakdown || [];
+            const dayData = dailyBreakdown.find(d => d.date === refDateStr) || dailyBreakdown[0] || {};
+            const allPets = (dayData.pets || []).filter(r => !r.pet_name?.toLowerCase().includes('can'));
 
+            // Filter by target shift if not already filtered by API
+            let activeReports = [];
             let activeShift = targetShift;
-            let activeReports = filterByShift(allReports, targetShift);
 
-            // If no data for target shift, use all reports (API may have already filtered by shift)
-            if (activeReports.length === 0 && allReports.length > 0) {
-                activeReports = allReports;
-            }
+            if (!selectedShiftId && targetShift) {
+                // Try to get data for current shift
+                const currentShiftData = allPets.filter(r => {
+                    if (!r.shift) return false;
+                    return r.shift.toLowerCase() === targetShift.name?.toLowerCase();
+                });
 
-            // Only fall back to previous shift if NOT explicitly selected by user
-            if (activeReports.length === 0 && !selectedShiftId && shifts.length > 1) {
-                const currentIdx = shifts.findIndex(s => s.id === targetShift.id);
-                const prevShift = currentIdx > 0 ? shifts[currentIdx - 1] : shifts[shifts.length - 1];
-                if (prevShift && prevShift.id !== targetShift.id) {
-                    // Try filtering from same response first
-                    const prevFiltered = filterByShift(allReports, prevShift);
-                    if (prevFiltered.length > 0) {
-                        activeShift = prevShift;
-                        activeReports = prevFiltered;
-                    } else {
-                        // Fetch previous shift explicitly
-                        const prevRes = await productionApi.getDashboardShiftPetMetrics({ date: refDateStr, shift: prevShift.id });
-                        const prevData = prevRes?.data?.data ?? prevRes?.data ?? {};
-                        const prevPets = Array.isArray(prevData.pets) ? prevData.pets : (Array.isArray(prevData) ? prevData : []);
-                        const prevReports = prevPets.filter(r => !r.pet_name?.toLowerCase().includes('can'));
-                        if (prevReports.length > 0) {
-                            activeShift = prevShift;
-                            activeReports = prevReports;
+                if (currentShiftData.length > 0) {
+                    // Current shift has data — use it
+                    activeReports = currentShiftData;
+                } else {
+                    // Current shift has no data yet — keep displaying previous shift
+                    // Find the other shift (DAY ↔ NIGHT)
+                    const otherShift = shifts.find(s => s.id !== targetShift.id);
+                    if (otherShift) {
+                        const otherShiftData = allPets.filter(r => {
+                            if (!r.shift) return false;
+                            return r.shift.toLowerCase() === otherShift.name?.toLowerCase();
+                        });
+                        if (otherShiftData.length > 0) {
+                            activeShift = otherShift;
+                            activeReports = otherShiftData;
                         }
                     }
+                    // If still no data from other shift, use all available data
+                    if (activeReports.length === 0 && allPets.length > 0) {
+                        activeReports = allPets;
+                    }
                 }
+            } else {
+                // User explicitly selected a shift or no shift detection
+                activeReports = allPets;
             }
 
-            // Always show the explicitly selected shift info, even when data falls back
+            // Set shift info
             const displayShift = selectedShiftId ? targetShift : activeShift;
             setCurrentShiftInfo({
                 id: displayShift.id,
@@ -446,21 +445,26 @@ const Overview = () => {
                 lastUpdated: null
             });
 
-            // Map PetShiftMetric to the format expected by the UI
+            // Map to expected format
             const oeeData = activeReports.map(r => ({
                 ...r,
-                bottles_produced: r.total_output,
-                downtime_minutes: r.total_downtime,
-                planned_downtime_minutes: r.planned_downtime,
+                total_output: r.total_output || 0,
+                total_bottles: r.total_bottles || 0,
+                total_downtime: r.total_downtime_minutes || 0,
+                planned_downtime: r.planned_downtime_mins || 0,
+                mechanical_downtime: r.mechanical_downtime_mins || 0,
+                bottles_produced: r.total_output || 0,
+                downtime_minutes: r.total_downtime_minutes || 0,
+                planned_downtime_minutes: r.planned_downtime_mins || 0,
                 metrics: {
-                    availability: parseFloat(r.efficiency) || 0,
+                    availability: parseFloat(r.availability) || 0,
                     performance: parseFloat(r.performance) || 0,
-                    quality: 100,
-                    oee: parseFloat(r.efficiency) || 0,
+                    quality: parseFloat(r.quality) || 100,
+                    oee: parseFloat(r.oee) || parseFloat(r.efficiency) || 0,
                     details: {
-                        total_downtime_mins: r.total_downtime || 0,
-                        planned_downtime_mins: r.planned_downtime || 0,
-                        mechanical_downtime_mins: r.mechanical_downtime || 0,
+                        total_downtime_mins: r.total_downtime_minutes || 0,
+                        planned_downtime_mins: r.planned_downtime_mins || 0,
+                        mechanical_downtime_mins: r.mechanical_downtime_mins || 0,
                         planned_time_mins: 0,
                         total_output_pcs: r.total_output || 0,
                     }
@@ -468,25 +472,6 @@ const Overview = () => {
             }));
 
             setShiftOeeReports(oeeData);
-
-            // Get the latest log_time
-            const latestTime = activeReports.reduce((latest, report) => {
-                if (report.last_log_time) {
-                    const time = new Date(report.last_log_time);
-                    return !latest || time > latest ? time : latest;
-                }
-                return latest;
-            }, null);
-
-            if (latestTime) {
-                setCurrentShiftInfo(prev => ({
-                    ...prev,
-                    lastUpdated: latestTime.toLocaleString('en-US', {
-                        month: 'short', day: 'numeric',
-                        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-                    })
-                }));
-            }
 
             const sortByPet = (arr) => arr.sort((a, b) => {
                 const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
@@ -505,12 +490,12 @@ const Overview = () => {
                     reports: activeReports,
                     summary: {
                         total_production: activeReports.reduce((s, r) => s + (r.total_output || 0), 0),
-                        total_downtime: activeReports.reduce((s, r) => s + (r.total_downtime || 0), 0),
+                        total_downtime: activeReports.reduce((s, r) => s + (r.total_downtime_minutes || 0), 0),
                         total_stoppages: activeReports.reduce((s, r) => s + (r.total_stoppage_reports_submitted || 0), 0),
                         avg_efficiency: (() => {
-                            const totalBottles = activeReports.reduce((s, r) => s + (r.total_output || 0), 0);
-                            if (totalBottles === 0) return activeReports.length > 0 ? activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0), 0) / activeReports.length : 0;
-                            return activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0) * (r.total_output || 0), 0) / totalBottles;
+                            const totalOutput = activeReports.reduce((s, r) => s + (r.total_output || 0), 0);
+                            if (totalOutput === 0) return activeReports.length > 0 ? activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0), 0) / activeReports.length : 0;
+                            return activeReports.reduce((s, r) => s + (parseFloat(r.efficiency) || 0) * (r.total_output || 0), 0) / totalOutput;
                         })(),
                     },
                     timestamp: new Date().toISOString()
@@ -696,7 +681,7 @@ const Overview = () => {
             };
         });
         
-        // Add data from hourly reports (from stoppages summary endpoint)
+        // Add data from hourly reports (from production_summary endpoint)
         hourlyReports.forEach(r => {
             const name = nameKey(r.pet_name);
             // Create entry if it doesn't exist (for cases where rawPets is empty)
@@ -716,27 +701,13 @@ const Overview = () => {
             
             if (lineMap[name]) {
                 lineMap[name].reports += 1;
-                // Use efficiency from API response (convert string to number), fallback to OEE from metrics
-                const efficiency = parseFloat(r.efficiency) || r.metrics?.oee || 0;
+                const efficiency = parseFloat(r.efficiency) || parseFloat(r.oee) || r.metrics?.oee || 0;
                 lineMap[name].oee += efficiency;
                 lineMap[name].performance += parseFloat(r.performance) || 0;
                 lineMap[name].production += r.total_output || r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
-                lineMap[name].downtime += r.total_downtime || r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
-                lineMap[name].plannedDowntime += r.planned_downtime || r.planned_downtime_minutes || r.metrics?.details?.planned_downtime_mins || 0;
+                lineMap[name].downtime += r.total_downtime_minutes || r.total_downtime || r.downtime_minutes || r.metrics?.details?.total_downtime_mins || 0;
+                lineMap[name].plannedDowntime += r.planned_downtime_mins || r.planned_downtime || r.planned_downtime_minutes || r.metrics?.details?.planned_downtime_mins || 0;
                 lineMap[name].plannedTimeMins += r.metrics?.details?.planned_time_mins || 0;
-                
-                // Track last updated time
-                if (r.last_log_time) {
-                    const time = new Date(r.last_log_time);
-                    if (!lineMap[name].lastUpdated || time > lineMap[name].lastUpdated) {
-                        lineMap[name].lastUpdated = time;
-                    }
-                } else if (r.log_time) {
-                    const time = new Date(r.log_date + 'T' + r.log_time);
-                    if (!lineMap[name].lastUpdated || time > lineMap[name].lastUpdated) {
-                        lineMap[name].lastUpdated = time;
-                    }
-                }
             }
         });
 

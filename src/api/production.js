@@ -266,7 +266,9 @@ export const productionApi = {
     getDashboardMetricsComparison: () => api.get('/production/dashboard/metrics_comparison/'),
     getDashboardShiftPetMetrics: (params) => api.get('/production/dashboard/shift_pet_metrics/', { params }),
     getDashboardTodayYesterdayComparison: (params) => api.get('/production/dashboard/today_yesterday_comparison/', { params }),
+    getHourlyProductionMetrics: (params) => api.get('/production/dashboard/hourly_production_metrics/', { params }),
     getOeeDateRange: (params) => api.get('/production/dashboard/oee_date_range/', { params }),
     getYieldsConsumptionDateRange: (params) => api.get('/production/dashboard/yields_consumption_date_range/', { params }),
     getOeeSummaryByDate: (params) => api.get('/production/reports/oee_summary/', { params }),
+    getProductionSummary: (params) => api.get('/production/dashboard/production_summary/', { params }),
 };
