@@ -103,7 +103,7 @@ const OeeAnalytics = () => {
         const petMap = {};
         defaultPets.forEach(p => { petMap[p] = { oee: 0, avail: 0, perf: 0, qual: 0, count: 0 }; });
         dailyBreakdown.forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { oee: 0, avail: 0, perf: 0, qual: 0, count: 0 };
                 petMap[name].oee += p.oee || p.efficiency || 0;
@@ -201,7 +201,7 @@ const OeeAnalytics = () => {
     const tableData = useMemo(() => {
         const rows = [];
         dailyBreakdown.forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 rows.push({
                     Date: day.date,
                     Pet: normalizePet(p.pet_name),
@@ -210,7 +210,7 @@ const OeeAnalytics = () => {
                     Availability: (p.availability || 0).toFixed(1),
                     Performance: (p.performance || 0).toFixed(1),
                     Quality: (p.quality || 0).toFixed(1),
-                    Output: p.total_output || 0,
+                    Output: p.total_bottles_produced || 0,
                     Downtime: `${p.total_downtime_minutes || 0} min`,
                 });
             });

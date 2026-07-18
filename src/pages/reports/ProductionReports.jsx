@@ -74,7 +74,7 @@ const ProductionReports = () => {
                                             planned_time_mins: 0,
                                             total_downtime_mins: p.total_downtime || 0,
                                             planned_downtime_mins: p.planned_downtime || 0,
-                                            total_output_pcs: p.total_output || 0
+                                            total_output_pcs: p.total_bottles_produced || 0
                                         }
                                     }
                                 }));
@@ -169,7 +169,7 @@ const ProductionReports = () => {
                     availability: p.availability || 0,
                     quality: p.quality || 0,
                     performance: p.performance || 0,
-                    details: { total_output_pcs: p.total_output || 0 }
+                    details: { total_output_pcs: p.total_bottles_produced || 0 }
                 }
             }));
             setOeeTrendData(trendData);

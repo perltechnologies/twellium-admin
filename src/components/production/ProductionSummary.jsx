@@ -4,184 +4,153 @@ import { productionApi } from '../../api/production';
 
 const ReactApexChart = lazy(() => import('react-apexcharts'));
 
-const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo = null, shiftDate = '' }) => {
-    const { filters } = useFilters();
-    const [period, setPeriod] = useState('week');
-    const [localStartDate, setLocalStartDate] = useState(() => {
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const sunday = new Date(today);
-        sunday.setDate(today.getDate() - dayOfWeek);
-        return sunday.toISOString().split('T')[0];
-    });
-    const [localEndDate, setLocalEndDate] = useState(() => {
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const sunday = new Date(today);
-        sunday.setDate(today.getDate() - dayOfWeek);
-        const saturday = new Date(sunday);
-        saturday.setDate(sunday.getDate() + 6);
-        return saturday.toISOString().split('T')[0];
-    });
-    const [useLocalDates, setUseLocalDates] = useState(true);
-    const [periodReports, setPeriodReports] = useState([]);
-    const [periodLoading, setPeriodLoading] = useState(false);
-    const fetchAbortRef = useRef(null);
-
-    // Sync local dates when global filters change (e.g. from FilterInputs at page top)
-    const initialFiltersRef = useRef(true);
-    useEffect(() => {
-        // Skip the initial render - don't override the default week range with log_date
-        if (initialFiltersRef.current) {
-            initialFiltersRef.current = false;
-            return;
-        }
-        if (filters.start_date && filters.end_date) {
-            setLocalStartDate(filters.start_date);
-            setLocalEndDate(filters.end_date);
-            setUseLocalDates(true);
-        } else if (filters.log_date) {
-            setLocalStartDate(filters.log_date);
-            setLocalEndDate(filters.log_date);
-            setUseLocalDates(true);
-        }
-    }, [filters.start_date, filters.end_date, filters.log_date]);
-
-    // Fetch data when week/month period is selected
-    useEffect(() => {
-        if (useLocalDates && localStartDate && localEndDate) {
-            if (fetchAbortRef.current) {
-                fetchAbortRef.current.abort();
-            }
-            const controller = new AbortController();
-            fetchAbortRef.current = controller;
-
-            const fetchPeriodData = async () => {
-                setPeriodLoading(true);
-                setPeriodReports([]);
-                try {
-                    const res = await productionApi.getProductionSummary({
-                        start_date: localStartDate,
-                        end_date: localEndDate,
-                    });
-
-                    if (controller.signal.aborted) return;
-
-                    // Unwrap nested envelope: response may have data.data.data structure
-                    const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
-                    const dailyBreakdown = envelope.daily_breakdown || [];
-
-                    // Map API response to the flat records format used by summary and chart
-                    const records = [];
-                    dailyBreakdown.forEach(day => {
-                        const pets = day.pets || [];
-                        if (pets.length > 0) {
-                            pets.forEach(p => {
-                                records.push({
-                                    production_date: day.date,
-                                    pet_name: p.pet_name || 'Unknown',
-                                    oee: p.oee || 0,
-                                    efficiency: p.efficiency || 0,
-                                    availability: p.availability || 0,
-                                    performance: p.performance || 0,
-                                    quality: p.quality || 0,
-                                    total_bottles_produced: p.total_output || 0,
-                                    metrics: {
-                                        oee: p.oee || 0,
-                                        availability: p.availability || 0,
-                                        performance: p.performance || 0,
-                                        quality: p.quality || 0,
-                                        details: {
-                                            total_output_pcs: p.total_output || 0,
-                                            total_downtime_mins: p.total_downtime_minutes || 0,
-                                            planned_downtime_mins: p.planned_downtime_mins || 0,
-                                            mechanical_downtime_mins: p.mechanical_downtime_mins || 0,
-                                        }
-                                    }
-                                });
-                            });
-                        } else {
-                            // Day-level only (no per-pet breakdown)
-                            records.push({
-                                production_date: day.date,
-                                pet_name: 'All',
-                                oee: day.oee || 0,
-                                efficiency: day.avg_efficiency || 0,
-                                availability: day.avg_availability || 0,
-                                performance: day.avg_performance || 0,
-                                quality: day.avg_quality || 0,
-                                total_bottles_produced: day.total_output || 0,
-                                metrics: {
-                                    oee: day.oee || 0,
-                                    availability: day.avg_availability || 0,
-                                    performance: day.avg_performance || 0,
-                                    quality: day.avg_quality || 0,
-                                    details: {
-                                        total_output_pcs: day.total_output || 0,
-                                        total_downtime_mins: day.total_downtime_minutes || 0,
-                                        planned_downtime_mins: day.planned_downtime_mins || 0,
-                                        mechanical_downtime_mins: day.mechanical_downtime_mins || 0,
-                                    }
-                                }
-                            });
+// Helper: map API daily_breakdown to flat records
+const mapBreakdownToRecords = (dailyBreakdown) => {
+    const records = [];
+    dailyBreakdown.forEach(day => {
+        const petList = (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can'));
+        if (petList.length > 0) {
+            petList.forEach(p => {
+                records.push({
+                    production_date: day.date,
+                    pet_name: p.pet_name || 'Unknown',
+                    oee: p.oee || 0,
+                    efficiency: p.efficiency || 0,
+                    availability: p.availability || 0,
+                    performance: p.performance || 0,
+                    quality: p.quality || 0,
+                    total_bottles_produced: p.total_bottles_produced || 0,
+                    metrics: {
+                        oee: p.oee || 0,
+                        availability: p.availability || 0,
+                        performance: p.performance || 0,
+                        quality: p.quality || 0,
+                        details: {
+                            total_output_pcs: p.total_bottles_produced || 0,
+                            total_downtime_mins: p.total_downtime_minutes || 0,
+                            planned_downtime_mins: p.planned_downtime_mins || 0,
+                            mechanical_downtime_mins: p.mechanical_downtime_mins || 0,
                         }
-                    });
-
-                    if (!controller.signal.aborted) {
-                        setPeriodReports(records);
                     }
-                } catch (error) {
-                    if (error?.name === 'CanceledError' || error?.name === 'AbortError') return;
-                    console.error('Error fetching production summary:', error);
-                    if (!controller.signal.aborted) {
-                        setPeriodReports([]);
-                    }
-                } finally {
-                    if (!controller.signal.aborted) {
-                        setPeriodLoading(false);
+                });
+            });
+        } else {
+            records.push({
+                production_date: day.date,
+                pet_name: 'All',
+                oee: day.oee || 0,
+                efficiency: day.avg_efficiency || 0,
+                availability: day.avg_availability || 0,
+                performance: day.avg_performance || 0,
+                quality: day.avg_quality || 0,
+                total_bottles_produced: day.total_bottles_produced || 0,
+                metrics: {
+                    oee: day.oee || 0,
+                    availability: day.avg_availability || 0,
+                    performance: day.avg_performance || 0,
+                    quality: day.avg_quality || 0,
+                    details: {
+                        total_output_pcs: day.total_bottles_produced || 0,
+                        total_downtime_mins: day.total_downtime_minutes || 0,
+                        planned_downtime_mins: day.planned_downtime_mins || 0,
+                        mechanical_downtime_mins: day.mechanical_downtime_mins || 0,
                     }
                 }
-            };
-            fetchPeriodData();
-
-            return () => {
-                controller.abort();
-            };
+            });
         }
-    }, [useLocalDates, localStartDate, localEndDate]);
+    });
+    return records;
+};
 
-    // Use local dates if week/month clicked, otherwise global filters
-    const singleDate = useLocalDates ? '' : (filters.log_date || '');
-    const startDate = useLocalDates ? localStartDate : (filters.start_date || '');
-    const endDate = useLocalDates ? localEndDate : (filters.end_date || '');
-    const useRange = !!startDate || !!endDate;
+const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo = null, shiftDate = '' }) => {
+    const { filters } = useFilters();
     const selectedPet = filters.pet || '';
-    
-    // Use period reports when week/month is active, otherwise use passed reports
-    const activeReports = useLocalDates ? periodReports : reports;
-    const activeLoading = !loading && (useLocalDates ? periodLoading : false);
+
+    // ── Summary Stats: own state ──
+    const [summaryPeriod, setSummaryPeriod] = useState('today');
+    const [summaryStartDate, setSummaryStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [summaryEndDate, setSummaryEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [summaryReports, setSummaryReports] = useState([]);
+    const [summaryData, setSummaryData] = useState(null);
+    const [summaryLoading, setSummaryLoading] = useState(false);
+    const summaryAbortRef = useRef(null);
+
+    // ── Chart: own state ──
+    const [chartPeriod, setChartPeriod] = useState('week');
+    const [chartStartDate, setChartStartDate] = useState(() => {
+        const today = new Date();
+        const start = new Date(today);
+        start.setDate(today.getDate() - 6);
+        return start.toISOString().split('T')[0];
+    });
+    const [chartEndDate, setChartEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [chartReports, setChartReports] = useState([]);
+    const [chartLoading, setChartLoading] = useState(false);
+    const chartAbortRef = useRef(null);
+
+    // Fetch data for Summary Stats
+    useEffect(() => {
+        if (!summaryStartDate || !summaryEndDate) return;
+        if (summaryAbortRef.current) summaryAbortRef.current.abort();
+        const controller = new AbortController();
+        summaryAbortRef.current = controller;
+
+        const fetchData = async () => {
+            setSummaryLoading(true);
+            setSummaryReports([]);
+            setSummaryData(null);
+            try {
+                const res = await productionApi.getProductionSummary({ start_date: summaryStartDate, end_date: summaryEndDate });
+                if (controller.signal.aborted) return;
+                const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                if (!controller.signal.aborted) {
+                    setSummaryData(envelope.summary || null);
+                    setSummaryReports(mapBreakdownToRecords(envelope.daily_breakdown || []));
+                }
+            } catch (error) {
+                if (error?.name === 'CanceledError' || error?.name === 'AbortError') return;
+                console.error('Error fetching summary data:', error);
+                if (!controller.signal.aborted) { setSummaryReports([]); setSummaryData(null); }
+            } finally {
+                if (!controller.signal.aborted) setSummaryLoading(false);
+            }
+        };
+        fetchData();
+        return () => { controller.abort(); };
+    }, [summaryStartDate, summaryEndDate]);
+
+    // Fetch data for Chart
+    useEffect(() => {
+        if (!chartStartDate || !chartEndDate) return;
+        if (chartAbortRef.current) chartAbortRef.current.abort();
+        const controller = new AbortController();
+        chartAbortRef.current = controller;
+
+        const fetchData = async () => {
+            setChartLoading(true);
+            setChartReports([]);
+            try {
+                const res = await productionApi.getProductionSummary({ start_date: chartStartDate, end_date: chartEndDate });
+                if (controller.signal.aborted) return;
+                const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                const records = mapBreakdownToRecords(envelope.daily_breakdown || []);
+                if (!controller.signal.aborted) setChartReports(records);
+            } catch (error) {
+                if (error?.name === 'CanceledError' || error?.name === 'AbortError') return;
+                console.error('Error fetching chart data:', error);
+                if (!controller.signal.aborted) setChartReports([]);
+            } finally {
+                if (!controller.signal.aborted) setChartLoading(false);
+            }
+        };
+        fetchData();
+        return () => { controller.abort(); };
+    }, [chartStartDate, chartEndDate]);
 
     const chartData = useMemo(() => {
-        let filtered = activeReports;
+        let filtered = chartReports;
 
-        // Filter by date - use global filters
-        if (useRange) {
-            if (startDate) filtered = filtered.filter(r => {
-                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
-                return reportDate >= startDate;
-            });
-            if (endDate) filtered = filtered.filter(r => {
-                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
-                return reportDate <= endDate;
-            });
-        } else if (singleDate) {
-            filtered = filtered.filter(r => {
-                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
-                return reportDate === singleDate;
-            });
-        }
-
-        // Filter by PET - use pet_name for comparison
+        // Filter by PET
         if (selectedPet) {
             const selectedPetName = pets.find(p => p.id === parseInt(selectedPet))?.pet_name;
             if (selectedPetName) {
@@ -190,34 +159,22 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
         }
 
         // Generate date range
-        let dates = [];
-        let grouped = {};
-
-        if (period === 'month') {
-            // Use local dates for month range
-            const firstDay = new Date(localStartDate || new Date());
-            const lastDay = new Date(localEndDate || new Date());
-            for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-                dates.push(new Date(d).toISOString().split('T')[0]);
-            }
-        } else {
-            // Use local dates for week range
-            const firstDay = new Date(localStartDate || new Date());
-            const lastDay = new Date(localEndDate || new Date());
-            for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-                dates.push(new Date(d).toISOString().split('T')[0]);
-            }
+        const dates = [];
+        const firstDay = new Date(chartStartDate || new Date());
+        const lastDay = new Date(chartEndDate || new Date());
+        for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+            dates.push(new Date(d).toISOString().split('T')[0]);
         }
 
         // Dates from today onward should not plot values
         const today = new Date().toISOString().split('T')[0];
 
         // Group by date
+        const grouped = {};
         filtered.forEach(r => {
             const date = r.production_date || r.log_date || '';
             if (!grouped[date]) grouped[date] = {};
 
-            // Normalize pet name to title case "Pet X" format
             const rawName = (r.pet_name || 'Unknown').toLowerCase().trim();
             const petNum = rawName.match(/pet\s*(\d+)/);
             const petName = petNum ? `Pet ${petNum[1]}` : rawName.replace(/\b\w/g, c => c.toUpperCase());
@@ -229,17 +186,25 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
             grouped[date][petName].count += 1;
         });
 
-        // Discover all PET names from the data, sorted by number
+        // Include all available PETs (from props), plus any discovered in data
         const discoveredPets = new Set();
         Object.values(grouped).forEach(dateGroup => {
             Object.keys(dateGroup).forEach(pet => discoveredPets.add(pet));
         });
-        const allPets = Array.from(discoveredPets).sort((a, b) => {
+        const propPetNames = (pets || [])
+            .filter(p => !(p.pet_name || '').toLowerCase().includes('can'))
+            .map(p => {
+            const raw = (p.pet_name || '').toLowerCase().trim();
+            const num = raw.match(/pet\s*(\d+)/);
+            return num ? `Pet ${num[1]}` : raw.replace(/\b\w/g, c => c.toUpperCase());
+        }).filter(Boolean);
+        const allPets = Array.from(new Set([...propPetNames, ...discoveredPets]))
+            .filter(name => !name.toLowerCase().includes('can'))
+            .sort((a, b) => {
             const aNum = parseInt(a.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-        // Fallback to default if no data
         const petList = allPets.length > 0 ? allPets : ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
 
         const series = petList.map(pet => ({
@@ -252,90 +217,27 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
         }));
 
         return { dates, series };
-    }, [activeReports, period, useRange, singleDate, startDate, endDate, localStartDate, localEndDate, selectedPet, pets]);
+    }, [chartReports, chartStartDate, chartEndDate, selectedPet, pets]);
 
     const summary = useMemo(() => {
-        let filtered = activeReports;
-
-        // Filter by date - use global filters
-        if (useRange) {
-            if (startDate) filtered = filtered.filter(r => {
-                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
-                return reportDate >= startDate;
-            });
-            if (endDate) filtered = filtered.filter(r => {
-                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
-                return reportDate <= endDate;
-            });
-        } else if (singleDate) {
-            filtered = filtered.filter(r => {
-                const reportDate = (r.production_date || r.log_date || '').slice(0, 10);
-                return reportDate === singleDate;
-            });
-        }
-
-        // Filter by PET - use pet_name for comparison
-        if (selectedPet) {
-            const selectedPetName = pets.find(p => p.id === parseInt(selectedPet))?.pet_name;
-            if (selectedPetName) {
-                filtered = filtered.filter(r => r.pet_name === selectedPetName);
-            }
-        }
-
-        const totalProduction = filtered.reduce((s, r) => s + (r.total_bottles_produced || r.bottles_produced || r.metrics?.details?.total_output_pcs || 0), 0);
-        const avgOee = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (r.metrics?.oee || parseFloat(r.efficiency) || r.oee || 0), 0) / filtered.length
-            : 0;
-        const totalDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.total_downtime_mins || r.downtime_minutes || r.total_downtime_mins || 0), 0);
-        const plannedDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.planned_downtime_mins || 0), 0);
-        const mechDowntime = filtered.reduce((s, r) => s + (r.metrics?.details?.mechanical_downtime_mins || 0), 0);
-        const totalPlannedMins = filtered.reduce((s, r) => s + (r.metrics?.details?.planned_time_mins || 0), 0);
-        const avgRuntime = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (r.metrics?.details?.total_runtime_mins || r.runtime_minutes || 0), 0) / filtered.length
-            : 0;
-        // Compute elapsed shift time (capped at full shift duration) for real-time performance
-        let elapsedMins = totalPlannedMins;
-        if (shiftInfo?.start_time && totalPlannedMins > 0) {
-            const now = new Date();
-            const refDate = shiftDate || now.toISOString().split('T')[0];
-            const shiftStart = new Date(`${refDate}T${shiftInfo.start_time.slice(0, 5)}:00`);
-            if (shiftInfo.end_time && shiftInfo.start_time.slice(0, 5) > shiftInfo.end_time.slice(0, 5) && now < shiftStart) {
-                shiftStart.setDate(shiftStart.getDate() - 1);
-            }
-            elapsedMins = Math.min(totalPlannedMins, Math.max(0, Math.round((now - shiftStart) / 60000)));
-        }
-        // Try direct performance field first, fall back to formula if unavailable
-        const directPerformance = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (r.metrics?.performance || r.performance || 0), 0) / filtered.length
-            : 0;
-        const opTime = elapsedMins - plannedDowntime;
-        const avgPerformance = directPerformance > 0
-            ? directPerformance
-            : (opTime > 0 ? ((elapsedMins - totalDowntime) / opTime) * 100 : 0);
-        const avgAvailability = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (r.metrics?.availability || r.availability || 0), 0) / filtered.length
-            : 0;
-        const avgQuality = filtered.length > 0
-            ? filtered.reduce((s, r) => s + (r.metrics?.quality || r.quality || 0), 0) / filtered.length
-            : 0;
-        const targetMet = filtered.filter(r => (r.metrics?.oee || r.oee || 0) >= 85).length;
-
-        return { 
-            totalProduction, 
-            avgOee, 
-            totalDowntime,
-            plannedDowntime,
-            mechDowntime,
-            reports: filtered.length,
-            avgRuntime,
-            avgPerformance,
-            avgAvailability,
-            avgQuality,
-            targetMet
+        const s = summaryData || {};
+        return {
+            totalProduction: s.total_bottles_produced || s.total_output || 0,
+            totalBottles: s.total_bottles || 0,
+            avgOee: s.oee || s.avg_efficiency || 0,
+            totalDowntime: s.total_downtime_minutes || 0,
+            plannedDowntime: s.planned_downtime_mins || 0,
+            mechDowntime: s.mechanical_downtime_mins || 0,
+            reports: s.total_reports || 0,
+            avgPerformance: s.avg_performance || 0,
+            avgAvailability: s.avg_availability || 0,
+            avgQuality: s.avg_quality || 0,
+            targetMet: s.target_met_count || 0,
+            totalStoppageReports: s.total_stoppage_reports || 0,
         };
-    }, [activeReports, useRange, singleDate, startDate, endDate, selectedPet, pets, shiftInfo, shiftDate]);
+    }, [summaryData]);
 
-    const hasActiveFilter = !!(singleDate || startDate || endDate || selectedPet);
+    const hasActiveFilter = !!(chartStartDate || chartEndDate || selectedPet);
 
     return (
         <div className="card border-0 shadow-sm">
@@ -345,106 +247,66 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                         <h6 className="mb-0 fw-semibold">Production Summary</h6>
                         <small className="text-muted">Efficiency trends and multi-line comparison</small>
                     </div>
-                    <div className="d-flex align-items-center gap-2">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            value={summaryStartDate}
+                            onChange={(e) => setSummaryStartDate(e.target.value)}
+                            style={{ width: 130, fontSize: '0.75rem' }}
+                        />
+                        <span className="text-muted" style={{ fontSize: '0.75rem' }}>to</span>
+                        <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            value={summaryEndDate}
+                            onChange={(e) => setSummaryEndDate(e.target.value)}
+                            style={{ width: 130, fontSize: '0.75rem' }}
+                        />
                         <div className="btn-group">
                             <button
-                                className={`btn btn-sm ${period === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                className={`btn btn-sm ${summaryPeriod === 'today' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                style={{ fontSize: '0.7rem', padding: '2px 8px' }}
                                 onClick={() => {
-                                    setPeriod('week');
-                                    const today = new Date();
-                                    const dayOfWeek = today.getDay();
-                                    const sunday = new Date(today);
-                                    sunday.setDate(today.getDate() - dayOfWeek);
-                                    const saturday = new Date(sunday);
-                                    saturday.setDate(sunday.getDate() + 6);
-                                    setLocalStartDate(sunday.toISOString().split('T')[0]);
-                                    setLocalEndDate(saturday.toISOString().split('T')[0]);
-                                    setUseLocalDates(true);
+                                    setSummaryPeriod('today');
+                                    const today = new Date().toISOString().split('T')[0];
+                                    setSummaryStartDate(today);
+                                    setSummaryEndDate(today);
                                 }}
-                            >
-                                <i className="ti ti-calendar-week me-1"></i>Week
-                            </button>
+                            >Today</button>
                             <button
-                                className={`btn btn-sm ${period === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                className={`btn btn-sm ${summaryPeriod === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                style={{ fontSize: '0.7rem', padding: '2px 8px' }}
                                 onClick={() => {
-                                    setPeriod('month');
+                                    setSummaryPeriod('week');
+                                    const today = new Date();
+                                    const start = new Date(today);
+                                    start.setDate(today.getDate() - 6);
+                                    setSummaryStartDate(start.toISOString().split('T')[0]);
+                                    setSummaryEndDate(today.toISOString().split('T')[0]);
+                                }}
+                            >Week</button>
+                            <button
+                                className={`btn btn-sm ${summaryPeriod === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                                onClick={() => {
+                                    setSummaryPeriod('month');
                                     const today = new Date();
                                     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
                                     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                                    setLocalStartDate(firstDay.toISOString().split('T')[0]);
-                                    setLocalEndDate(lastDay.toISOString().split('T')[0]);
-                                    setUseLocalDates(true);
+                                    setSummaryStartDate(firstDay.toISOString().split('T')[0]);
+                                    setSummaryEndDate(lastDay.toISOString().split('T')[0]);
                                 }}
-                            >
-                                <i className="ti ti-calendar-month me-1"></i>Month
-                            </button>
+                            >Month</button>
                         </div>
                     </div>
-                </div>
-                
-                {/* Dedicated Date Filter */}
-                <div className="row g-2 mb-3">
-                    <div className="col-md-4">
-                        <label className="form-label fs-12 mb-1">Start Date</label>
-                        <input
-                            type="date"
-                            className="form-control form-control-sm"
-                            value={localStartDate}
-                            onChange={(e) => {
-                                setLocalStartDate(e.target.value);
-                                setUseLocalDates(true);
-                            }}
-                        />
-                    </div>
-                    <div className="col-md-4">
-                        <label className="form-label fs-12 mb-1">End Date</label>
-                        <input
-                            type="date"
-                            className="form-control form-control-sm"
-                            value={localEndDate}
-                            onChange={(e) => {
-                                setLocalEndDate(e.target.value);
-                                setUseLocalDates(true);
-                            }}
-                        />
-                    </div>
-                    <div className="col-md-4 d-flex align-items-end">
-                        <button
-                            className="btn btn-sm btn-outline-secondary w-100"
-                            onClick={() => {
-                                const today = new Date().toISOString().split('T')[0];
-                                setLocalStartDate(today);
-                                setLocalEndDate(today);
-                                setUseLocalDates(true);
-                            }}
-                        >
-                            <i className="ti ti-calendar-event me-1"></i>Today
-                        </button>
-                    </div>
-                </div>
-                
-                {/* Active Filters Display */}
-                <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <span className="badge bg-soft-info text-info">
-                        <i className="ti ti-calendar me-1"></i>
-                        {localStartDate} - {localEndDate}
-                    </span>
-                    {selectedPet && (
-                        <span className="badge bg-soft-primary text-primary">
-                            <i className="ti ti-building-factory-2 me-1"></i>
-                            {pets.find(p => p.id === parseInt(selectedPet))?.pet_name || 'Selected PET'}
-                        </span>
-                    )}
-                    <span className="badge bg-soft-secondary text-secondary">
-                        {activeReports.length} reports loaded
-                    </span>
                 </div>
             </div>
             <div className="card-body">
 
                 {/* Summary Stats */}
-                <div className={`position-relative${periodLoading ? ' opacity-50' : ''}`} style={{ transition: 'opacity 0.2s' }}>
-                {periodLoading && (
+                <div className={`position-relative${summaryLoading ? ' opacity-50' : ''}`} style={{ transition: 'opacity 0.2s' }}>
+                {summaryLoading && (
                     <div className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ zIndex: 10 }}>
                         <div className="spinner-border spinner-border-sm text-primary" role="status">
                             <span className="visually-hidden">Loading...</span>
@@ -461,8 +323,8 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                     </div>
                                 </div>
                                 <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Total Output</small>
-                                <h6 className="mb-0 text-primary fw-bold">{summary.totalProduction.toLocaleString()}</h6>
-                                <small className="text-muted fs-11">pcs</small>
+                                <h6 className="mb-0 text-primary fw-bold">{(summary.totalProduction || summary.totalBottles).toLocaleString()}</h6>
+                                <small className="text-muted fs-11">{summary.totalProduction ? 'pcs' : 'bottles (live)'}</small>
                             </div>
                         </div>
                     </div>
@@ -585,7 +447,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                 </div>{/* end loading wrapper */}
 
                 {/* Chart */}
-                {activeLoading ? (
+                {chartLoading ? (
                     <div className="text-center py-5">
                         <div className="spinner-border text-primary" role="status">
                             <span className="visually-hidden">Loading...</span>
@@ -606,6 +468,52 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                         </div>
                     }>
                         <div className="border rounded p-3 bg-soft-light">
+                            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                                <h6 className="fw-semibold mb-0" style={{ fontSize: '0.875rem', color: '#374151' }}>OEE by Production Line</h6>
+                                <div className="d-flex align-items-center gap-2 flex-wrap">
+                                    <input
+                                        type="date"
+                                        className="form-control form-control-sm"
+                                        value={chartStartDate}
+                                        onChange={(e) => setChartStartDate(e.target.value)}
+                                        style={{ width: 130, fontSize: '0.75rem' }}
+                                    />
+                                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>to</span>
+                                    <input
+                                        type="date"
+                                        className="form-control form-control-sm"
+                                        value={chartEndDate}
+                                        onChange={(e) => setChartEndDate(e.target.value)}
+                                        style={{ width: 130, fontSize: '0.75rem' }}
+                                    />
+                                    <div className="btn-group">
+                                        <button
+                                            className={`btn btn-sm ${chartPeriod === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                                            onClick={() => {
+                                                setChartPeriod('week');
+                                                const today = new Date();
+                                                const start = new Date(today);
+                                                start.setDate(today.getDate() - 6);
+                                                setChartStartDate(start.toISOString().split('T')[0]);
+                                                setChartEndDate(today.toISOString().split('T')[0]);
+                                            }}
+                                        >Week</button>
+                                        <button
+                                            className={`btn btn-sm ${chartPeriod === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                                            onClick={() => {
+                                                setChartPeriod('month');
+                                                const today = new Date();
+                                                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                                                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                                                setChartStartDate(firstDay.toISOString().split('T')[0]);
+                                                setChartEndDate(lastDay.toISOString().split('T')[0]);
+                                            }}
+                                        >Month</button>
+                                    </div>
+                                </div>
+                            </div>
                             <ReactApexChart
                                 options={{
                                     chart: {
@@ -622,7 +530,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                             rotate: -45, 
                                             style: { fontSize: 11 },
                                             formatter: (val) => {
-                                                if (period === 'week') {
+                                                if (chartPeriod === 'week') {
                                                     const d = new Date(val);
                                                     const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
                                                     return `${d.getMonth() + 1}/${d.getDate()}\n${day}`;

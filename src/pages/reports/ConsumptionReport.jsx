@@ -102,7 +102,7 @@ const ConsumptionReport = () => {
         defaultPets.forEach(p => { petMap[p] = { pet: p, total_used: 0, total_losses: 0 }; });
 
         materials.forEach(m => {
-            (m.pets || []).forEach(p => {
+            (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { pet: name, total_used: 0, total_losses: 0 };
                 petMap[name].total_used += parseFloat(p.used) || 0;
@@ -126,7 +126,7 @@ const ConsumptionReport = () => {
 
         materials.forEach(m => {
             const type = m.material_type_display || m.material_type;
-            (m.pets || []).forEach(p => {
+            (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { pet: name };
                 petMap[name][type] = parseFloat(p.used) || 0;
@@ -151,7 +151,7 @@ const ConsumptionReport = () => {
 
         materials.forEach(m => {
             const type = m.material_type_display || m.material_type;
-            (m.pets || []).forEach(p => {
+            (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { pet: name };
                 petMap[name][type] = parseFloat(p.losses) || 0;
@@ -174,7 +174,7 @@ const ConsumptionReport = () => {
     const tableData = useMemo(() => {
         const rows = [];
         materials.forEach(m => {
-            (m.pets || []).forEach(p => {
+            (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 rows.push({
                     material: m.material_type_display || m.material_type,
                     material_type: m.material_type,
@@ -245,7 +245,7 @@ const ConsumptionReport = () => {
                 <div className="alert alert-light d-flex align-items-center mb-3 py-2">
                     <i className="ti ti-calendar me-2 text-primary"></i>
                     <span>Period: <strong>{dateRangeLabel}</strong></span>
-                    <span className="ms-3">Total Output: <strong>{(summary.total_output || 0).toLocaleString()}</strong> pcs</span>
+                    <span className="ms-3">Total Output: <strong>{(summary.total_bottles_produced || 0).toLocaleString()}</strong> pcs</span>
                     <span className="ms-3">Reports: <strong>{summary.total_reports || 0}</strong></span>
                 </div>
             )}

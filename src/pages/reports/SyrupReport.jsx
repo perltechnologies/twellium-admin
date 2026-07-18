@@ -93,7 +93,7 @@ const SyrupReport = () => {
         defaultPets.forEach(p => { petMap[p] = { pet: p, yieldSum: 0, count: 0, values: [] }; });
 
         (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { pet: name, yieldSum: 0, count: 0, values: [] };
                 const sy = p.syrup_yield;
@@ -125,7 +125,7 @@ const SyrupReport = () => {
         return days.map(day => {
             const row = { date: day.date.slice(5) }; // MM-DD format
             const petYields = {};
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (p.syrup_yield !== null && p.syrup_yield !== undefined && p.syrup_yield > 0) {
                     if (!petYields[name]) petYields[name] = { sum: 0, count: 0 };
@@ -144,7 +144,7 @@ const SyrupReport = () => {
     const tableData = useMemo(() => {
         const rows = [];
         (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 if (p.syrup_yield !== null && p.syrup_yield !== undefined && p.syrup_yield > 0) {
                     rows.push({
                         date: day.date,
@@ -152,7 +152,7 @@ const SyrupReport = () => {
                         product: p.product_name || '-',
                         shift: p.shift || '-',
                         syrup_yield: p.syrup_yield,
-                        total_output: p.total_output || 0,
+                        total_bottles_produced: p.total_bottles_produced || 0,
                     });
                 }
             });
@@ -167,7 +167,7 @@ const SyrupReport = () => {
             'Product': d.product,
             'Shift': d.shift,
             'Syrup Yield %': d.syrup_yield,
-            'Total Output': d.total_output,
+            'Total Output': d.total_bottles_produced,
         }));
         exportToExcel(exportData, `Syrup_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`);
     };
@@ -359,7 +359,7 @@ const SyrupReport = () => {
                                                                 {row.syrup_yield.toFixed(1)}%
                                                             </span>
                                                         </td>
-                                                        <td className="text-end">{(row.total_output || 0).toLocaleString()}</td>
+                                                        <td className="text-end">{(row.total_bottles_produced || 0).toLocaleString()}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -403,7 +403,7 @@ const SyrupReport = () => {
                                                     <td className="text-end fw-bold" style={{ color: yieldColor(row.syrup_yield) }}>
                                                         {row.syrup_yield.toFixed(1)}%
                                                     </td>
-                                                    <td className="text-end">{(row.total_output || 0).toLocaleString()}</td>
+                                                    <td className="text-end">{(row.total_bottles_produced || 0).toLocaleString()}</td>
                                                     <td className="text-end">
                                                         <span className={`badge bg-${yieldBadge(row.syrup_yield)}-subtle text-${yieldBadge(row.syrup_yield)}`}>
                                                             {row.syrup_yield >= 100 ? 'Excellent' : row.syrup_yield >= 95 ? 'Good' : 'Low'}

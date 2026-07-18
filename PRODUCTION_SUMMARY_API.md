@@ -34,7 +34,7 @@ GET /production/dashboard/production_summary/?start_date=2026-07-13&end_date=202
     },
 
     "summary": {
-      "total_output": 5700549,
+      "total_bottles_produced": 5700549,
       "total_bottles": 6120340,
       "total_packs": 254180,
       "oee": 82.4,
@@ -55,7 +55,7 @@ GET /production/dashboard/production_summary/?start_date=2026-07-13&end_date=202
     "daily_breakdown": [
       {
         "date": "2026-07-13",
-        "total_output": 2850000,
+        "total_bottles_produced": 2850000,
         "total_bottles": 3060000,
         "total_packs": 127500,
         "oee": 84.2,
@@ -77,7 +77,7 @@ GET /production/dashboard/production_summary/?start_date=2026-07-13&end_date=202
             "product_name": "Rush Energy Drink",
             "shift": "DAY",
             "status": "Completed",
-            "total_output": 520000,
+            "total_bottles_produced": 520000,
             "total_bottles": 548000,
             "total_packs": 21667,
             "oee": 86.5,
@@ -278,7 +278,7 @@ GET /production/dashboard/production_summary/?start_date=2026-07-13&end_date=202
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `total_output` | int | Finalized output (end of shift only) |
+| `total_bottles_produced` | int | Finalized output (end of shift only) |
 | `total_bottles` | float | Real-time bottle count |
 | `total_packs` | int | Packs produced |
 | `oee` | float | OEE % |
@@ -304,7 +304,7 @@ GET /production/dashboard/production_summary/?start_date=2026-07-13&end_date=202
 | `product_name` | string | Product on this line |
 | `shift` | string | Shift (DAY, NIGHT) |
 | `status` | string | Started / Completed |
-| `total_output` | int | Finalized output (0 if in-progress) |
+| `total_bottles_produced` | int | Finalized output (0 if in-progress) |
 | `total_bottles` | float | Live bottle count |
 | `total_packs` | int | Packs |
 | `oee` | float | OEE % (0 if in-progress) |
@@ -364,7 +364,7 @@ GET /production/dashboard/production_summary/?start_date=2026-07-13&end_date=202
 
 ## Notes
 
-- `total_output` = 0 for in-progress shifts. Only finalized at end of shift.
+- `total_bottles_produced` = 0 for in-progress shifts. Only finalized at end of shift.
 - `total_bottles` = live count available during shift.
 - `syrup_yield`, `co2_yield`, `oee` = 0 for in-progress shifts.
 - All percentages are 0–100. All durations are in minutes.

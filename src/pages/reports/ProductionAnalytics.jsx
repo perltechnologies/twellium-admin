@@ -102,7 +102,7 @@ const ProductionAnalytics = () => {
     const stats = useMemo(() => {
         const s = summaryData;
         return {
-            totalOutput: s.total_output || 0,
+            totalOutput: s.total_bottles_produced || 0,
             avgOee: s.oee || s.avg_efficiency || 0,
             avgAvail: s.avg_availability || 0,
             avgPerf: s.avg_performance || 0,
@@ -119,9 +119,9 @@ const ProductionAnalytics = () => {
         const petMap = {};
         defaultPets.forEach(p => { petMap[p] = 0; });
         dailyBreakdown.forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
-                petMap[name] = (petMap[name] || 0) + (p.total_output || 0);
+                petMap[name] = (petMap[name] || 0) + (p.total_bottles_produced || 0);
             });
         });
         return Object.entries(petMap).map(([name, value]) => ({ name, value })).filter(p => p.value > 0);
@@ -131,9 +131,9 @@ const ProductionAnalytics = () => {
     const outputByShift = useMemo(() => {
         const shiftMap = {};
         dailyBreakdown.forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const shift = p.shift || 'Unknown';
-                shiftMap[shift] = (shiftMap[shift] || 0) + (p.total_output || 0);
+                shiftMap[shift] = (shiftMap[shift] || 0) + (p.total_bottles_produced || 0);
             });
         });
         return Object.entries(shiftMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
@@ -142,7 +142,7 @@ const ProductionAnalytics = () => {
     // Daily output trend - show all dates in range, fill gaps with 0
     const dailyOutputData = useMemo(() => {
         const f = rawData?.filters;
-        if (!f?.start_date || !f?.end_date) return dailyBreakdown.map(day => ({ date: day.date.slice(5), output: day.total_output || 0, oee: day.oee || day.avg_efficiency || 0 }));
+        if (!f?.start_date || !f?.end_date) return dailyBreakdown.map(day => ({ date: day.date.slice(5), output: day.total_bottles_produced || 0, oee: day.oee || day.avg_efficiency || 0 }));
 
         // Generate all dates in the range
         const allDates = [];
@@ -164,7 +164,7 @@ const ProductionAnalytics = () => {
             const label = `${date.slice(5)} ${dayNames[d.getDay()]}`;
             return {
                 date: label,
-                output: day?.total_output || 0,
+                output: day?.total_bottles_produced || 0,
                 oee: day?.oee || day?.avg_efficiency || 0,
             };
         });
@@ -175,7 +175,7 @@ const ProductionAnalytics = () => {
         const petMap = {};
         defaultPets.forEach(p => { petMap[p] = { sum: 0, count: 0 }; });
         dailyBreakdown.forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { sum: 0, count: 0 };
                 petMap[name].sum += p.efficiency || p.oee || 0;
@@ -192,7 +192,7 @@ const ProductionAnalytics = () => {
         const petMap = {};
         defaultPets.forEach(p => { petMap[p] = 0; });
         dailyBreakdown.forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 petMap[name] = (petMap[name] || 0) + (p.total_downtime_minutes || 0);
             });
@@ -204,12 +204,12 @@ const ProductionAnalytics = () => {
     const tableData = useMemo(() => {
         const rows = [];
         dailyBreakdown.forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 rows.push({
                     Date: day.date,
                     'PET Line': normalizePet(p.pet_name),
                     Shift: p.shift || '-',
-                    Output: p.total_output || 0,
+                    Output: p.total_bottles_produced || 0,
                     OEE: `${(p.oee || 0).toFixed(1)}%`,
                     Availability: `${(p.availability || 0).toFixed(1)}%`,
                     Quality: `${(p.quality || 0).toFixed(1)}%`,

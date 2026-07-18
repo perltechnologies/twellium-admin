@@ -92,7 +92,7 @@ const CO2Report = () => {
         defaultPets.forEach(p => { petMap[p] = { pet: p, yieldSum: 0, count: 0, values: [] }; });
 
         (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { pet: name, yieldSum: 0, count: 0, values: [] };
                 const cy = p.co2_yield;
@@ -123,7 +123,7 @@ const CO2Report = () => {
         return days.map(day => {
             const row = { date: day.date.slice(5) };
             const petYields = {};
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (p.co2_yield !== null && p.co2_yield !== undefined && p.co2_yield > 0) {
                     if (!petYields[name]) petYields[name] = { sum: 0, count: 0 };
@@ -142,7 +142,7 @@ const CO2Report = () => {
     const tableData = useMemo(() => {
         const rows = [];
         (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).forEach(p => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 if (p.co2_yield !== null && p.co2_yield !== undefined && p.co2_yield > 0) {
                     rows.push({
                         date: day.date,
@@ -150,7 +150,7 @@ const CO2Report = () => {
                         product: p.product_name || '-',
                         shift: p.shift || '-',
                         co2_yield: p.co2_yield,
-                        total_output: p.total_output || 0,
+                        total_bottles_produced: p.total_bottles_produced || 0,
                     });
                 }
             });
@@ -165,7 +165,7 @@ const CO2Report = () => {
             'Product': d.product,
             'Shift': d.shift,
             'CO2 Yield %': d.co2_yield,
-            'Total Output': d.total_output,
+            'Total Output': d.total_bottles_produced,
         }));
         exportToExcel(exportData, `CO2_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`);
     };
@@ -357,7 +357,7 @@ const CO2Report = () => {
                                                                 {row.co2_yield.toFixed(1)}%
                                                             </span>
                                                         </td>
-                                                        <td className="text-end">{(row.total_output || 0).toLocaleString()}</td>
+                                                        <td className="text-end">{(row.total_bottles_produced || 0).toLocaleString()}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -401,7 +401,7 @@ const CO2Report = () => {
                                                     <td className="text-end fw-bold" style={{ color: yieldColor(row.co2_yield) }}>
                                                         {row.co2_yield.toFixed(1)}%
                                                     </td>
-                                                    <td className="text-end">{(row.total_output || 0).toLocaleString()}</td>
+                                                    <td className="text-end">{(row.total_bottles_produced || 0).toLocaleString()}</td>
                                                     <td className="text-end">
                                                         <span className={`badge bg-${yieldBadge(row.co2_yield)}-subtle text-${yieldBadge(row.co2_yield)}`}>
                                                             {row.co2_yield >= 95 ? 'Good' : row.co2_yield >= 90 ? 'Fair' : 'Low'}

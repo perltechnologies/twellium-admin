@@ -261,7 +261,7 @@ const ProductionList = () => {
                 let totalOutput = 0;
                 let totalDowntime = 0;
                 oeeEntries.forEach(([, val]) => {
-                    totalOutput += val?.total_output || 0;
+                    totalOutput += val?.total_bottles_produced || 0;
                     totalDowntime += val?.downtime || 0;
                 });
 
@@ -377,8 +377,8 @@ const ProductionList = () => {
             results.flat().forEach(r => {
                 const name = r.pet_name || 'Unknown';
                 if (!lineMap[name]) lineMap[name] = { name, bottles: 0, planned: 0, actual: 0 };
-                lineMap[name].bottles += r.total_output || 0;
-                lineMap[name].actual += r.total_output || 0;
+                lineMap[name].bottles += r.total_bottles_produced || 0;
+                lineMap[name].actual += r.total_bottles_produced || 0;
             });
 
             setChartReports(Object.values(lineMap).sort((a, b) => {

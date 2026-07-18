@@ -102,7 +102,7 @@ const MaterialReport = () => {
         defaultPets.forEach(name => { petMap[name] = { pet: name, totalUsed: 0, totalLosses: 0 }; });
 
         materials.forEach(m => {
-            (m.pets || []).forEach(p => {
+            (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 // Normalize pet name to "Pet X" format
                 const rawName = (p.pet_name || '').toLowerCase().trim();
                 const num = rawName.match(/pet\s*(\d+)/);
@@ -137,7 +137,7 @@ const MaterialReport = () => {
         if (!materials.length) return [];
         const rows = [];
         materials.forEach(m => {
-            (m.pets || []).forEach(p => {
+            (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 rows.push({
                     material: m.material_type_display || m.material_type,
                     material_type: m.material_type,

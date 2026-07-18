@@ -290,12 +290,12 @@ const Overview = () => {
                         .catch(() => [])
                 )
             );
-            // Aggregate total_output by PET from shift_pet_metrics
+            // Aggregate total_output by PET from shift_pet_metrics (using total_bottles like floor app)
             const shiftMetricsOutputByPet = {};
             shiftMetricsResults.flat().forEach(r => {
                 const name = r.pet_name || 'Unknown';
                 if (!shiftMetricsOutputByPet[name]) shiftMetricsOutputByPet[name] = 0;
-                shiftMetricsOutputByPet[name] += r.total_output || 0;
+                shiftMetricsOutputByPet[name] += r.total_bottles || r.total_bottles_produced || 0;
             });
             setShiftOutputByPet(shiftMetricsOutputByPet);
             
@@ -312,7 +312,7 @@ const Overview = () => {
                 availability: val?.availability_weighted_avg || 0,
                 performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
                 quality: val?.quality_weighted_avg || 0,
-                total_output: val?.total_output || 0,
+                total_output: val?.total_bottles_produced || 0,
                 downtime: val?.downtime || 0,
                 planned_downtime: val?.planned_downtime || 0,
                 mechanical_downtime: val?.mechanical_downtime || 0,
@@ -323,7 +323,7 @@ const Overview = () => {
             let totalDowntime = 0;
             let totalProduced = 0;
             oeeEntries.forEach(([, val]) => {
-                totalProduced += val?.total_output || 0;
+                totalProduced += val?.total_bottles_produced || 0;
                 totalDowntime += val?.downtime || 0;
             });
 
