@@ -7,20 +7,44 @@ const ProductionReportForm = () => {
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
+    const [pets, setPets] = useState([]);
+    const [selectedPet, setSelectedPet] = useState('');
     const [selectedDate, setSelectedDate] = useState(() => {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         return yesterday.toISOString().split('T')[0];
     });
 
-    const fetchData = async (date) => {
+    // Fetch available pets/lines (exclude can lines)
+    useEffect(() => {
+        const fetchPets = async () => {
+            try {
+                const res = await productionApi.getPets();
+                const petList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                const allPets = Array.isArray(petList) ? petList : petList.results || [];
+                setPets(
+                    allPets
+                        .filter(p => !p.pet_name?.toLowerCase().includes('can'))
+                        .sort((a, b) => {
+                            const numA = parseInt(a.pet_name?.match(/\d+/)?.[0]) || 0;
+                            const numB = parseInt(b.pet_name?.match(/\d+/)?.[0]) || 0;
+                            return numA - numB;
+                        })
+                );
+            } catch (err) {
+                console.error('Failed to fetch pets:', err);
+            }
+        };
+        fetchPets();
+    }, []);
+
+    const fetchData = async (date, petId) => {
         setLoading(true);
         setError(null);
         try {
-            const res = await productionApi.getProductionSummary({
-                start_date: date,
-                end_date: date,
-            });
+            const params = { start_date: date, end_date: date };
+            if (petId) params.pet = petId;
+            const res = await productionApi.getProductionSummary(params);
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             console.log('Production Summary Response:', envelope);
             setData(envelope);
@@ -33,8 +57,8 @@ const ProductionReportForm = () => {
     };
 
     useEffect(() => {
-        fetchData(selectedDate);
-    }, [selectedDate]);
+        fetchData(selectedDate, selectedPet);
+    }, [selectedDate, selectedPet]);
 
     const handlePrint = () => {
         window.print();
@@ -44,7 +68,7 @@ const ProductionReportForm = () => {
     const summary = data?.summary || {};
     const dailyBreakdown = data?.daily_breakdown || [];
     const dayData = dailyBreakdown.find(d => d.date === selectedDate) || dailyBreakdown[0] || {};
-    const allPets = dayData?.pets || [];
+    const allPets = (dayData?.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can'));
     const materials = data?.material_consumptions?.materials || [];
 
     // Group pets by line for a combined view (merge day + night for same pet)
@@ -71,7 +95,11 @@ const ProductionReportForm = () => {
             petsByLine[key].product_names.push(pet.product_name);
         }
     });
-    const lineRows = Object.values(petsByLine);
+    const lineRows = Object.values(petsByLine).sort((a, b) => {
+        const numA = parseInt(a.pet_name?.match(/\d+/)?.[0]) || 0;
+        const numB = parseInt(b.pet_name?.match(/\d+/)?.[0]) || 0;
+        return numA - numB;
+    });
 
     // Helper to find material by type
     const getMaterial = (type) => materials.find(m => m.material_type === type) || {};
@@ -105,6 +133,19 @@ const ProductionReportForm = () => {
                                 style={{ width: '160px' }}
                             />
                         </div>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedPet}
+                            onChange={(e) => setSelectedPet(e.target.value)}
+                            style={{ width: '160px' }}
+                        >
+                            <option value="">All Lines</option>
+                            {pets.map((pet) => (
+                                <option key={pet.id} value={pet.id}>
+                                    {pet.pet_name}
+                                </option>
+                            ))}
+                        </select>
                         <button
                             className="btn btn-primary d-flex align-items-center gap-2"
                             onClick={handlePrint}
@@ -157,18 +198,18 @@ const ProductionReportForm = () => {
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Date</td>
                                         <td className="input-cell" style={{ width: '20%' }}>{dayData.date || selectedDate}</td>
-                                        <td className="label-cell" style={{ width: '15%' }}>Total Units (Bottles)</td>
-                                        <td className="input-cell" style={{ width: '15%' }}>{fmt(summary.total_bottles)}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Line</td>
+                                        <td className="input-cell" style={{ width: '15%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
                                         <td className="label-cell" style={{ width: '15%' }}>Total Reports</td>
                                         <td className="input-cell" style={{ width: '20%' }}>{summary.total_reports || dayData.report_count || ''}</td>
                                     </tr>
                                     <tr>
+                                        <td className="label-cell">Total Units (Bottles)</td>
+                                        <td className="input-cell">{fmt(summary.total_bottles)}</td>
                                         <td className="label-cell">Total Packs</td>
                                         <td className="input-cell">{fmt(summary.total_packs)}</td>
                                         <td className="label-cell">Efficiency</td>
                                         <td className="input-cell">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
-                                        <td className="label-cell">Bottles Produced</td>
-                                        <td className="input-cell">{fmt(summary.total_bottles_produced)}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
@@ -213,6 +254,7 @@ const ProductionReportForm = () => {
                             </table>
 
                             {/* Production by Line */}
+                            {!selectedPet && (
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
@@ -249,6 +291,66 @@ const ProductionReportForm = () => {
                                     )}
                                 </tbody>
                             </table>
+                            )}
+
+                            {/* Detailed Pet/Line Info (when a specific pet is selected) */}
+                            {selectedPet && allPets.length > 0 && (
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={6}>Line Detail — {pets.find(p => String(p.id) === String(selectedPet))?.pet_name || ''}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td className="label-cell">Product</td>
+                                        <td className="input-cell" colSpan={2}>{allPets.map(p => p.product_name).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ')}</td>
+                                        <td className="label-cell">Status</td>
+                                        <td className="input-cell" colSpan={2}>{allPets.map(p => p.status).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Total Bottles</td>
+                                        <td className="input-cell">{fmt(summary.total_bottles)}</td>
+                                        <td className="label-cell">Total Packs</td>
+                                        <td className="input-cell">{fmt(summary.total_packs)}</td>
+                                        <td className="label-cell">Bottles Produced</td>
+                                        <td className="input-cell">{fmt(summary.total_bottles_produced)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">OEE</td>
+                                        <td className="input-cell">{summary.oee ? `${summary.oee}%` : ''}</td>
+                                        <td className="label-cell">Efficiency</td>
+                                        <td className="input-cell">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
+                                        <td className="label-cell">Availability</td>
+                                        <td className="input-cell">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Performance</td>
+                                        <td className="input-cell">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
+                                        <td className="label-cell">Quality</td>
+                                        <td className="input-cell">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
+                                        <td className="label-cell">Target Met</td>
+                                        <td className="input-cell">{summary.target_met_count || ''}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Syrup Yield</td>
+                                        <td className="input-cell">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
+                                        <td className="label-cell">CO2 Yield</td>
+                                        <td className="input-cell">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
+                                        <td className="label-cell">Stoppage Reports</td>
+                                        <td className="input-cell">{summary.total_stoppage_reports || ''}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Total Downtime (min)</td>
+                                        <td className="input-cell">{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
+                                        <td className="label-cell">Planned (min)</td>
+                                        <td className="input-cell">{fmt(summary.planned_downtime_mins)}</td>
+                                        <td className="label-cell">Mechanical (min)</td>
+                                        <td className="input-cell">{fmt(summary.mechanical_downtime_mins)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            )}
 
                             {/* Materials Consumption Section */}
                             <table className="form-table section-table">
