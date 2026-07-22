@@ -74,7 +74,11 @@ const ProductionReportForm = () => {
     }, [selectedDate, selectedPet, selectedShift]);
 
     const handlePrint = () => {
+        const prevTitle = document.title;
+        const petLabel = selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines';
+        document.title = `Production Report - ${selectedDate} - ${petLabel}`;
         window.print();
+        document.title = prevTitle;
     };
 
     // Full day combined data from summary
@@ -203,6 +207,7 @@ const ProductionReportForm = () => {
                             {/* Form Header */}
                             <div className="form-header">
                                 <div className="header-left">
+                                    <img src="/logo.jpeg" alt="Twellium" className="print-logo" />
                                     <h5 className="company-name">TWELLIUM INDUSTRIAL COMPANY LTD.</h5>
                                 </div>
                                 <div className="header-center">
@@ -228,6 +233,14 @@ const ProductionReportForm = () => {
                                         <td className="input-cell" style={{ width: '15%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
                                         <td className="label-cell" style={{ width: '15%' }}>Total Reports</td>
                                         <td className="input-cell" style={{ width: '20%' }}>{summary.total_reports || dayData.report_count || ''}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Production Start Time</td>
+                                        <td className="input-cell"></td>
+                                        <td className="label-cell">Production End Time</td>
+                                        <td className="input-cell"></td>
+                                        <td className="label-cell">Total Production Time (Hrs)</td>
+                                        <td className="input-cell"></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Units (Bottles)</td>

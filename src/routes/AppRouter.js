@@ -76,6 +76,8 @@ const ShiftMetricsByCode = React.lazy(() => import('../pages/production/ShiftMet
 const CreateReport = React.lazy(() => import('../pages/production/CreateReport'));
 const WorkerList = React.lazy(() => import('../pages/production/WorkerList'));
 const ProductionReportForm = React.lazy(() => import('../pages/sign-off-forms/ProductionReportForm'));
+const ProductionRunByPet = React.lazy(() => import('../pages/sign-off-forms/ProductionRunByPet'));
+const BatchReport = React.lazy(() => import('../pages/sign-off-forms/BatchReport'));
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useAuth();
@@ -436,6 +438,8 @@ export const AppRouter = () => {
                             {/* Sign Off Forms */}
                             <Route path="sign-off-forms">
                                 <Route path="production-report" element={<ProductionReportForm />} />
+                                <Route path="production-run-by-pet" element={<ProductionRunByPet />} />
+                                <Route path="batch-report" element={<BatchReport />} />
                             </Route>
                         </Route>
 

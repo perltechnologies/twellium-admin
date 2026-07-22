@@ -1113,6 +1113,12 @@ h6 { font-size: 0.875rem; }
     margin: 0;
 }
 
+.production-report-form .header-left .print-logo {
+    width: 60px;
+    height: auto;
+    margin-bottom: 4px;
+}
+
 .production-report-form .header-center .report-title {
     font-size: 16px;
     font-weight: bold;
@@ -1286,12 +1292,15 @@ h6 { font-size: 0.875rem; }
     .no-print,
     .sidebar,
     .topbar,
+    .topbar-menu,
     .header,
+    .navbar-header,
     .page-header,
     #toggle_btn,
     .sidebar-toggle-btn,
     nav,
-    .breadcrumb {
+    .breadcrumb,
+    .footer {
         display: none !important;
     }
 
@@ -1342,7 +1351,7 @@ h6 { font-size: 0.875rem; }
     }
 
     @page {
-        size: A4 landscape;
+        size: A4 portrait;
         margin: 10mm;
     }
 }
