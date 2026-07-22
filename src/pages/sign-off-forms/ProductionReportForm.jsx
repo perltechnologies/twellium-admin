@@ -8,14 +8,16 @@ const ProductionReportForm = () => {
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [pets, setPets] = useState([]);
+    const [shifts, setShifts] = useState([]);
     const [selectedPet, setSelectedPet] = useState('');
+    const [selectedShift, setSelectedShift] = useState('');
     const [selectedDate, setSelectedDate] = useState(() => {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         return yesterday.toISOString().split('T')[0];
     });
 
-    // Fetch available pets/lines (exclude can lines)
+    // Fetch available pets/lines (exclude can lines) and shifts
     useEffect(() => {
         const fetchPets = async () => {
             try {
@@ -35,15 +37,26 @@ const ProductionReportForm = () => {
                 console.error('Failed to fetch pets:', err);
             }
         };
+        const fetchShifts = async () => {
+            try {
+                const res = await productionApi.getShifts();
+                const shiftList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                setShifts(Array.isArray(shiftList) ? shiftList : shiftList.results || []);
+            } catch (err) {
+                console.error('Failed to fetch shifts:', err);
+            }
+        };
         fetchPets();
+        fetchShifts();
     }, []);
 
-    const fetchData = async (date, petId) => {
+    const fetchData = async (date, petId, shiftId) => {
         setLoading(true);
         setError(null);
         try {
             const params = { start_date: date, end_date: date };
             if (petId) params.pet = petId;
+            if (shiftId) params.shift = shiftId;
             const res = await productionApi.getProductionSummary(params);
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             console.log('Production Summary Response:', envelope);
@@ -57,8 +70,8 @@ const ProductionReportForm = () => {
     };
 
     useEffect(() => {
-        fetchData(selectedDate, selectedPet);
-    }, [selectedDate, selectedPet]);
+        fetchData(selectedDate, selectedPet, selectedShift);
+    }, [selectedDate, selectedPet, selectedShift]);
 
     const handlePrint = () => {
         window.print();
@@ -143,6 +156,19 @@ const ProductionReportForm = () => {
                             {pets.map((pet) => (
                                 <option key={pet.id} value={pet.id}>
                                     {pet.pet_name}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedShift}
+                            onChange={(e) => setSelectedShift(e.target.value)}
+                            style={{ width: '140px' }}
+                        >
+                            <option value="">All Shifts</option>
+                            {shifts.map((shift) => (
+                                <option key={shift.id} value={shift.id}>
+                                    {shift.name}
                                 </option>
                             ))}
                         </select>
