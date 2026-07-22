@@ -75,6 +75,7 @@ const ProductForm = React.lazy(() => import('../pages/inventory/ProductForm'));
 const ShiftMetricsByCode = React.lazy(() => import('../pages/production/ShiftMetricsByCode'));
 const CreateReport = React.lazy(() => import('../pages/production/CreateReport'));
 const WorkerList = React.lazy(() => import('../pages/production/WorkerList'));
+const ProductionReportForm = React.lazy(() => import('../pages/sign-off-forms/ProductionReportForm'));
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useAuth();
@@ -324,11 +325,22 @@ export const AppRouter = () => {
                                             columns={[
                                                 { header: 'ID', accessor: 'id' },
                                                 { header: 'Pet Name', accessor: 'pet_name' },
-                                                { header: 'Speedline', accessor: 'speedline' },
+                                                { 
+                                                    header: 'Line Speeds', 
+                                                    accessor: 'line_speeds',
+                                                    render: (row) => {
+                                                        const speeds = row.line_speeds || [];
+                                                        if (!speeds.length) return <span className="text-muted">—</span>;
+                                                        return speeds.map(ls => (
+                                                            <span key={ls.id} className="badge bg-soft-primary text-primary me-1">
+                                                                {ls.name}: {ls.speed}
+                                                            </span>
+                                                        ));
+                                                    }
+                                                },
                                             ]}
                                             formFields={[
                                                 { name: 'pet_name', label: 'Pet Name', required: true },
-                                                { name: 'speedline', label: 'Speedline', type: 'number', step: '0.01', required: true }
                                             ]}
                                             showStats={true}
                                         />
@@ -419,6 +431,11 @@ export const AppRouter = () => {
                                 <Route path="preform-sizes" element={<PreformSizes />} />
                                 <Route path="cage-quantities" element={<CageQuantities />} />
                                 <Route path="cap-box-quantities" element={<CapBoxQuantities />} />
+                            </Route>
+
+                            {/* Sign Off Forms */}
+                            <Route path="sign-off-forms">
+                                <Route path="production-report" element={<ProductionReportForm />} />
                             </Route>
                         </Route>
 

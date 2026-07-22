@@ -1081,3 +1081,268 @@ h6 { font-size: 0.875rem; }
     transform: none;
   }
 }
+
+/* ===== Production Report Sign-Off Form Styles ===== */
+.print-form-container {
+    background: #fff;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.production-report-form {
+    font-family: 'Arial', sans-serif;
+    font-size: 11px;
+    color: #000;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.production-report-form .form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #000;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+}
+
+.production-report-form .header-left .company-name {
+    font-size: 12px;
+    font-weight: bold;
+    margin: 0;
+}
+
+.production-report-form .header-center .report-title {
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    margin: 0;
+}
+
+.production-report-form .header-right .header-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-size: 10px;
+    line-height: 1.5;
+}
+
+.production-report-form .header-right .doc-ref {
+    font-weight: bold;
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+.production-report-form .line-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.production-report-form .line-row .field-line {
+    flex: 1;
+    border-bottom: 1px solid #000;
+    min-height: 20px;
+    max-width: 200px;
+}
+
+.production-report-form .form-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.production-report-form .form-table td,
+.production-report-form .form-table th {
+    border: 1px solid #333;
+    padding: 5px 6px;
+    vertical-align: middle;
+    font-size: 10.5px;
+}
+
+.production-report-form .form-table .label-cell {
+    font-weight: bold;
+    background-color: #f5f5f5;
+    white-space: nowrap;
+}
+
+.production-report-form .form-table .input-cell {
+    min-height: 22px;
+    min-width: 60px;
+}
+
+.production-report-form .form-table .unit-cell {
+    text-align: center;
+    font-weight: 600;
+    background-color: #f9f9f9;
+    width: 50px;
+}
+
+.production-report-form .section-table .section-header-row th {
+    background-color: #e8e8e8;
+    font-weight: bold;
+    text-align: center;
+    font-size: 11px;
+    padding: 6px;
+}
+
+.production-report-form .section-table .section-label {
+    text-align: left !important;
+}
+
+.production-report-form .section-table .sub-header-row th {
+    background-color: #f0f0f0;
+    font-weight: bold;
+    text-align: center;
+    font-size: 10.5px;
+}
+
+.production-report-form .shift-options {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.production-report-form .checkbox-box {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid #000;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+.production-report-form .meters-table td {
+    padding: 4px 6px;
+}
+
+.production-report-form .meter-field {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.production-report-form .meter-label {
+    font-size: 10px;
+    white-space: nowrap;
+}
+
+.production-report-form .meter-value {
+    flex: 1;
+    border-bottom: 1px dotted #999;
+    min-height: 16px;
+    min-width: 40px;
+}
+
+.production-report-form .sign-off-section {
+    margin-top: 20px;
+    border-top: 1px solid #333;
+    padding-top: 16px;
+}
+
+.production-report-form .sign-off-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 40px;
+    margin-bottom: 12px;
+}
+
+.production-report-form .sign-off-field {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.production-report-form .sign-off-field label {
+    font-weight: bold;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.production-report-form .sign-off-field .sign-line {
+    flex: 1;
+    border-bottom: 1px solid #000;
+    min-height: 24px;
+}
+
+.production-report-form .form-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 16px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 10px;
+    color: #555;
+}
+
+/* ===== Print Styles ===== */
+@media print {
+    /* Hide everything except the form */
+    .no-print,
+    .sidebar,
+    .topbar,
+    .header,
+    .page-header,
+    #toggle_btn,
+    .sidebar-toggle-btn,
+    nav,
+    .breadcrumb {
+        display: none !important;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+        background: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .page-wrapper {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .page-wrapper .content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    .print-form-container {
+        box-shadow: none;
+        padding: 0;
+        border-radius: 0;
+    }
+
+    .production-report-form {
+        max-width: 100%;
+    }
+
+    .production-report-form .form-table .label-cell {
+        background-color: #f5f5f5 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .production-report-form .section-table .section-header-row th {
+        background-color: #e8e8e8 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .production-report-form .section-table .sub-header-row th {
+        background-color: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    @page {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+}

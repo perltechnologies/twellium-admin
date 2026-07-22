@@ -93,6 +93,19 @@ const navigation = [
             ],
         },
         {
+            section: 'Sign Off Forms',
+            items: [
+                {
+                    name: 'Sign Off Forms',
+                    icon: 'ti-clipboard-check',
+                    key: 'sign-off-forms',
+                    submenu: [
+                        { name: 'Production Report', path: '/dashboard/sign-off-forms/production-report' },
+                    ],
+                },
+            ],
+        },
+        {
             section: 'User Management',
             items: [
                 { name: 'Manage Users', icon: 'ti-users', path: '/dashboard/users' },
