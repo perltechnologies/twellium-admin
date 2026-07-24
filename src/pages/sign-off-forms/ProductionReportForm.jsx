@@ -11,6 +11,7 @@ const ProductionReportForm = () => {
     const [shifts, setShifts] = useState([]);
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedShift, setSelectedShift] = useState('');
+    const [selectedProduct, setSelectedProduct] = useState('');
     const [selectedDate, setSelectedDate] = useState(() => {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
@@ -85,7 +86,11 @@ const ProductionReportForm = () => {
     const summary = data?.summary || {};
     const dailyBreakdown = data?.daily_breakdown || [];
     const dayData = dailyBreakdown.find(d => d.date === selectedDate) || dailyBreakdown[0] || {};
-    const allPets = (dayData?.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can'));
+    const allPetsUnfiltered = (dayData?.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can'));
+    const allPets = selectedProduct
+        ? allPetsUnfiltered.filter(p => p.product_name === selectedProduct)
+        : allPetsUnfiltered;
+    const productNames = [...new Set(allPetsUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
     const materials = data?.material_consumptions?.materials || [];
 
     // Meters reading data
@@ -205,6 +210,19 @@ const ProductionReportForm = () => {
                                 </option>
                             ))}
                         </select>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedProduct}
+                            onChange={(e) => setSelectedProduct(e.target.value)}
+                            style={{ width: '170px' }}
+                        >
+                            <option value="">All Products</option>
+                            {productNames.map((prod) => (
+                                <option key={prod} value={prod}>
+                                    {prod}
+                                </option>
+                            ))}
+                        </select>
                         <button
                             className="btn btn-primary d-flex align-items-center gap-2"
                             onClick={handlePrint}
@@ -258,16 +276,16 @@ const ProductionReportForm = () => {
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Date</td>
                                         <td className="input-cell numeric" style={{ width: '20%' }}>{dayData.date || selectedDate}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Shift</td>
+                                        <td className="input-cell" style={{ width: '15%' }}>{selectedShift ? shifts.find(s => String(s.id) === String(selectedShift))?.name || '' : 'All Shifts'}</td>
                                         <td className="label-cell" style={{ width: '15%' }}>Line</td>
-                                        <td className="input-cell" style={{ width: '15%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
-                                        <td className="label-cell" style={{ width: '15%' }}>Total Reports</td>
-                                        <td className="input-cell numeric" style={{ width: '20%' }}>{summary.total_reports || dayData.report_count || ''}</td>
+                                        <td className="input-cell" style={{ width: '20%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Production Start Time</td>
-                                        <td className="input-cell numeric">{summary.production_start_time || ''}</td>
+                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (summary.production_start_time || '')}</td>
                                         <td className="label-cell">Production End Time</td>
-                                        <td className="input-cell numeric">{summary.production_end_time || ''}</td>
+                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (summary.production_end_time || '')}</td>
                                         <td className="label-cell">Total Production Time (Hrs)</td>
                                         <td className="input-cell numeric">{summary.total_production_time_hrs != null ? summary.total_production_time_hrs : ''}</td>
                                     </tr>
@@ -276,8 +294,8 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
                                         <td className="label-cell">Total Packs</td>
                                         <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
-                                        <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
+                                        <td className="label-cell">Total Reports</td>
+                                        <td className="input-cell numeric">{summary.total_reports || dayData.report_count || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
@@ -290,8 +308,8 @@ const ProductionReportForm = () => {
                                     <tr>
                                         <td className="label-cell">Workers</td>
                                         <td className="input-cell numeric">{summary.worker_count || ''}</td>
-                                        <td className="label-cell">Paid Hours</td>
-                                        <td className="input-cell numeric">{summary.paid_hours != null ? summary.paid_hours : ''}</td>
+                                        <td className="label-cell">Efficiency</td>
+                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
                                         <td className="label-cell">Stoppage Reports</td>
                                         <td className="input-cell numeric">{summary.total_stoppage_reports || ''}</td>
                                     </tr>
@@ -488,13 +506,13 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading (Kg):</span>
-                                                <span className="meter-value numeric">{co2Meters.start_reading_kg != null ? fmt(co2Meters.start_reading_kg, 1) : ''}</span>
+                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (co2Meters.start_reading_kg != null ? fmt(co2Meters.start_reading_kg, 1) : '')}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading:</span>
-                                                <span className="meter-value numeric">{syrupMeters.start_reading != null ? fmt(syrupMeters.start_reading, 1) : ''}</span>
+                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.start_reading != null ? fmt(syrupMeters.start_reading, 1) : '')}</span>
                                             </div>
                                         </td>
                                         <td>
@@ -508,13 +526,13 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading (Kg):</span>
-                                                <span className="meter-value numeric">{co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg, 1) : ''}</span>
+                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg, 1) : '')}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading:</span>
-                                                <span className="meter-value numeric">{syrupMeters.end_reading != null ? fmt(syrupMeters.end_reading, 1) : ''}</span>
+                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.end_reading != null ? fmt(syrupMeters.end_reading, 1) : '')}</span>
                                             </div>
                                         </td>
                                         <td>
