@@ -200,11 +200,11 @@ const ProductionRunByPet = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '8%' }}>Date</td>
-                                        <td className="input-cell" style={{ width: '25%' }}>{formatDateRange()}</td>
+                                        <td className="input-cell numeric" style={{ width: '25%' }}>{formatDateRange()}</td>
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
-                                        <td className="input-cell" style={{ width: '10%' }}></td>
+                                        <td className="input-cell numeric" style={{ width: '10%' }}></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
-                                        <td className="input-cell" style={{ width: '12%' }}>{fmt(summary.total_bottles)}</td>
+                                        <td className="input-cell numeric" style={{ width: '12%' }}>{fmt(summary.total_bottles)}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shift</td>
@@ -242,11 +242,11 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Btls/Hr</td>
-                                        <td className="input-cell">{totalBtlsPerHr ? fmt(totalBtlsPerHr) : ''}</td>
+                                        <td className="input-cell numeric">{totalBtlsPerHr ? fmt(totalBtlsPerHr) : ''}</td>
                                         <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
                                         <td className="label-cell">Total (Lts)</td>
-                                        <td className="input-cell"></td>
+                                        <td className="input-cell numeric"></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -265,12 +265,12 @@ const ProductionRunByPet = () => {
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td className="input-cell"></td>
-                                        <td className="input-cell">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
-                                        <td className="input-cell">{fmt(summary.total_bottles_produced || summary.total_packs)}</td>
-                                        <td className="input-cell"></td>
-                                        <td className="input-cell"></td>
-                                        <td className="input-cell">{fmt(summary.total_packs)}</td>
+                                        <td className="input-cell numeric"></td>
+                                        <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced || summary.total_packs)}</td>
+                                        <td className="input-cell numeric"></td>
+                                        <td className="input-cell numeric"></td>
+                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -283,7 +283,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell" style={{ width: '15%' }}><strong>Time</strong></td>
                                         <td className="input-cell" style={{ width: '20%' }}></td>
                                         <td className="label-cell" style={{ width: '15%' }}><strong>Workers</strong></td>
-                                        <td className="input-cell" style={{ width: '20%' }}></td>
+                                        <td className="input-cell numeric" style={{ width: '20%' }}>{summary.worker_count || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
@@ -302,7 +302,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
-                                        <td className="input-cell" colSpan={2}>{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
+                                        <td className="input-cell numeric" colSpan={2}>{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
                                         <td className="input-cell" colSpan={2}></td>
                                     </tr>
                                     <tr>
@@ -346,12 +346,12 @@ const ProductionRunByPet = () => {
                                             <tr key={type}>
                                                 <td className="label-cell">{label}</td>
                                                 <td className="unit-cell">{mat.unit || defaultUnit}</td>
-                                                <td className="input-cell"></td>
-                                                <td className="input-cell"></td>
-                                                <td className="input-cell">{fmt(mat.total_used)}</td>
-                                                <td className="input-cell"></td>
-                                                <td className="input-cell">{fmt(mat.total_losses)}</td>
-                                                <td className="input-cell">{lossPercent ? `${lossPercent}%` : ''}</td>
+                                                <td className="input-cell numeric"></td>
+                                                <td className="input-cell numeric"></td>
+                                                <td className="input-cell numeric">{fmt(mat.total_used)}</td>
+                                                <td className="input-cell numeric"></td>
+                                                <td className="input-cell numeric">{fmt(mat.total_losses)}</td>
+                                                <td className="input-cell numeric">{lossPercent ? `${lossPercent}%` : ''}</td>
                                             </tr>
                                         );
                                     })}
@@ -422,13 +422,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/l:</span>
-                                                <span className="meter-value">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</span>
+                                                <span className="meter-value numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/Btl:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric"></span>
                                             </div>
                                         </td>
                                         <td></td>

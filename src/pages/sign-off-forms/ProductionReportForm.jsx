@@ -88,6 +88,30 @@ const ProductionReportForm = () => {
     const allPets = (dayData?.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can'));
     const materials = data?.material_consumptions?.materials || [];
 
+    // Meters reading data
+    const metersReading = data?.meters_reading || {};
+    const co2Meters = metersReading.co2 || {};
+    const syrupMeters = metersReading.syrup || {};
+    const productionMeters = metersReading.production || {};
+
+    // Build downtime per pet from downtime_breakdown categories
+    const downtimeByPet = {};
+    (data?.downtime_breakdown?.categories || []).forEach(cat => {
+        (cat.sub_categories || []).forEach(sub => {
+            (sub.pets_affected || []).forEach(pa => {
+                const key = pa.pet_id || pa.pet_name;
+                if (!downtimeByPet[key]) downtimeByPet[key] = 0;
+                downtimeByPet[key] += (pa.duration_mins || 0);
+            });
+        });
+        // Also check if pets_affected is directly on category
+        (cat.pets_affected || []).forEach(pa => {
+            const key = pa.pet_id || pa.pet_name;
+            if (!downtimeByPet[key]) downtimeByPet[key] = 0;
+            downtimeByPet[key] += (pa.duration_mins || 0);
+        });
+    });
+
     // Group pets by line for a combined view (merge day + night for same pet)
     const petsByLine = {};
     allPets.forEach(pet => {
@@ -99,12 +123,17 @@ const ProductionReportForm = () => {
                 total_bottles: 0,
                 total_packs: 0,
                 total_downtime_mins: 0,
+                planned_downtime_mins: 0,
+                mechanical_downtime_mins: 0,
                 shifts: [],
             };
         }
         petsByLine[key].total_bottles += (pet.total_bottles || 0);
         petsByLine[key].total_packs += (pet.total_packs || 0);
-        petsByLine[key].total_downtime_mins += (pet.total_downtime_mins || 0);
+        petsByLine[key].planned_downtime_mins += (pet.planned_downtime_mins || 0);
+        petsByLine[key].mechanical_downtime_mins += (pet.mechanical_downtime_mins || 0);
+        // total_downtime_mins is always the sum of planned + mechanical for consistency
+        petsByLine[key].total_downtime_mins = petsByLine[key].planned_downtime_mins + petsByLine[key].mechanical_downtime_mins;
         if (pet.shift && !petsByLine[key].shifts.includes(pet.shift)) {
             petsByLine[key].shifts.push(pet.shift);
         }
@@ -228,40 +257,46 @@ const ProductionReportForm = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Date</td>
-                                        <td className="input-cell" style={{ width: '20%' }}>{dayData.date || selectedDate}</td>
+                                        <td className="input-cell numeric" style={{ width: '20%' }}>{dayData.date || selectedDate}</td>
                                         <td className="label-cell" style={{ width: '15%' }}>Line</td>
                                         <td className="input-cell" style={{ width: '15%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
                                         <td className="label-cell" style={{ width: '15%' }}>Total Reports</td>
-                                        <td className="input-cell" style={{ width: '20%' }}>{summary.total_reports || dayData.report_count || ''}</td>
+                                        <td className="input-cell numeric" style={{ width: '20%' }}>{summary.total_reports || dayData.report_count || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Production Start Time</td>
-                                        <td className="input-cell"></td>
+                                        <td className="input-cell numeric">{summary.production_start_time || ''}</td>
                                         <td className="label-cell">Production End Time</td>
-                                        <td className="input-cell"></td>
+                                        <td className="input-cell numeric">{summary.production_end_time || ''}</td>
                                         <td className="label-cell">Total Production Time (Hrs)</td>
-                                        <td className="input-cell"></td>
+                                        <td className="input-cell numeric">{summary.total_production_time_hrs != null ? summary.total_production_time_hrs : ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Units (Bottles)</td>
-                                        <td className="input-cell">{fmt(summary.total_bottles)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
                                         <td className="label-cell">Total Packs</td>
-                                        <td className="input-cell">{fmt(summary.total_packs)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
                                         <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
-                                        <td className="input-cell">{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))}</td>
                                         <td className="label-cell">Planned Downtime (min)</td>
-                                        <td className="input-cell">{fmt(summary.planned_downtime_mins)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.planned_downtime_mins)}</td>
                                         <td className="label-cell">Mechanical Downtime (min)</td>
-                                        <td className="input-cell">{fmt(summary.mechanical_downtime_mins)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Workers</td>
+                                        <td className="input-cell numeric">{summary.worker_count || ''}</td>
+                                        <td className="label-cell">Paid Hours</td>
+                                        <td className="input-cell numeric">{summary.paid_hours != null ? summary.paid_hours : ''}</td>
+                                        <td className="label-cell">Stoppage Reports</td>
+                                        <td className="input-cell numeric">{summary.total_stoppage_reports || ''}</td>
                                     </tr>
                                 </tbody>
                             </table>
-
-                            {/* Performance Summary */}
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
@@ -271,23 +306,23 @@ const ProductionReportForm = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell">OEE</td>
-                                        <td className="input-cell">{summary.oee ? `${summary.oee}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.oee ? `${summary.oee}%` : ''}</td>
                                         <td className="label-cell">Availability</td>
-                                        <td className="input-cell">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
                                         <td className="label-cell">Performance</td>
-                                        <td className="input-cell">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
                                         <td className="label-cell">Quality</td>
-                                        <td className="input-cell">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Syrup Yield</td>
-                                        <td className="input-cell">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
                                         <td className="label-cell">CO2 Yield</td>
-                                        <td className="input-cell">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
                                         <td className="label-cell">Bottles Produced</td>
-                                        <td className="input-cell">{fmt(summary.total_bottles_produced)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced)}</td>
                                         <td className="label-cell">Target Met</td>
-                                        <td className="input-cell">{summary.target_met_count || ''}</td>
+                                        <td className="input-cell numeric">{summary.target_met_count || ''}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -301,6 +336,8 @@ const ProductionReportForm = () => {
                                         <th>Product</th>
                                         <th>Total Bottles</th>
                                         <th>Total Packs</th>
+                                        <th>Planned (min)</th>
+                                        <th>Mechanical (min)</th>
                                         <th>Downtime (min)</th>
                                     </tr>
                                 </thead>
@@ -309,13 +346,15 @@ const ProductionReportForm = () => {
                                         <tr key={idx}>
                                             <td className="label-cell">{line.pet_name}</td>
                                             <td className="input-cell">{line.product_names.join(', ')}</td>
-                                            <td className="input-cell">{fmt(line.total_bottles)}</td>
-                                            <td className="input-cell">{fmt(line.total_packs)}</td>
-                                            <td className="input-cell">{fmt(line.total_downtime_mins)}</td>
+                                            <td className="input-cell numeric">{fmt(line.total_bottles)}</td>
+                                            <td className="input-cell numeric">{fmt(line.total_packs)}</td>
+                                            <td className="input-cell numeric">{fmt(line.planned_downtime_mins)}</td>
+                                            <td className="input-cell numeric">{fmt(line.mechanical_downtime_mins)}</td>
+                                            <td className="input-cell numeric">{fmt(line.total_downtime_mins)}</td>
                                         </tr>
                                     )) : (
                                         <tr>
-                                            <td colSpan={5} className="input-cell text-center">No line data available</td>
+                                            <td colSpan={7} className="input-cell text-center">No line data available</td>
                                         </tr>
                                     )}
                                     {/* Totals row */}
@@ -323,9 +362,11 @@ const ProductionReportForm = () => {
                                         <tr className="fw-bold">
                                             <td className="label-cell">TOTAL</td>
                                             <td className="input-cell"></td>
-                                            <td className="input-cell">{fmt(summary.total_bottles)}</td>
-                                            <td className="input-cell">{fmt(summary.total_packs)}</td>
-                                            <td className="input-cell">{fmt(summary.total_downtime_mins)}</td>
+                                            <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
+                                            <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
+                                            <td className="input-cell numeric">{fmt(lineRows.reduce((s, l) => s + l.planned_downtime_mins, 0))}</td>
+                                            <td className="input-cell numeric">{fmt(lineRows.reduce((s, l) => s + l.mechanical_downtime_mins, 0))}</td>
+                                            <td className="input-cell numeric">{fmt(lineRows.reduce((s, l) => s + l.total_downtime_mins, 0))}</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -349,43 +390,43 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Bottles</td>
-                                        <td className="input-cell">{fmt(summary.total_bottles)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
                                         <td className="label-cell">Total Packs</td>
-                                        <td className="input-cell">{fmt(summary.total_packs)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
                                         <td className="label-cell">Bottles Produced</td>
-                                        <td className="input-cell">{fmt(summary.total_bottles_produced)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced)}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">OEE</td>
-                                        <td className="input-cell">{summary.oee ? `${summary.oee}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.oee ? `${summary.oee}%` : ''}</td>
                                         <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
                                         <td className="label-cell">Availability</td>
-                                        <td className="input-cell">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Performance</td>
-                                        <td className="input-cell">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
                                         <td className="label-cell">Quality</td>
-                                        <td className="input-cell">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
                                         <td className="label-cell">Target Met</td>
-                                        <td className="input-cell">{summary.target_met_count || ''}</td>
+                                        <td className="input-cell numeric">{summary.target_met_count || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Syrup Yield</td>
-                                        <td className="input-cell">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
                                         <td className="label-cell">CO2 Yield</td>
-                                        <td className="input-cell">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
+                                        <td className="input-cell numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
                                         <td className="label-cell">Stoppage Reports</td>
-                                        <td className="input-cell">{summary.total_stoppage_reports || ''}</td>
+                                        <td className="input-cell numeric">{summary.total_stoppage_reports || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
-                                        <td className="input-cell">{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))}</td>
                                         <td className="label-cell">Planned (min)</td>
-                                        <td className="input-cell">{fmt(summary.planned_downtime_mins)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.planned_downtime_mins)}</td>
                                         <td className="label-cell">Mechanical (min)</td>
-                                        <td className="input-cell">{fmt(summary.mechanical_downtime_mins)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -421,9 +462,9 @@ const ProductionReportForm = () => {
                                             <tr key={type}>
                                                 <td className="label-cell" colSpan={2}>{label}</td>
                                                 <td className="unit-cell">{mat.unit || defaultUnit}</td>
-                                                <td className="input-cell">{fmt(mat.total_used)}</td>
-                                                <td className="input-cell">{fmt(mat.total_losses)}</td>
-                                                <td className="input-cell">{lossPercent ? `${lossPercent}%` : ''}</td>
+                                                <td className="input-cell numeric">{fmt(mat.total_used)}</td>
+                                                <td className="input-cell numeric">{fmt(mat.total_losses)}</td>
+                                                <td className="input-cell numeric">{lossPercent ? `${lossPercent}%` : ''}</td>
                                             </tr>
                                         );
                                     })}
@@ -447,19 +488,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading (Kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.start_reading_kg != null ? fmt(co2Meters.start_reading_kg, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.start_reading != null ? fmt(syrupMeters.start_reading, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Filler Reading:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{productionMeters.filler_reading != null ? fmt(productionMeters.filler_reading) : ''}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -467,19 +508,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading (Kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.end_reading != null ? fmt(syrupMeters.end_reading, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Shrink Reading:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{productionMeters.shrink_reading != null ? fmt(productionMeters.shrink_reading) : ''}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -487,19 +528,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Total CO2 Consumed (kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.total_co2_consumed_kg != null ? fmt(co2Meters.total_co2_consumed_kg, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Difference (End - Start):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.difference != null ? fmt(syrupMeters.difference, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Filler Rejects (M/C):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{productionMeters.filler_rejects_mc != null ? fmt(productionMeters.filler_rejects_mc) : ''}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -507,19 +548,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Std. CO2 Consumption (kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.std_co2_consumption_kg != null ? fmt(co2Meters.std_co2_consumption_kg, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Unit (L, m3, kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.unit || ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Blower Rejects (Manual Count):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{productionMeters.blower_rejects_manual != null ? fmt(productionMeters.blower_rejects_manual) : ''}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -527,19 +568,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 Yield (%):</span>
-                                                <span className="meter-value">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</span>
+                                                <span className="meter-value numeric">{co2Meters.co2_yield_percent != null ? `${co2Meters.co2_yield_percent}%` : (summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : '')}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Density (kg/L):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Shrink Reading / T. Packs (%):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{productionMeters.shrink_reading_packs_percent != null ? `${productionMeters.shrink_reading_packs_percent}%` : ''}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -548,7 +589,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Total Syrup Used (L):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.total_syrup_used_l != null ? fmt(syrupMeters.total_syrup_used_l, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td></td>
@@ -558,7 +599,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Dilution Ratio:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : ''}</span>
                                             </div>
                                         </td>
                                         <td></td>
@@ -568,7 +609,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Std. Syrup Consumption (L):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{syrupMeters.std_syrup_consumption_l != null ? fmt(syrupMeters.std_syrup_consumption_l, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td></td>
@@ -578,7 +619,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Yield (%):</span>
-                                                <span className="meter-value">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</span>
+                                                <span className="meter-value numeric">{syrupMeters.syrup_yield_percent != null ? `${syrupMeters.syrup_yield_percent}%` : (summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : '')}</span>
                                             </div>
                                         </td>
                                         <td></td>
@@ -601,16 +642,16 @@ const ProductionReportForm = () => {
                                         {data.downtime_breakdown.categories.map((cat) => (
                                             <tr key={cat.category_id}>
                                                 <td className="label-cell">{cat.category_name}</td>
-                                                <td className="input-cell">{fmt(cat.total_duration_mins)}</td>
-                                                <td className="input-cell">{cat.percentage_of_total ? `${cat.percentage_of_total}%` : ''}</td>
-                                                <td className="input-cell">{cat.incident_count || ''}</td>
+                                                <td className="input-cell numeric">{fmt(cat.total_duration_mins)}</td>
+                                                <td className="input-cell numeric">{cat.percentage_of_total ? `${cat.percentage_of_total}%` : ''}</td>
+                                                <td className="input-cell numeric">{cat.incident_count || ''}</td>
                                             </tr>
                                         ))}
                                         <tr className="fw-bold">
                                             <td className="label-cell">TOTAL</td>
-                                            <td className="input-cell">{fmt(data.downtime_breakdown.total_downtime_mins)}</td>
-                                            <td className="input-cell">100%</td>
-                                            <td className="input-cell">{data.downtime_breakdown.total_incidents || ''}</td>
+                                            <td className="input-cell numeric">{fmt(data.downtime_breakdown.total_downtime_mins || data.downtime_breakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0))}</td>
+                                            <td className="input-cell numeric">100%</td>
+                                            <td className="input-cell numeric">{data.downtime_breakdown.total_incidents || data.downtime_breakdown.categories.reduce((s, c) => s + (c.incident_count || 0), 0) || ''}</td>
                                         </tr>
                                     </tbody>
                                 </table>

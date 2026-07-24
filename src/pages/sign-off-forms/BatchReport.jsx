@@ -20,6 +20,7 @@ const BatchReport = () => {
         return d.toISOString().split('T')[0];
     });
     const [reports, setReports] = useState([]);
+    const [summaryData, setSummaryData] = useState(null);
 
     // Fetch pets and products
     useEffect(() => {
@@ -77,6 +78,16 @@ const BatchReport = () => {
 
     useEffect(() => {
         fetchData();
+        const fetchSummary = async () => {
+            try {
+                const res = await productionApi.getProductionSummary({ start_date: startDate, end_date: endDate });
+                const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                setSummaryData(envelope?.summary || {});
+            } catch (err) {
+                console.error('Failed to fetch production summary:', err);
+            }
+        };
+        fetchSummary();
     }, [startDate, endDate]);
 
     const handlePrint = () => {
@@ -302,14 +313,11 @@ const BatchReport = () => {
                                 <tbody>
                                     {summaryRows.length > 0 ? summaryRows.map((row, idx) => {
                                         const batchNums = row.batch_numbers;
-                                        const batchRange = batchNums.length > 1
-                                            ? `${batchNums[0]} - ${batchNums[batchNums.length - 1]}`
-                                            : batchNums[0] || '';
                                         return (
                                             <tr key={idx}>
                                                 <td className="input-cell">{row.product}</td>
-                                                <td className="input-cell">{batchRange} <span style={{ fontSize: '9px', color: '#666' }}>({batchNums.length})</span></td>
-                                                <td className="input-cell">{fmt(row.total_liters)} liters</td>
+                                                <td className="input-cell" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{batchNums.join(', ')} <span style={{ fontSize: '9px', color: '#666' }}>({batchNums.length})</span></td>
+                                                <td className="input-cell numeric">{fmt(row.total_liters)} liters</td>
                                                 <td className="input-cell">{[...row.pets].join(', ')}</td>
                                             </tr>
                                         );
@@ -339,11 +347,11 @@ const BatchReport = () => {
                                 <tbody>
                                     {batchDetails.length > 0 ? batchDetails.map((row, idx) => (
                                         <tr key={idx}>
-                                            <td className="input-cell">{row.time}</td>
-                                            <td className="input-cell">{row.date}</td>
-                                            <td className="input-cell">{row.batch_number}</td>
-                                            <td className="input-cell">{fmt(parseFloat(row.syrup_liters))}</td>
-                                            <td className="input-cell">{row.start_time}</td>
+                                            <td className="input-cell numeric">{row.time}</td>
+                                            <td className="input-cell numeric">{row.date}</td>
+                                            <td className="input-cell numeric">{row.batch_number}</td>
+                                            <td className="input-cell numeric">{fmt(parseFloat(row.syrup_liters))}</td>
+                                            <td className="input-cell numeric">{row.start_time}</td>
                                             <td className="input-cell">{row.pet_name}</td>
                                         </tr>
                                     )) : (
@@ -354,10 +362,24 @@ const BatchReport = () => {
                                     {batchDetails.length > 0 && (
                                         <tr className="fw-bold">
                                             <td className="label-cell" colSpan={3}>TOTAL</td>
-                                            <td className="input-cell">{fmt(batchDetails.reduce((sum, b) => sum + (parseFloat(b.syrup_liters) || 0), 0))} liters</td>
-                                            <td className="input-cell" colSpan={2}>{batchDetails.length} batches</td>
+                                            <td className="input-cell numeric">{fmt(batchDetails.reduce((sum, b) => sum + (parseFloat(b.syrup_liters) || 0), 0))} liters</td>
+                                            <td className="input-cell numeric" colSpan={2}>{batchDetails.length} batches</td>
                                         </tr>
                                     )}
+                                </tbody>
+                            </table>
+
+                            {/* Report Info */}
+                            <table className="form-table">
+                                <tbody>
+                                    <tr>
+                                        <td className="label-cell" style={{ width: '15%' }}>Workers</td>
+                                        <td className="input-cell numeric" style={{ width: '15%' }}>{summaryData?.worker_count || ''}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Total Reports</td>
+                                        <td className="input-cell numeric" style={{ width: '15%' }}>{filteredReports.length || ''}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Total Batches</td>
+                                        <td className="input-cell numeric" style={{ width: '25%' }}>{batchDetails.length || ''}</td>
+                                    </tr>
                                 </tbody>
                             </table>
 

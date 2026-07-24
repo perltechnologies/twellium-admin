@@ -1180,6 +1180,16 @@ h6 { font-size: 0.875rem; }
     min-width: 60px;
 }
 
+.production-report-form .form-table .input-cell.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.production-report-form .meter-value.numeric {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 .production-report-form .form-table .unit-cell {
     text-align: center;
     font-weight: 600;
