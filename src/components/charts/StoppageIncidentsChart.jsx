@@ -21,7 +21,7 @@ const CATEGORY_COLORS = {
     'Other': '#6b7280',
 };
 
-const StoppageIncidentsChart = () => {
+const StoppageIncidentsChart = ({ shiftTotalDowntime = 0 }) => {
     const navigate = useNavigate();
     const [useRange, setUseRange] = useState(false);
     const [singleDate, setSingleDate] = useState('');
@@ -36,12 +36,23 @@ const StoppageIncidentsChart = () => {
         const fetchStoppages = async () => {
             setLoading(true);
             try {
-                const params = {};
+                const params = { page_size: 1000 };
                 if (useRange) {
                     if (startDate) params.start_date = startDate;
                     if (endDate) params.end_date = endDate;
                 } else if (singleDate) {
                     params.log_date = singleDate;
+                } else {
+                    // Default to today's production date (6am boundary)
+                    const now = new Date();
+                    const currentTime = now.toTimeString().slice(0, 5);
+                    let todayStr = now.toISOString().split('T')[0];
+                    if (currentTime < '06:00') {
+                        const yesterday = new Date(now);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        todayStr = yesterday.toISOString().split('T')[0];
+                    }
+                    params.log_date = todayStr;
                 }
                 
                 const res = await productionApi.getStoppages(params);
@@ -106,7 +117,19 @@ const StoppageIncidentsChart = () => {
                 const subCategory = incident.sub_downtime_category_name || 'Uncategorized';
                 const description = incident.incident_description || 'No Description';
                 const key = `${subCategory} - ${description}`;
-                const duration = parseFloat(incident.incident_duration || 0);
+                const duration = (() => {
+                    const raw = incident.incident_duration;
+                    if (!raw) return 0;
+                    if (typeof raw === 'number') return raw;
+                    if (typeof raw === 'string' && raw.includes(':')) {
+                        const parts = raw.split(':');
+                        const hours = parseInt(parts[0]) || 0;
+                        const mins = parseInt(parts[1]) || 0;
+                        const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
+                        return (hours * 60) + mins + (secs / 60);
+                    }
+                    return parseFloat(raw) || 0;
+                })();
 
                 if (!incidentMap[key]) {
                     incidentMap[key] = {
@@ -211,7 +234,7 @@ const StoppageIncidentsChart = () => {
     ], [chartData]);
 
     const totalIncidents = chartData.reduce((sum, d) => sum + d.count, 0);
-    const totalDuration = chartData.reduce((sum, d) => sum + d.totalDuration, 0);
+    const totalDuration = shiftTotalDowntime;
     
     const dailyRate = useMemo(() => {
         if (!useRange || !startDate || !endDate) return null;
@@ -387,7 +410,7 @@ const StoppageIncidentsChart = () => {
                             <div className="col-4">
                                 <div className="border rounded p-3 text-center">
                                     <small className="text-muted d-block mb-1">Total Duration</small>
-                                    <h4 className="mb-0 text-danger">{formatDuration(totalDuration)}</h4>
+                                    <h4 className={`mb-0 ${totalDuration <= 60 ? 'text-success' : 'text-danger'}`}>{formatDuration(totalDuration)}</h4>
                                 </div>
                             </div>
                             {dailyRate && (
