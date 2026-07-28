@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
+import { workersApi } from '../../api/workers';
 
 const ProductionRunByPet = () => {
     const printRef = useRef();
@@ -9,6 +10,9 @@ const ProductionRunByPet = () => {
     const [error, setError] = useState(null);
     const [pets, setPets] = useState([]);
     const [selectedPet, setSelectedPet] = useState('');
+    const [selectedProduct, setSelectedProduct] = useState('');
+    const [shifts, setShifts] = useState([]);
+    const [selectedShift, setSelectedShift] = useState('');
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 7);
@@ -20,7 +24,7 @@ const ProductionRunByPet = () => {
         return d.toISOString().split('T')[0];
     });
 
-    // Fetch available pets/lines (exclude can lines)
+    // Fetch available pets/lines (exclude can lines) and shifts
     useEffect(() => {
         const fetchPets = async () => {
             try {
@@ -40,8 +44,38 @@ const ProductionRunByPet = () => {
                 console.error('Failed to fetch pets:', err);
             }
         };
+        const fetchShifts = async () => {
+            try {
+                const res = await productionApi.getShifts();
+                const shiftList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                setShifts(Array.isArray(shiftList) ? shiftList : shiftList.results || []);
+            } catch (err) {
+                console.error('Failed to fetch shifts:', err);
+            }
+        };
         fetchPets();
+        fetchShifts();
     }, []);
+
+    // Fetch workers
+    const [workers, setWorkers] = useState([]);
+    useEffect(() => {
+        const fetchWorkers = async () => {
+            try {
+                const params = { page_size: 100 };
+                if (selectedPet) params.worker_group = selectedPet;
+                const res = await workersApi.getWorkers(params);
+                const resData = res?.data;
+                const list = Array.isArray(resData?.data) ? resData.data
+                    : Array.isArray(resData?.results) ? resData.results
+                    : Array.isArray(resData) ? resData : [];
+                setWorkers(list);
+            } catch (err) {
+                console.error('Failed to fetch workers:', err);
+            }
+        };
+        fetchWorkers();
+    }, [selectedPet]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -49,6 +83,8 @@ const ProductionRunByPet = () => {
         try {
             const params = { start_date: startDate, end_date: endDate };
             if (selectedPet) params.pet = selectedPet;
+            if (selectedShift) params.shift = selectedShift;
+            if (selectedProduct) params.product = selectedProduct;
             const res = await productionApi.getProductionSummary(params);
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             setData(envelope);
@@ -62,11 +98,11 @@ const ProductionRunByPet = () => {
 
     useEffect(() => {
         fetchData();
-    }, [startDate, endDate, selectedPet]);
+    }, [startDate, endDate, selectedPet, selectedShift, selectedProduct]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
-        document.title = `Production Run - ${selectedPetName || 'All Lines'} - ${startDate} to ${endDate}`;
+        document.title = `Production Run - ${selectedPetName || 'All Lines'}${selectedProduct ? ` - ${selectedProduct}` : ''} - ${startDate} to ${endDate}`;
         window.print();
         document.title = prevTitle;
     };
@@ -77,9 +113,14 @@ const ProductionRunByPet = () => {
     const materials = data?.material_consumptions?.materials || [];
     const selectedPetName = pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '';
 
-    // Get product names from daily breakdown
-    const allPetEntries = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
-    const productNames = [...new Set(allPetEntries.map(p => p.product_name).filter(Boolean))];
+    // Get product names from daily breakdown (unfiltered for dropdown)
+    const allPetEntriesUnfiltered = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
+    const productNames = [...new Set(allPetEntriesUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
+
+    // Filter by selected product
+    const allPetEntries = selectedProduct
+        ? allPetEntriesUnfiltered.filter(p => p.product_name === selectedProduct)
+        : allPetEntriesUnfiltered;
 
     // Calculate Total Btls/Hr: total_bottles / total_production_hours
     // Approximate production hours from number of reports * 8hrs minus downtime
@@ -113,7 +154,7 @@ const ProductionRunByPet = () => {
                 {/* Header with Controls */}
                 <div className="d-flex justify-content-between align-items-center mb-3 no-print">
                     <div>
-                        <h4 className="fw-bold mb-1">Production Run Report by Line</h4>
+                        <h4 className="fw-bold mb-1">Product Report</h4>
                         <p className="text-muted mb-0">FP-DR-008-Rev.A | Multi-day production run report per line</p>
                     </div>
                     <div className="d-flex align-items-center gap-3">
@@ -145,6 +186,32 @@ const ProductionRunByPet = () => {
                             {pets.map((pet) => (
                                 <option key={pet.id} value={pet.id}>
                                     {pet.pet_name}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedShift}
+                            onChange={(e) => setSelectedShift(e.target.value)}
+                            style={{ width: '160px' }}
+                        >
+                            <option value="">All Shifts</option>
+                            {shifts.map((shift) => (
+                                <option key={shift.id} value={shift.id}>
+                                    {shift.name || shift.shift_name}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedProduct}
+                            onChange={(e) => setSelectedProduct(e.target.value)}
+                            style={{ width: '170px' }}
+                        >
+                            <option value="">All Products</option>
+                            {productNames.map((prod) => (
+                                <option key={prod} value={prod}>
+                                    {prod}
                                 </option>
                             ))}
                         </select>
@@ -208,7 +275,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shift</td>
-                                        <td className="input-cell">All Shifts</td>
+                                        <td className="input-cell">{selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'}</td>
                                         <td className="label-cell">Batch N°</td>
                                         <td className="input-cell"></td>
                                         <td className="label-cell">Syrup (Lts)</td>
@@ -216,7 +283,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Flavor</td>
-                                        <td className="input-cell" colSpan={5}>{productNames.join(', ') || ''}</td>
+                                        <td className="input-cell" colSpan={5}>{selectedProduct || productNames.join(', ') || ''}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -281,37 +348,35 @@ const ProductionRunByPet = () => {
                                     <tr className="section-header-row">
                                         <td className="label-cell" style={{ width: '30%' }}><strong>Paid Hours (overtime)</strong></td>
                                         <td className="label-cell" style={{ width: '15%' }}><strong>Time</strong></td>
-                                        <td className="input-cell" style={{ width: '20%' }}></td>
-                                        <td className="label-cell" style={{ width: '15%' }}><strong>Workers</strong></td>
-                                        <td className="input-cell numeric" style={{ width: '20%' }}>{summary.worker_count || ''}</td>
+                                        <td className="input-cell" colSpan={2}></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
-                                        <td className="input-cell" colSpan={2}></td>
-                                        <td className="input-cell" colSpan={2}></td>
+                                        <td className="input-cell" colSpan={3}></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shut Down Production</td>
-                                        <td className="input-cell" colSpan={2}></td>
-                                        <td className="input-cell" colSpan={2}></td>
+                                        <td className="input-cell" colSpan={3}></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Production Hrs</td>
-                                        <td className="input-cell" colSpan={2}></td>
-                                        <td className="input-cell" colSpan={2}></td>
+                                        <td className="input-cell" colSpan={3}></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
-                                        <td className="input-cell numeric" colSpan={2}>{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
-                                        <td className="input-cell" colSpan={2}></td>
+                                        <td className="input-cell numeric" colSpan={3}>{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Working Labours On Line</td>
-                                        <td className="input-cell" colSpan={4}></td>
+                                        <td className="input-cell" colSpan={3}>{workers.map(w => `${w.first_name || ''} ${w.surname || ''}`.trim()).filter(Boolean).join(', ')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Workers Count</td>
+                                        <td className="input-cell numeric" colSpan={3}>{workers.length || summary.worker_count || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Name Of Absent Labours</td>
-                                        <td className="input-cell" colSpan={4}></td>
+                                        <td className="input-cell" colSpan={3}></td>
                                     </tr>
                                 </tbody>
                             </table>

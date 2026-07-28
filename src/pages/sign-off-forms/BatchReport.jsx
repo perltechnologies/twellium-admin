@@ -9,6 +9,8 @@ const BatchReport = () => {
     const [pets, setPets] = useState([]);
     const [selectedProduct, setSelectedProduct] = useState('');
     const [selectedPets, setSelectedPets] = useState([]);
+    const [shifts, setShifts] = useState([]);
+    const [selectedShift, setSelectedShift] = useState('');
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 1);
@@ -42,7 +44,17 @@ const BatchReport = () => {
                 console.error('Failed to fetch pets:', err);
             }
         };
+        const fetchShifts = async () => {
+            try {
+                const res = await productionApi.getShifts();
+                const shiftList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                setShifts(Array.isArray(shiftList) ? shiftList : shiftList.results || []);
+            } catch (err) {
+                console.error('Failed to fetch shifts:', err);
+            }
+        };
         fetchPets();
+        fetchShifts();
     }, []);
 
     const fetchData = async () => {
@@ -56,6 +68,7 @@ const BatchReport = () => {
                 params.datetime_start_time = `${startDate}T00:00:00Z`;
                 params.datetime_end_time = `${endDate}T23:59:59Z`;
             }
+            if (selectedShift) params.shift = selectedShift;
             const res = await productionApi.getReports(params);
             const responseData = res?.data?.data ?? res?.data ?? {};
             let reportList = [];
@@ -80,7 +93,9 @@ const BatchReport = () => {
         fetchData();
         const fetchSummary = async () => {
             try {
-                const res = await productionApi.getProductionSummary({ start_date: startDate, end_date: endDate });
+                const params = { start_date: startDate, end_date: endDate };
+                if (selectedShift) params.shift = selectedShift;
+                const res = await productionApi.getProductionSummary(params);
                 const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
                 setSummaryData(envelope?.summary || {});
             } catch (err) {
@@ -88,7 +103,7 @@ const BatchReport = () => {
             }
         };
         fetchSummary();
-    }, [startDate, endDate]);
+    }, [startDate, endDate, selectedShift]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -108,6 +123,7 @@ const BatchReport = () => {
     // Filter reports based on selections
     const filteredReports = reports.filter(r => {
         if (selectedProduct && r.product_name?.toLowerCase() !== selectedProduct.toLowerCase()) return false;
+        if (selectedShift && String(r.shift) !== String(selectedShift) && String(r.shift_id) !== String(selectedShift)) return false;
         if (selectedPets.length > 0) {
             const petNames = pets.filter(p => selectedPets.includes(String(p.id))).map(p => p.pet_name?.toLowerCase());
             if (!petNames.includes(r.pet_name?.toLowerCase())) return false;
@@ -185,6 +201,19 @@ const BatchReport = () => {
                             <option value="">All Products</option>
                             {reportProducts.map((prod) => (
                                 <option key={prod} value={prod}>{prod}</option>
+                            ))}
+                        </select>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedShift}
+                            onChange={(e) => setSelectedShift(e.target.value)}
+                            style={{ width: '160px' }}
+                        >
+                            <option value="">All Shifts</option>
+                            {shifts.map((shift) => (
+                                <option key={shift.id} value={shift.id}>
+                                    {shift.name || shift.shift_name}
+                                </option>
                             ))}
                         </select>
                         <div className="d-flex align-items-center gap-2">

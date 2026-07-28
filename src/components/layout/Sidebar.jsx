@@ -101,7 +101,7 @@ const navigation = [
                     key: 'sign-off-forms',
                     submenu: [
                         { name: 'Production Report', path: '/dashboard/sign-off-forms/production-report' },
-                        { name: 'Production Run by Line', path: '/dashboard/sign-off-forms/production-run-by-pet' },
+                        { name: 'Product Report', path: '/dashboard/sign-off-forms/production-run-by-pet' },
                         { name: 'Batch Report', path: '/dashboard/sign-off-forms/batch-report' },
                     ],
                 },
