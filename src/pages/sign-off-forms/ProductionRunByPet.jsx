@@ -3,26 +3,49 @@ import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { workersApi } from '../../api/workers';
 
+const STORAGE_KEY = 'productionRunByPet_filters';
+
+const getStoredFilters = () => {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+};
+
 const ProductionRunByPet = () => {
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [pets, setPets] = useState([]);
-    const [selectedPet, setSelectedPet] = useState('');
-    const [selectedProduct, setSelectedProduct] = useState('');
+    const storedFilters = getStoredFilters();
+    const [selectedPet, setSelectedPet] = useState(storedFilters?.selectedPet || '');
+    const [selectedProduct, setSelectedProduct] = useState(storedFilters?.selectedProduct || '');
     const [shifts, setShifts] = useState([]);
-    const [selectedShift, setSelectedShift] = useState('');
+    const [selectedShift, setSelectedShift] = useState(storedFilters?.selectedShift || '');
     const [startDate, setStartDate] = useState(() => {
+        if (storedFilters?.startDate) return storedFilters.startDate;
         const d = new Date();
         d.setDate(d.getDate() - 7);
         return d.toISOString().split('T')[0];
     });
     const [endDate, setEndDate] = useState(() => {
+        if (storedFilters?.endDate) return storedFilters.endDate;
         const d = new Date();
         d.setDate(d.getDate() - 1);
         return d.toISOString().split('T')[0];
     });
+
+    // Persist filters to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            selectedPet,
+            selectedProduct,
+            selectedShift,
+            startDate,
+            endDate,
+        }));
+    }, [selectedPet, selectedProduct, selectedShift, startDate, endDate]);
 
     // Fetch available pets/lines (exclude can lines) and shifts
     useEffect(() => {
@@ -135,10 +158,30 @@ const ProductionRunByPet = () => {
     const batchNumbers = [...new Set(allPetEntries.flatMap(p => (p.batches || []).map(b => b.batch_number)).filter(Boolean))];
     const totalSyrupLiters = allPetEntries.reduce((sum, p) => sum + (p.meters_reading?.syrup?.total_syrup_used_l || 0), 0) || (data?.meters_reading?.syrup?.total_syrup_used_l || 0);
 
+    // Derive totals from filtered allPetEntries so product filter is respected
+    const filteredTotalBottles = allPetEntries.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0);
+    const filteredTotalPacks = allPetEntries.reduce((sum, p) => sum + (p.total_packs || 0), 0);
+    const filteredTotalBottlesProduced = allPetEntries.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_packs || 0), 0);
+    const filteredTotalPhysicalBoxes = allPetEntries.reduce((sum, p) => sum + (p.total_physical_boxes || p.physical_boxes || 0), 0);
+    const filteredAvgEfficiency = allPetEntries.length > 0
+        ? (allPetEntries.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / allPetEntries.length).toFixed(1)
+        : null;
+    const filteredAvgSyrupYield = allPetEntries.length > 0
+        ? (allPetEntries.reduce((sum, p) => sum + (p.syrup_yield || p.avg_syrup_yield || 0), 0) / allPetEntries.length).toFixed(1)
+        : null;
+
+    // Use filtered values when a product filter is active, otherwise fall back to API summary
+    const displayTotalBottles = selectedProduct ? filteredTotalBottles : (summary.total_bottles || filteredTotalBottles);
+    const displayTotalPacks = selectedProduct ? filteredTotalPacks : (summary.total_packs || filteredTotalPacks);
+    const displayTotalBottlesProduced = selectedProduct ? filteredTotalBottlesProduced : (summary.total_bottles_produced || summary.total_packs || filteredTotalBottlesProduced);
+    const displayTotalPhysicalBoxes = selectedProduct ? filteredTotalPhysicalBoxes : (summary.total_physical_boxes || filteredTotalPhysicalBoxes);
+    const displayAvgEfficiency = selectedProduct ? filteredAvgEfficiency : (summary.avg_efficiency || filteredAvgEfficiency);
+    const displayAvgSyrupYield = selectedProduct ? filteredAvgSyrupYield : (summary.avg_syrup_yield || filteredAvgSyrupYield);
+
     // Calculate Total Btls/Hr: total_bottles / total_production_hours
     const totalDowntimeHrs = (summary.total_downtime_mins || 0) / 60;
     const approxProductionHrs = totalProductionHrs || ((summary.total_reports || 0) * 8 - totalDowntimeHrs);
-    const totalBtlsPerHr = approxProductionHrs > 0 ? Math.round(summary.total_bottles / approxProductionHrs) : 0;
+    const totalBtlsPerHr = approxProductionHrs > 0 ? Math.round(displayTotalBottles / approxProductionHrs) : 0;
 
     // T. Shrink and Total Carton from materials
     const shrinkMat = materials.find(m => m.material_type === 'SHRINK') || {};
@@ -278,6 +321,14 @@ const ProductionRunByPet = () => {
                                 </div>
                             </div>
 
+                            {/* Active Filters Display */}
+                            <div className="active-filters-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '6px 10px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontSize: '11px' }}>
+                                <span><strong>Date:</strong> {formatDateRange()}</span>
+                                <span><strong>Line:</strong> {selectedPetName || 'All Lines'}</span>
+                                <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || 'All Shifts') : 'All Shifts'}</span>
+                                <span><strong>Product:</strong> {selectedProduct || 'All Products'}</span>
+                            </div>
+
                             {/* Row 4-6: Date, Shift, Flavor */}
                             <table className="form-table">
                                 <tbody>
@@ -287,7 +338,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
                                         <td className="input-cell numeric" style={{ width: '10%' }}>{summary.line_speed || ''}</td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
-                                        <td className="input-cell numeric" style={{ width: '12%' }}>{fmt(summary.total_bottles)}</td>
+                                        <td className="input-cell numeric" style={{ width: '12%' }}>{fmt(displayTotalBottles)}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shift</td>
@@ -317,7 +368,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Physical Box</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_physical_boxes || cartonMat.total_used)}</td>
+                                        <td className="input-cell numeric">{fmt(displayTotalPhysicalBoxes || cartonMat.total_used)}</td>
                                         <td className="input-cell"></td>
                                         <td className="input-cell"></td>
                                         <td className="label-cell"></td>
@@ -327,7 +378,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Total Btls/Hr</td>
                                         <td className="input-cell numeric">{totalBtlsPerHr ? fmt(totalBtlsPerHr) : ''}</td>
                                         <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
+                                        <td className="input-cell numeric">{displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''}</td>
                                         <td className="label-cell">Total (Lts)</td>
                                         <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''}</td>
                                     </tr>
@@ -348,12 +399,12 @@ const ProductionRunByPet = () => {
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
-                                        <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced || summary.total_packs)}</td>
+                                        <td className="input-cell numeric">{fmt(displayTotalBottles)}</td>
+                                        <td className="input-cell numeric">{displayAvgSyrupYield ? `${displayAvgSyrupYield}%` : ''}</td>
+                                        <td className="input-cell numeric">{fmt(displayTotalBottlesProduced)}</td>
                                         <td className="input-cell numeric">{fmt(shrinkMat.total_used)}</td>
                                         <td className="input-cell numeric">{fmt(cartonMat.total_used)}</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
+                                        <td className="input-cell numeric">{fmt(displayTotalPacks)}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -516,6 +567,66 @@ const ProductionRunByPet = () => {
                                     </tr>
                                 </tbody>
                             </table>
+
+                            {/* Line Detail — Per-Product Breakdown (shown when a PET is selected and has multiple products) */}
+                            {selectedPet && productNames.length > 1 && !selectedProduct && (
+                                <table className="form-table section-table" style={{ marginTop: '12px' }}>
+                                    <thead>
+                                        <tr className="section-header-row">
+                                            <th colSpan={8}>Line Detail — {selectedPetName}</th>
+                                        </tr>
+                                        <tr className="sub-header-row">
+                                            <th style={{ width: '20%' }}>Product</th>
+                                            <th style={{ width: '12%' }}>Total Units</th>
+                                            <th style={{ width: '12%' }}>Btls/Hr</th>
+                                            <th style={{ width: '10%' }}>Efficiency</th>
+                                            <th style={{ width: '10%' }}>Yield %</th>
+                                            <th style={{ width: '12%' }}>Prod. Hrs</th>
+                                            <th style={{ width: '12%' }}>Packs</th>
+                                            <th style={{ width: '12%' }}>Syrup (Lts)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {productNames.map((prodName) => {
+                                            const prodEntries = allPetEntriesUnfiltered.filter(p => p.product_name === prodName);
+                                            const prodBottles = prodEntries.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0);
+                                            const prodProdHrs = prodEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0);
+                                            const prodBtlsPerHr = prodProdHrs > 0 ? Math.round(prodBottles / prodProdHrs) : 0;
+                                            const prodEfficiency = prodEntries.length > 0
+                                                ? (prodEntries.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / prodEntries.length).toFixed(1)
+                                                : '';
+                                            const prodYield = prodEntries.length > 0
+                                                ? (prodEntries.reduce((sum, p) => sum + (p.syrup_yield || p.avg_syrup_yield || 0), 0) / prodEntries.length).toFixed(1)
+                                                : '';
+                                            const prodPacks = prodEntries.reduce((sum, p) => sum + (p.total_packs || 0), 0);
+                                            const prodSyrup = prodEntries.reduce((sum, p) => sum + (p.meters_reading?.syrup?.total_syrup_used_l || 0), 0);
+                                            return (
+                                                <tr key={prodName}>
+                                                    <td className="label-cell">{prodName}</td>
+                                                    <td className="input-cell numeric">{fmt(prodBottles)}</td>
+                                                    <td className="input-cell numeric">{prodBtlsPerHr ? fmt(prodBtlsPerHr) : ''}</td>
+                                                    <td className="input-cell numeric">{prodEfficiency && Number(prodEfficiency) > 0 ? `${prodEfficiency}%` : ''}</td>
+                                                    <td className="input-cell numeric">{prodYield && Number(prodYield) > 0 ? `${prodYield}%` : ''}</td>
+                                                    <td className="input-cell numeric">{prodProdHrs ? prodProdHrs.toFixed(1) : ''}</td>
+                                                    <td className="input-cell numeric">{fmt(prodPacks)}</td>
+                                                    <td className="input-cell numeric">{prodSyrup ? fmt(prodSyrup, 1) : ''}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                        {/* Totals row */}
+                                        <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
+                                            <td className="label-cell">TOTAL</td>
+                                            <td className="input-cell numeric">{fmt(filteredTotalBottles)}</td>
+                                            <td className="input-cell numeric">{totalBtlsPerHr ? fmt(totalBtlsPerHr) : ''}</td>
+                                            <td className="input-cell numeric">{filteredAvgEfficiency && Number(filteredAvgEfficiency) > 0 ? `${filteredAvgEfficiency}%` : ''}</td>
+                                            <td className="input-cell numeric">{filteredAvgSyrupYield && Number(filteredAvgSyrupYield) > 0 ? `${filteredAvgSyrupYield}%` : ''}</td>
+                                            <td className="input-cell numeric">{totalProductionHrs ? totalProductionHrs.toFixed(1) : ''}</td>
+                                            <td className="input-cell numeric">{fmt(filteredTotalPacks)}</td>
+                                            <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            )}
 
                             {/* Row 52-53: Sign Off */}
                             <div className="sign-off-section">

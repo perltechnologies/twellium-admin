@@ -3,6 +3,15 @@ import { Printer, Loader2, Calendar, Search, X } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { inventoryApi } from '../../api/inventory';
 
+const STORAGE_KEY = 'productionReportForm_filters';
+
+const getStoredFilters = () => {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+};
+
 const ProductionReportForm = () => {
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
@@ -11,17 +20,29 @@ const ProductionReportForm = () => {
     const [pets, setPets] = useState([]);
     const [shifts, setShifts] = useState([]);
     const [products, setProducts] = useState([]);
-    const [selectedPet, setSelectedPet] = useState('');
-    const [selectedShift, setSelectedShift] = useState('');
-    const [selectedProduct, setSelectedProduct] = useState('');
+    const storedFilters = getStoredFilters();
+    const [selectedPet, setSelectedPet] = useState(storedFilters?.selectedPet || '');
+    const [selectedShift, setSelectedShift] = useState(storedFilters?.selectedShift || '');
+    const [selectedProduct, setSelectedProduct] = useState(storedFilters?.selectedProduct || '');
     const [productSearch, setProductSearch] = useState('');
     const [productDropdownOpen, setProductDropdownOpen] = useState(false);
     const productDropdownRef = useRef(null);
     const [selectedDate, setSelectedDate] = useState(() => {
+        if (storedFilters?.selectedDate) return storedFilters.selectedDate;
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         return yesterday.toISOString().split('T')[0];
     });
+
+    // Persist filters to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            selectedPet,
+            selectedShift,
+            selectedProduct,
+            selectedDate,
+        }));
+    }, [selectedPet, selectedShift, selectedProduct, selectedDate]);
 
     // Fetch available pets/lines (exclude can lines) and shifts
     useEffect(() => {
@@ -347,6 +368,14 @@ const ProductionReportForm = () => {
                                 </div>
                             </div>
 
+                            {/* Active Filters Display */}
+                            <div className="active-filters-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '6px 10px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontSize: '11px' }}>
+                                <span><strong>Date:</strong> {selectedDate}</span>
+                                <span><strong>Line:</strong> {selectedPet ? (pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '') : 'All Lines'}</span>
+                                <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || 'All Shifts') : 'All Shifts'}</span>
+                                <span><strong>Product:</strong> {selectedProduct || 'All Products'}</span>
+                            </div>
+
                             {/* Production Info Table */}
                             <table className="form-table">
                                 <tbody>
@@ -557,6 +586,66 @@ const ProductionReportForm = () => {
                                 </tbody>
                             </table>
                             )}
+
+                            {/* Per-Product Breakdown (when a PET is selected and has multiple products) */}
+                            {selectedPet && !selectedProduct && (() => {
+                                const uniqueProducts = [...new Set(allPetsUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
+                                if (uniqueProducts.length <= 1) return null;
+                                return (
+                                    <table className="form-table section-table">
+                                        <thead>
+                                            <tr className="section-header-row">
+                                                <th colSpan={8}>Product Breakdown — {pets.find(p => String(p.id) === String(selectedPet))?.pet_name || ''}</th>
+                                            </tr>
+                                            <tr className="sub-header-row">
+                                                <th style={{ width: '20%' }}>Product</th>
+                                                <th style={{ width: '14%' }}>Total Units</th>
+                                                <th style={{ width: '12%' }}>Total Packs</th>
+                                                <th style={{ width: '11%' }}>Efficiency</th>
+                                                <th style={{ width: '11%' }}>Prod. Hrs</th>
+                                                <th style={{ width: '11%' }}>Planned (min)</th>
+                                                <th style={{ width: '11%' }}>Mech. (min)</th>
+                                                <th style={{ width: '10%' }}>Downtime (min)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {uniqueProducts.map((prodName) => {
+                                                const prodEntries = allPetsUnfiltered.filter(p => p.product_name === prodName);
+                                                const prodBottles = prodEntries.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0);
+                                                const prodPacks = prodEntries.reduce((sum, p) => sum + (p.total_packs || 0), 0);
+                                                const prodProdHrs = prodEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0);
+                                                const prodEfficiency = prodEntries.length > 0
+                                                    ? (prodEntries.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / prodEntries.length).toFixed(1)
+                                                    : '';
+                                                const prodPlanned = prodEntries.reduce((sum, p) => sum + (p.planned_downtime_mins || 0), 0);
+                                                const prodMechanical = prodEntries.reduce((sum, p) => sum + (p.mechanical_downtime_mins || 0), 0);
+                                                return (
+                                                    <tr key={prodName}>
+                                                        <td className="label-cell">{prodName}</td>
+                                                        <td className="input-cell numeric">{fmt(prodBottles)}</td>
+                                                        <td className="input-cell numeric">{fmt(prodPacks)}</td>
+                                                        <td className="input-cell numeric">{prodEfficiency && Number(prodEfficiency) > 0 ? `${prodEfficiency}%` : ''}</td>
+                                                        <td className="input-cell numeric">{prodProdHrs ? prodProdHrs.toFixed(1) : ''}</td>
+                                                        <td className="input-cell numeric">{fmt(prodPlanned)}</td>
+                                                        <td className="input-cell numeric">{fmt(prodMechanical)}</td>
+                                                        <td className="input-cell numeric">{fmt(prodPlanned + prodMechanical)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                            <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
+                                                <td className="label-cell">TOTAL</td>
+                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0))}</td>
+                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.total_packs || 0), 0))}</td>
+                                                <td className="input-cell numeric">{(() => { const avg = allPetsUnfiltered.length > 0 ? (allPetsUnfiltered.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / allPetsUnfiltered.length).toFixed(1) : ''; return avg && Number(avg) > 0 ? `${avg}%` : ''; })()}</td>
+                                                <td className="input-cell numeric">{(() => { const hrs = allPetsUnfiltered.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()}</td>
+                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0), 0))}</td>
+                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.mechanical_downtime_mins || 0), 0))}</td>
+                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0) + (p.mechanical_downtime_mins || 0), 0))}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                );
+                            })()}
 
                             {/* Materials Consumption Section */}
                             <table className="form-table section-table">

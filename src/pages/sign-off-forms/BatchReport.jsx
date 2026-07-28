@@ -2,27 +2,50 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
 
+const STORAGE_KEY = 'batchReport_filters';
+
+const getStoredFilters = () => {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+};
+
 const BatchReport = () => {
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [pets, setPets] = useState([]);
-    const [selectedProduct, setSelectedProduct] = useState('');
-    const [selectedPets, setSelectedPets] = useState([]);
+    const storedFilters = getStoredFilters();
+    const [selectedProduct, setSelectedProduct] = useState(storedFilters?.selectedProduct || '');
+    const [selectedPets, setSelectedPets] = useState(storedFilters?.selectedPets || []);
     const [shifts, setShifts] = useState([]);
-    const [selectedShift, setSelectedShift] = useState('');
+    const [selectedShift, setSelectedShift] = useState(storedFilters?.selectedShift || '');
     const [startDate, setStartDate] = useState(() => {
+        if (storedFilters?.startDate) return storedFilters.startDate;
         const d = new Date();
         d.setDate(d.getDate() - 1);
         return d.toISOString().split('T')[0];
     });
     const [endDate, setEndDate] = useState(() => {
+        if (storedFilters?.endDate) return storedFilters.endDate;
         const d = new Date();
         d.setDate(d.getDate() - 1);
         return d.toISOString().split('T')[0];
     });
     const [reports, setReports] = useState([]);
     const [summaryData, setSummaryData] = useState(null);
+
+    // Persist filters to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            selectedProduct,
+            selectedPets,
+            selectedShift,
+            startDate,
+            endDate,
+        }));
+    }, [selectedProduct, selectedPets, selectedShift, startDate, endDate]);
 
     // Fetch pets and products
     useEffect(() => {
@@ -324,6 +347,14 @@ const BatchReport = () => {
                                         <span>{selectedPets.length > 0 ? pets.filter(p => selectedPets.includes(String(p.id))).map(p => p.pet_name).join(', ') : 'All Lines'}</span>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Active Filters Display */}
+                            <div className="active-filters-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '6px 10px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontSize: '11px' }}>
+                                <span><strong>Date:</strong> {startDate} to {endDate}</span>
+                                <span><strong>Line(s):</strong> {selectedPets.length > 0 ? pets.filter(p => selectedPets.includes(String(p.id))).map(p => p.pet_name).join(', ') : 'All Lines'}</span>
+                                <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || 'All Shifts') : 'All Shifts'}</span>
+                                <span><strong>Product:</strong> {selectedProduct || 'All Products'}</span>
                             </div>
 
                             {/* Summary Section */}
