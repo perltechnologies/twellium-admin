@@ -1358,7 +1358,7 @@ const ReportDetails = () => {
                                         <thead className="table-light">
                                             <tr>
                                                 <th>Name</th>
-                                                <th>Role</th>
+                                                <th>Group</th>
                                                 <th>Company</th>
                                                 <th>Present</th>
                                             </tr>
@@ -1367,9 +1367,14 @@ const ReportDetails = () => {
                                             {report.workers?.length > 0 ? (
                                                 report.workers.map((worker, idx) => (
                                                     <tr key={idx}>
-                                                        <td className="fw-medium">{worker.user?.full_name || worker.user?.username || worker.full_name || worker.username || worker.name || '-'}</td>
-                                                        <td><span className="badge bg-info">{worker.user?.role || worker.role || '-'}</span></td>
-                                                        <td>{worker.user?.company_name || worker.company_name || '-'}</td>
+                                                        <td className="fw-medium">
+                                                            {worker.worker_name || 
+                                                             (worker.worker ? `${worker.worker.first_name || ''} ${worker.worker.surname || ''}`.trim() : '') ||
+                                                             (worker.first_name ? `${worker.first_name} ${worker.surname || ''}`.trim() : '') ||
+                                                             worker.name || '-'}
+                                                        </td>
+                                                        <td><span className="badge bg-info">{worker.worker_group_name || worker.worker?.worker_group_name || worker.role || '-'}</span></td>
+                                                        <td>{worker.company_name || worker.worker?.company_name || '-'}</td>
                                                         <td>
                                                             {worker.present ? (
                                                                 <span className="badge bg-success">Yes</span>
