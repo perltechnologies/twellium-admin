@@ -111,6 +111,9 @@ const ProductionRunByPet = () => {
     const summary = data?.summary || {};
     const dailyBreakdown = data?.daily_breakdown || [];
     const materials = data?.material_consumptions?.materials || [];
+    const metersReading = data?.meters_reading || {};
+    const co2Meters = metersReading.co2 || {};
+    const productionMeters = metersReading.production || {};
     const selectedPetName = pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '';
 
     // Get product names from daily breakdown (unfiltered for dropdown)
@@ -122,11 +125,24 @@ const ProductionRunByPet = () => {
         ? allPetEntriesUnfiltered.filter(p => p.product_name === selectedProduct)
         : allPetEntriesUnfiltered;
 
+    // Derived values from per-pet data
+    const totalProductionHrs = allPetEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0);
+    const productionStartTimes = allPetEntries.map(p => p.production_start_time).filter(Boolean).sort();
+    const productionEndTimes = allPetEntries.map(p => p.production_end_time).filter(Boolean).sort();
+    const totalPaidHours = allPetEntries.reduce((sum, p) => sum + (p.workers?.paid_hours || 0), 0);
+    const totalOvertimeHours = allPetEntries.reduce((sum, p) => sum + (p.workers?.overtime_hours || 0), 0);
+    const absentWorkerNames = [...new Set(allPetEntries.flatMap(p => p.workers?.absent_worker_names || []))];
+    const batchNumbers = [...new Set(allPetEntries.flatMap(p => (p.batches || []).map(b => b.batch_number)).filter(Boolean))];
+    const totalSyrupLiters = allPetEntries.reduce((sum, p) => sum + (p.meters_reading?.syrup?.total_syrup_used_l || 0), 0) || (data?.meters_reading?.syrup?.total_syrup_used_l || 0);
+
     // Calculate Total Btls/Hr: total_bottles / total_production_hours
-    // Approximate production hours from number of reports * 8hrs minus downtime
     const totalDowntimeHrs = (summary.total_downtime_mins || 0) / 60;
-    const approxProductionHrs = (summary.total_reports || 0) * 8 - totalDowntimeHrs;
+    const approxProductionHrs = totalProductionHrs || ((summary.total_reports || 0) * 8 - totalDowntimeHrs);
     const totalBtlsPerHr = approxProductionHrs > 0 ? Math.round(summary.total_bottles / approxProductionHrs) : 0;
+
+    // T. Shrink and Total Carton from materials
+    const shrinkMat = materials.find(m => m.material_type === 'SHRINK') || {};
+    const cartonMat = materials.find(m => m.material_type === 'CARTON_BOXES' || m.material_type === 'CARTON_LAYER') || {};
 
     // Helper to find material by type
     const getMaterial = (type) => materials.find(m => m.material_type === type) || {};
@@ -269,7 +285,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell" style={{ width: '8%' }}>Date</td>
                                         <td className="input-cell numeric" style={{ width: '25%' }}>{formatDateRange()}</td>
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
-                                        <td className="input-cell numeric" style={{ width: '10%' }}></td>
+                                        <td className="input-cell numeric" style={{ width: '10%' }}>{summary.line_speed || ''}</td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
                                         <td className="input-cell numeric" style={{ width: '12%' }}>{fmt(summary.total_bottles)}</td>
                                     </tr>
@@ -277,9 +293,9 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Shift</td>
                                         <td className="input-cell">{selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'}</td>
                                         <td className="label-cell">Batch N°</td>
-                                        <td className="input-cell"></td>
+                                        <td className="input-cell">{batchNumbers.length > 0 ? batchNumbers.join(', ') : ''}</td>
                                         <td className="label-cell">Syrup (Lts)</td>
-                                        <td className="input-cell"></td>
+                                        <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Flavor</td>
@@ -293,7 +309,7 @@ const ProductionRunByPet = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Package</td>
-                                        <td className="input-cell" style={{ width: '15%' }}></td>
+                                        <td className="input-cell" style={{ width: '15%' }}>{summary.package_type || ''}</td>
                                         <td className="input-cell" style={{ width: '15%' }}></td>
                                         <td className="input-cell" style={{ width: '15%' }}></td>
                                         <td className="label-cell" style={{ width: '15%' }}></td>
@@ -301,7 +317,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Physical Box</td>
-                                        <td className="input-cell"></td>
+                                        <td className="input-cell numeric">{fmt(summary.total_physical_boxes || cartonMat.total_used)}</td>
                                         <td className="input-cell"></td>
                                         <td className="input-cell"></td>
                                         <td className="label-cell"></td>
@@ -313,7 +329,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Efficiency</td>
                                         <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
                                         <td className="label-cell">Total (Lts)</td>
-                                        <td className="input-cell numeric"></td>
+                                        <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -332,11 +348,11 @@ const ProductionRunByPet = () => {
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td className="input-cell numeric"></td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
                                         <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
                                         <td className="input-cell numeric">{fmt(summary.total_bottles_produced || summary.total_packs)}</td>
-                                        <td className="input-cell numeric"></td>
-                                        <td className="input-cell numeric"></td>
+                                        <td className="input-cell numeric">{fmt(shrinkMat.total_used)}</td>
+                                        <td className="input-cell numeric">{fmt(cartonMat.total_used)}</td>
                                         <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
                                     </tr>
                                 </tbody>
@@ -348,19 +364,19 @@ const ProductionRunByPet = () => {
                                     <tr className="section-header-row">
                                         <td className="label-cell" style={{ width: '30%' }}><strong>Paid Hours (overtime)</strong></td>
                                         <td className="label-cell" style={{ width: '15%' }}><strong>Time</strong></td>
-                                        <td className="input-cell" colSpan={2}></td>
+                                        <td className="input-cell" colSpan={2}>{totalPaidHours ? `${totalPaidHours}h${totalOvertimeHours ? ` (OT: ${totalOvertimeHours}h)` : ''}` : ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
-                                        <td className="input-cell" colSpan={3}></td>
+                                        <td className="input-cell" colSpan={3}>{productionStartTimes[0] || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shut Down Production</td>
-                                        <td className="input-cell" colSpan={3}></td>
+                                        <td className="input-cell" colSpan={3}>{productionEndTimes[productionEndTimes.length - 1] || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Production Hrs</td>
-                                        <td className="input-cell" colSpan={3}></td>
+                                        <td className="input-cell" colSpan={3}>{totalProductionHrs ? totalProductionHrs.toFixed(1) : ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
@@ -376,7 +392,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Name Of Absent Labours</td>
-                                        <td className="input-cell" colSpan={3}></td>
+                                        <td className="input-cell" colSpan={3}>{absentWorkerNames.length > 0 ? absentWorkerNames.join(', ') : ''}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -411,10 +427,10 @@ const ProductionRunByPet = () => {
                                             <tr key={type}>
                                                 <td className="label-cell">{label}</td>
                                                 <td className="unit-cell">{mat.unit || defaultUnit}</td>
-                                                <td className="input-cell numeric"></td>
-                                                <td className="input-cell numeric"></td>
+                                                <td className="input-cell numeric">{fmt(mat.expected_usage)}</td>
+                                                <td className="input-cell numeric">{fmt(mat.total_received)}</td>
                                                 <td className="input-cell numeric">{fmt(mat.total_used)}</td>
-                                                <td className="input-cell numeric"></td>
+                                                <td className="input-cell numeric">{fmt(mat.total_returned)}</td>
                                                 <td className="input-cell numeric">{fmt(mat.total_losses)}</td>
                                                 <td className="input-cell numeric">{lossPercent ? `${lossPercent}%` : ''}</td>
                                             </tr>
@@ -439,13 +455,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading (Kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.start_reading_kg != null ? fmt(co2Meters.start_reading_kg, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Combi Reading:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.combi_reading != null ? fmt(co2Meters.combi_reading) : (productionMeters.filler_reading != null ? fmt(productionMeters.filler_reading) : '')}</span>
                                             </div>
                                         </td>
                                         <td></td>
@@ -454,13 +470,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading (Kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Shrink Reading:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{productionMeters.shrink_reading != null ? fmt(productionMeters.shrink_reading) : ''}</span>
                                             </div>
                                         </td>
                                         <td></td>
@@ -469,7 +485,7 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Difference in Balance:</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.difference_in_balance_kg != null ? fmt(co2Meters.difference_in_balance_kg, 1) : (co2Meters.start_reading_kg != null && co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg - co2Meters.start_reading_kg, 1) : '')}</span>
                                             </div>
                                         </td>
                                         <td colSpan={2}></td>
@@ -478,7 +494,7 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Total CO2 Consumed (Kg):</span>
-                                                <span className="meter-value"></span>
+                                                <span className="meter-value numeric">{co2Meters.total_co2_consumed_kg != null ? fmt(co2Meters.total_co2_consumed_kg, 1) : ''}</span>
                                             </div>
                                         </td>
                                         <td colSpan={2}></td>
@@ -487,13 +503,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/l:</span>
-                                                <span className="meter-value numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</span>
+                                                <span className="meter-value numeric">{co2Meters.co2_grams_per_liter != null ? co2Meters.co2_grams_per_liter : (summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : '')}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/Btl:</span>
-                                                <span className="meter-value numeric"></span>
+                                                <span className="meter-value numeric">{co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : (co2Meters.total_co2_consumed_kg && summary.total_bottles_produced ? ((co2Meters.total_co2_consumed_kg * 1000) / summary.total_bottles_produced).toFixed(2) : '')}</span>
                                             </div>
                                         </td>
                                         <td></td>
