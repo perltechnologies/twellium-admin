@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Printer, Loader2, Calendar } from 'lucide-react';
+import { Printer, Loader2, Calendar, Search, X } from 'lucide-react';
 import { productionApi } from '../../api/production';
+import { inventoryApi } from '../../api/inventory';
 
 const ProductionReportForm = () => {
     const printRef = useRef();
@@ -9,9 +10,13 @@ const ProductionReportForm = () => {
     const [error, setError] = useState(null);
     const [pets, setPets] = useState([]);
     const [shifts, setShifts] = useState([]);
+    const [products, setProducts] = useState([]);
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedShift, setSelectedShift] = useState('');
     const [selectedProduct, setSelectedProduct] = useState('');
+    const [productSearch, setProductSearch] = useState('');
+    const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+    const productDropdownRef = useRef(null);
     const [selectedDate, setSelectedDate] = useState(() => {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
@@ -47,17 +52,40 @@ const ProductionReportForm = () => {
                 console.error('Failed to fetch shifts:', err);
             }
         };
+        const fetchProducts = async () => {
+            try {
+                const res = await inventoryApi.getProducts({ page_size: 100 });
+                const productList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                const allProducts = Array.isArray(productList) ? productList : productList.results || [];
+                setProducts(allProducts);
+            } catch (err) {
+                console.error('Failed to fetch products:', err);
+            }
+        };
         fetchPets();
         fetchShifts();
+        fetchProducts();
     }, []);
 
-    const fetchData = async (date, petId, shiftId) => {
+    // Close product dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (productDropdownRef.current && !productDropdownRef.current.contains(e.target)) {
+                setProductDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const fetchData = async (date, petId, shiftId, product) => {
         setLoading(true);
         setError(null);
         try {
             const params = { start_date: date, end_date: date };
             if (petId) params.pet = petId;
             if (shiftId) params.shift = shiftId;
+            if (product) params.product = product;
             const res = await productionApi.getProductionSummary(params);
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             console.log('Production Summary Response:', envelope);
@@ -71,8 +99,8 @@ const ProductionReportForm = () => {
     };
 
     useEffect(() => {
-        fetchData(selectedDate, selectedPet, selectedShift);
-    }, [selectedDate, selectedPet, selectedShift]);
+        fetchData(selectedDate, selectedPet, selectedShift, selectedProduct);
+    }, [selectedDate, selectedPet, selectedShift, selectedProduct]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -90,7 +118,9 @@ const ProductionReportForm = () => {
     const allPets = selectedProduct
         ? allPetsUnfiltered.filter(p => p.product_name === selectedProduct)
         : allPetsUnfiltered;
-    const productNames = [...new Set(allPetsUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
+    const productNames = products.length > 0
+        ? products.map(p => p.name).filter(Boolean).sort()
+        : [...new Set(allPetsUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
     const materials = data?.material_consumptions?.materials || [];
 
     // Meters reading data
@@ -117,14 +147,16 @@ const ProductionReportForm = () => {
         });
     });
 
-    // Group pets by line for a combined view (merge day + night for same pet)
-    const petsByLine = {};
+    // Group pets by line AND product (each pet+product combination gets its own row)
+    const petsByLineProduct = {};
     allPets.forEach(pet => {
-        const key = pet.pet_id || pet.pet_name;
-        if (!petsByLine[key]) {
-            petsByLine[key] = {
+        const petKey = pet.pet_id || pet.pet_name;
+        const productKey = pet.product_name || 'Unknown';
+        const key = `${petKey}__${productKey}`;
+        if (!petsByLineProduct[key]) {
+            petsByLineProduct[key] = {
                 pet_name: pet.pet_name,
-                product_names: [],
+                product_name: productKey,
                 total_bottles: 0,
                 total_packs: 0,
                 total_downtime_mins: 0,
@@ -133,23 +165,20 @@ const ProductionReportForm = () => {
                 shifts: [],
             };
         }
-        petsByLine[key].total_bottles += (pet.total_bottles || 0);
-        petsByLine[key].total_packs += (pet.total_packs || 0);
-        petsByLine[key].planned_downtime_mins += (pet.planned_downtime_mins || 0);
-        petsByLine[key].mechanical_downtime_mins += (pet.mechanical_downtime_mins || 0);
-        // total_downtime_mins is always the sum of planned + mechanical for consistency
-        petsByLine[key].total_downtime_mins = petsByLine[key].planned_downtime_mins + petsByLine[key].mechanical_downtime_mins;
-        if (pet.shift && !petsByLine[key].shifts.includes(pet.shift)) {
-            petsByLine[key].shifts.push(pet.shift);
-        }
-        if (pet.product_name && !petsByLine[key].product_names.includes(pet.product_name)) {
-            petsByLine[key].product_names.push(pet.product_name);
+        petsByLineProduct[key].total_bottles += (pet.total_bottles || 0);
+        petsByLineProduct[key].total_packs += (pet.total_packs || 0);
+        petsByLineProduct[key].planned_downtime_mins += (pet.planned_downtime_mins || 0);
+        petsByLineProduct[key].mechanical_downtime_mins += (pet.mechanical_downtime_mins || 0);
+        petsByLineProduct[key].total_downtime_mins = petsByLineProduct[key].planned_downtime_mins + petsByLineProduct[key].mechanical_downtime_mins;
+        if (pet.shift && !petsByLineProduct[key].shifts.includes(pet.shift)) {
+            petsByLineProduct[key].shifts.push(pet.shift);
         }
     });
-    const lineRows = Object.values(petsByLine).sort((a, b) => {
+    const lineRows = Object.values(petsByLineProduct).sort((a, b) => {
         const numA = parseInt(a.pet_name?.match(/\d+/)?.[0]) || 0;
         const numB = parseInt(b.pet_name?.match(/\d+/)?.[0]) || 0;
-        return numA - numB;
+        if (numA !== numB) return numA - numB;
+        return (a.product_name || '').localeCompare(b.product_name || '');
     });
 
     // Helper to find material by type
@@ -210,19 +239,67 @@ const ProductionReportForm = () => {
                                 </option>
                             ))}
                         </select>
-                        <select
-                            className="form-select form-select-sm"
-                            value={selectedProduct}
-                            onChange={(e) => setSelectedProduct(e.target.value)}
-                            style={{ width: '170px' }}
-                        >
-                            <option value="">All Products</option>
-                            {productNames.map((prod) => (
-                                <option key={prod} value={prod}>
-                                    {prod}
-                                </option>
-                            ))}
-                        </select>
+                        <div className="position-relative" ref={productDropdownRef} style={{ width: '200px' }}>
+                            <div
+                                className="form-control form-control-sm d-flex align-items-center gap-1 cursor-pointer"
+                                onClick={() => setProductDropdownOpen(!productDropdownOpen)}
+                                style={{ cursor: 'pointer' }}
+                            >
+                                <Search size={14} className="text-muted flex-shrink-0" />
+                                <span className="text-truncate flex-grow-1" style={{ fontSize: '13px' }}>
+                                    {selectedProduct || 'All Products'}
+                                </span>
+                                {selectedProduct && (
+                                    <X
+                                        size={14}
+                                        className="text-muted flex-shrink-0"
+                                        onClick={(e) => { e.stopPropagation(); setSelectedProduct(''); setProductSearch(''); }}
+                                        style={{ cursor: 'pointer' }}
+                                    />
+                                )}
+                            </div>
+                            {productDropdownOpen && (
+                                <div className="position-absolute top-100 start-0 w-100 bg-white border rounded shadow-sm mt-1" style={{ zIndex: 1050, maxHeight: '250px', overflow: 'hidden' }}>
+                                    <div className="p-2 border-bottom">
+                                        <input
+                                            type="text"
+                                            className="form-control form-control-sm"
+                                            placeholder="Search products..."
+                                            value={productSearch}
+                                            onChange={(e) => setProductSearch(e.target.value)}
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                                        <div
+                                            className={`px-3 py-2 ${!selectedProduct ? 'bg-primary text-white' : 'hover-bg-light'}`}
+                                            style={{ cursor: 'pointer', fontSize: '13px' }}
+                                            onClick={() => { setSelectedProduct(''); setProductSearch(''); setProductDropdownOpen(false); }}
+                                        >
+                                            All Products
+                                        </div>
+                                        {productNames
+                                            .filter(p => p.toLowerCase().includes(productSearch.toLowerCase()))
+                                            .map((prod) => (
+                                                <div
+                                                    key={prod}
+                                                    className={`px-3 py-2 ${selectedProduct === prod ? 'bg-primary text-white' : ''}`}
+                                                    style={{ cursor: 'pointer', fontSize: '13px' }}
+                                                    onClick={() => { setSelectedProduct(prod); setProductSearch(''); setProductDropdownOpen(false); }}
+                                                    onMouseEnter={(e) => { if (selectedProduct !== prod) e.target.style.backgroundColor = '#f8f9fa'; }}
+                                                    onMouseLeave={(e) => { if (selectedProduct !== prod) e.target.style.backgroundColor = ''; }}
+                                                >
+                                                    {prod}
+                                                </div>
+                                            ))
+                                        }
+                                        {productNames.filter(p => p.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                                            <div className="px-3 py-2 text-muted" style={{ fontSize: '13px' }}>No products found</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                         <button
                             className="btn btn-primary d-flex align-items-center gap-2"
                             onClick={handlePrint}
@@ -283,11 +360,11 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Production Start Time</td>
-                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (summary.production_start_time || '')}</td>
+                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_start_time).filter(Boolean).sort(); return times[0] || ''; })()}</td>
                                         <td className="label-cell">Production End Time</td>
-                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (summary.production_end_time || '')}</td>
+                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_end_time).filter(Boolean).sort(); return times[times.length - 1] || ''; })()}</td>
                                         <td className="label-cell">Total Production Time (Hrs)</td>
-                                        <td className="input-cell numeric">{summary.total_production_time_hrs != null ? summary.total_production_time_hrs : ''}</td>
+                                        <td className="input-cell numeric">{(() => { const hrs = allPets.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Units (Bottles)</td>
@@ -306,8 +383,8 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
                                     </tr>
                                     <tr>
-                                        <td className="label-cell">Workers</td>
-                                        <td className="input-cell numeric">{summary.worker_count || ''}</td>
+                                        <td className="label-cell">Workers Count</td>
+                                        <td className="input-cell numeric">{(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()}</td>
                                         <td className="label-cell">Efficiency</td>
                                         <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
                                         <td className="label-cell">Stoppage Reports</td>
@@ -315,6 +392,37 @@ const ProductionReportForm = () => {
                                     </tr>
                                 </tbody>
                             </table>
+
+                            {/* Product Details - shown when a product is selected */}
+                            {selectedProduct && (
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={10}>Product Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td className="label-cell">Product</td>
+                                        <td className="input-cell">{selectedProduct}</td>
+                                        <td className="label-cell">Line Speed (BPH)</td>
+                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.target_speed_bph || p?.line_speed || summary.line_speed || ''; })()}</td>
+                                        <td className="label-cell">Bottle Size</td>
+                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.size || p?.bottle_size || summary.bottle_size || ''; })()}</td>
+                                        <td className="label-cell">Bottles/Pack</td>
+                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.bottles_per_pack || summary.bottles_per_pack || ''; })()}</td>
+                                        <td className="label-cell">Packs/Pallet</td>
+                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.packs_per_pallet || summary.packs_per_pallet || ''; })()}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Single Packs</td>
+                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.single_packs || summary.single_packs || ''; })()}</td>
+                                        <td colSpan={8}></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            )}
+
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
@@ -363,7 +471,7 @@ const ProductionReportForm = () => {
                                     {lineRows.length > 0 ? lineRows.map((line, idx) => (
                                         <tr key={idx}>
                                             <td className="label-cell">{line.pet_name}</td>
-                                            <td className="input-cell">{line.product_names.join(', ')}</td>
+                                            <td className="input-cell">{line.product_name}</td>
                                             <td className="input-cell numeric">{fmt(line.total_bottles)}</td>
                                             <td className="input-cell numeric">{fmt(line.total_packs)}</td>
                                             <td className="input-cell numeric">{fmt(line.planned_downtime_mins)}</td>
@@ -549,12 +657,7 @@ const ProductionReportForm = () => {
                                                 <span className="meter-value numeric">{co2Meters.total_co2_consumed_kg != null ? fmt(co2Meters.total_co2_consumed_kg, 1) : ''}</span>
                                             </div>
                                         </td>
-                                        <td>
-                                            <div className="meter-field">
-                                                <span className="meter-label">Difference (End - Start):</span>
-                                                <span className="meter-value numeric">{syrupMeters.difference != null ? fmt(syrupMeters.difference, 1) : ''}</span>
-                                            </div>
-                                        </td>
+                                        <td></td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Filler Rejects (M/C):</span>
@@ -572,7 +675,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Unit (L, m3, kg):</span>
-                                                <span className="meter-value numeric">{syrupMeters.unit || ''}</span>
+                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.unit || '')}</span>
                                             </div>
                                         </td>
                                         <td>
@@ -592,7 +695,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Density (kg/L):</span>
-                                                <span className="meter-value numeric">{syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : ''}</span>
+                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : '')}</span>
                                             </div>
                                         </td>
                                         <td>
@@ -617,7 +720,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Dilution Ratio:</span>
-                                                <span className="meter-value numeric">{syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : ''}</span>
+                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : '')}</span>
                                             </div>
                                         </td>
                                         <td></td>

@@ -5,15 +5,15 @@ import { productionApi } from '../../api/production';
 const PreformSizes = () => {
     return (
         <SimpleConfigPage
-            title="PreformSizes"
+            title="Preform Sizes"
             api={{
                 list: productionApi.getPreformSizes,
                 create: productionApi.createPreformSize,
                 update: productionApi.updatePreformSize,
                 delete: productionApi.deletePreformSize
             }}
-            columns={[{ header: 'Name', accessor: 'name' }]}
-            formFields={[{ name: 'name', label: 'Name', required: true }]}
+            columns={[{ header: 'Weight (g)', accessor: 'value_gr' }]}
+            formFields={[{ name: 'value_gr', label: 'Weight (grams)', required: true, type: 'number', step: '0.01' }]}
         />
     );
 };

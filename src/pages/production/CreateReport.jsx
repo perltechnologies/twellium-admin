@@ -86,6 +86,7 @@ const CreateReport = () => {
                 start_time: s.start_time ? s.start_time.slice(0, 16) : new Date().toISOString().slice(0, 16),
                 end_time: s.end_time ? s.end_time.slice(0, 16) : new Date().toISOString().slice(0, 16),
                 downtime_minutes: s.downtime_minutes || 0,
+                bottles_produced: s.bottles_produced ?? '',
                 comments: s.comments || '',
                 incidents: s.incidents || []
             })));
@@ -173,6 +174,7 @@ const CreateReport = () => {
             start_time: new Date().toISOString(),
             end_time: new Date().toISOString(),
             downtime_minutes: 0,
+            bottles_produced: '',
             comments: '',
             incidents: []
         }]);
@@ -220,6 +222,7 @@ const CreateReport = () => {
                     start_time: s.start_time?.includes('T') ? s.start_time.split('T')[1].slice(0, 5) : s.start_time?.slice(0, 5),
                     end_time: s.end_time?.includes('T') ? s.end_time.split('T')[1].slice(0, 5) : s.end_time?.slice(0, 5),
                     downtime_minutes: Number(s.downtime_minutes) || 0,
+                    bottles_produced: s.bottles_produced !== '' ? Number(s.bottles_produced) : null,
                     comments: s.comments || '',
                     pet: formData.pet
                 };
@@ -264,6 +267,7 @@ const CreateReport = () => {
                         start_time: s.start_time,
                         end_time: s.end_time,
                         downtime_minutes: s.downtime_minutes,
+                        bottles_produced: s.bottles_produced,
                         comments: s.comments
                     })
                 ));
@@ -613,17 +617,25 @@ const StoppagesTab = ({ stoppages, addStoppage, removeStoppage, updateStoppage, 
                                             className="form-control"
                                         />
                                     </div>
-                                    <div className="col-md-3">
-                                        <label className="form-label">Comments</label>
+                                    <div className="col-md-2">
+                                        <label className="form-label">Bottles Produced</label>
+                                        <input
+                                            type="number"
+                                            value={stoppage.bottles_produced || ''}
+                                            onChange={(e) => updateStoppage(index, 'bottles_produced', e.target.value)}
+                                            className="form-control"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div className="col-md-2 d-flex align-items-end gap-1">
                                         <input
                                             type="text"
                                             value={stoppage.comments}
                                             onChange={(e) => updateStoppage(index, 'comments', e.target.value)}
                                             className="form-control"
+                                            placeholder="Comments"
                                         />
-                                    </div>
-                                    <div className="col-md-1 d-flex align-items-end">
-                                        <button type="button" className="btn btn-outline-danger w-100" onClick={() => removeStoppage(index)}>
+                                        <button type="button" className="btn btn-outline-danger flex-shrink-0" onClick={() => removeStoppage(index)}>
                                             <Trash2 size={16} />
                                         </button>
                                     </div>

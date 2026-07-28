@@ -107,31 +107,36 @@ const StoppageLogList = () => {
             setStatsLoading(true);
             try {
                 const date = filters.log_date || new Date().toISOString().split('T')[0];
-                const res = await productionApi.getDashboardShiftPetMetrics({ date });
-                const raw = res?.data?.data ?? res?.data ?? {};
-                let petsData = Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []);
-                petsData = petsData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+                const res = await productionApi.getOeeDateRange({ start_date: date, end_date: date });
+                const raw = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                const entries = typeof raw === 'object' && !Array.isArray(raw) ? Object.entries(raw) : [];
 
-                // Filter by selected PET if any
-                if (filters.pet) {
-                    const selectedPet = pets.find(p => String(p.id) === String(filters.pet));
-                    if (selectedPet) {
-                        petsData = petsData.filter(r => r.pet_name === selectedPet.pet_name || r.pet_id === parseInt(filters.pet));
-                    }
+                let totalDowntime = 0;
+                let totalEfficiency = 0;
+                let effCount = 0;
+                entries.forEach(([, val]) => {
+                    totalDowntime += val?.downtime || 0;
+                    const eff = val?.efficiency_weighted_avg || val?.oee || 0;
+                    if (eff > 0) { totalEfficiency += eff; effCount++; }
+                });
+
+                const avgEfficiency = effCount > 0 ? Math.round(totalEfficiency / effCount) : 0;
+
+                // Get stoppages count from stoppages_summary
+                let totalStoppages = 0;
+                try {
+                    const stoppagesRes = await productionApi.getStoppagesSummary({ production_date: date });
+                    const stoppagesData = stoppagesRes?.data?.data ?? stoppagesRes?.data ?? {};
+                    totalStoppages = stoppagesData?.count || (Array.isArray(stoppagesData?.data) ? stoppagesData.data.length : 0);
+                } catch (e) {
+                    console.error('Failed to fetch stoppages summary:', e);
                 }
-
-                const totalStoppages = petsData.reduce((sum, p) => sum + (p.total_stoppage_reports_submitted || 0), 0);
-                const totalDowntime = petsData.reduce((sum, p) => sum + (p.total_downtime || 0), 0);
-                const efficiencies = petsData.filter(p => p.efficiency > 0);
-                const avgEfficiency = efficiencies.length > 0
-                    ? efficiencies.reduce((sum, p) => sum + p.efficiency, 0) / efficiencies.length
-                    : 0;
 
                 setStats({
                     totalStoppages,
                     totalDowntime: Math.round(totalDowntime),
                     avgDowntime: totalStoppages > 0 ? Math.round(totalDowntime / totalStoppages) : 0,
-                    avgEfficiency: Math.round(avgEfficiency)
+                    avgEfficiency
                 });
             } catch (err) {
                 console.error('Failed to fetch stats:', err);

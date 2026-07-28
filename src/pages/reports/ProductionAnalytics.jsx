@@ -102,7 +102,7 @@ const ProductionAnalytics = () => {
     const stats = useMemo(() => {
         const s = summaryData;
         return {
-            totalOutput: s.total_bottles_produced || 0,
+            totalOutput: s.total_bottles_produced || s.total_bottles || 0,
             avgOee: s.oee || s.avg_efficiency || 0,
             avgAvail: s.avg_availability || 0,
             avgPerf: s.avg_performance || 0,
@@ -121,7 +121,7 @@ const ProductionAnalytics = () => {
         dailyBreakdown.forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
-                petMap[name] = (petMap[name] || 0) + (p.total_bottles_produced || 0);
+                petMap[name] = (petMap[name] || 0) + (p.total_bottles_produced || p.total_bottles || 0);
             });
         });
         return Object.entries(petMap).map(([name, value]) => ({ name, value })).filter(p => p.value > 0);
@@ -133,16 +133,31 @@ const ProductionAnalytics = () => {
         dailyBreakdown.forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const shift = p.shift || 'Unknown';
-                shiftMap[shift] = (shiftMap[shift] || 0) + (p.total_bottles_produced || 0);
+                shiftMap[shift] = (shiftMap[shift] || 0) + (p.total_bottles_produced || p.total_bottles || 0);
             });
         });
         return Object.entries(shiftMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
     }, [dailyBreakdown]);
 
+    // Helper: get total output from a daily breakdown entry
+    const getDayOutput = (day) => {
+        if (!day) return 0;
+        // Try top-level fields first
+        if (day.total_bottles_produced) return day.total_bottles_produced;
+        if (day.total_bottles) return day.total_bottles;
+        if (day.total_output) return day.total_output;
+        // Fallback: sum from pet entries
+        const pets = (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can'));
+        if (pets.length > 0) {
+            return pets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0);
+        }
+        return 0;
+    };
+
     // Daily output trend - show all dates in range, fill gaps with 0
     const dailyOutputData = useMemo(() => {
         const f = rawData?.filters;
-        if (!f?.start_date || !f?.end_date) return dailyBreakdown.map(day => ({ date: day.date.slice(5), output: day.total_bottles_produced || 0, oee: day.oee || day.avg_efficiency || 0 }));
+        if (!f?.start_date || !f?.end_date) return dailyBreakdown.map(day => ({ date: day.date.slice(5), output: getDayOutput(day), oee: day.oee || day.avg_efficiency || 0 }));
 
         // Generate all dates in the range
         const allDates = [];
@@ -164,7 +179,7 @@ const ProductionAnalytics = () => {
             const label = `${date.slice(5)} ${dayNames[d.getDay()]}`;
             return {
                 date: label,
-                output: day?.total_bottles_produced || 0,
+                output: getDayOutput(day),
                 oee: day?.oee || day?.avg_efficiency || 0,
             };
         });
@@ -209,7 +224,7 @@ const ProductionAnalytics = () => {
                     Date: day.date,
                     'PET Line': normalizePet(p.pet_name),
                     Shift: p.shift || '-',
-                    Output: p.total_bottles_produced || 0,
+                    Output: p.total_bottles_produced || p.total_bottles || 0,
                     OEE: `${(p.oee || 0).toFixed(1)}%`,
                     Availability: `${(p.availability || 0).toFixed(1)}%`,
                     Quality: `${(p.quality || 0).toFixed(1)}%`,

@@ -103,8 +103,9 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                 const res = await productionApi.getProductionSummary({ start_date: summaryStartDate, end_date: summaryEndDate });
                 if (controller.signal.aborted) return;
                 const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                const summaryObj = envelope.summary || envelope?.data?.summary || null;
                 if (!controller.signal.aborted) {
-                    setSummaryData(envelope.summary || null);
+                    setSummaryData(summaryObj);
                     setSummaryReports(mapBreakdownToRecords(envelope.daily_breakdown || []));
                 }
             } catch (error) {
@@ -222,7 +223,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
     const summary = useMemo(() => {
         const s = summaryData || {};
         return {
-            totalProduction: s.total_bottles_produced || s.total_output || 0,
+            totalProduction: s.total_bottles_produced || 0,
             totalBottles: s.total_bottles || 0,
             avgOee: s.oee || s.avg_efficiency || 0,
             totalDowntime: s.total_downtime_minutes || 0,
@@ -323,8 +324,8 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                     </div>
                                 </div>
                                 <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Total Output</small>
-                                <h6 className="mb-0 text-primary fw-bold">{(summary.totalProduction || summary.totalBottles).toLocaleString()}</h6>
-                                <small className="text-muted fs-11">{summary.totalProduction ? 'pcs' : 'bottles (live)'}</small>
+                                <h6 className="mb-0 text-primary fw-bold">{summary.totalProduction.toLocaleString()}</h6>
+                                <small className="text-muted fs-11">pcs</small>
                             </div>
                         </div>
                     </div>

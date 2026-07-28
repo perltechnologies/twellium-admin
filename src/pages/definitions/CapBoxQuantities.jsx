@@ -5,15 +5,15 @@ import { productionApi } from '../../api/production';
 const CapBoxQuantities = () => {
     return (
         <SimpleConfigPage
-            title="CapBoxQuantities"
+            title="Cap Box Quantities"
             api={{
                 list: productionApi.getCapBoxQuantities,
-                create: productionApi.createCapBoxQuantitie,
-                update: productionApi.updateCapBoxQuantitie,
-                delete: productionApi.deleteCapBoxQuantitie
+                create: productionApi.createCapBoxQuantity,
+                update: productionApi.updateCapBoxQuantity,
+                delete: productionApi.deleteCapBoxQuantity
             }}
-            columns={[{ header: 'Name', accessor: 'name' }]}
-            formFields={[{ name: 'name', label: 'Name', required: true }]}
+            columns={[{ header: 'Quantity (pcs)', accessor: 'value_pcs' }]}
+            formFields={[{ name: 'value_pcs', label: 'Quantity per Box', required: true, type: 'number' }]}
         />
     );
 };

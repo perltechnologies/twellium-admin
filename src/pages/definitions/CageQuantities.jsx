@@ -5,15 +5,15 @@ import { productionApi } from '../../api/production';
 const CageQuantities = () => {
     return (
         <SimpleConfigPage
-            title="CageQuantities"
+            title="Cage Quantities"
             api={{
                 list: productionApi.getCageQuantities,
-                create: productionApi.createCageQuantitie,
-                update: productionApi.updateCageQuantitie,
-                delete: productionApi.deleteCageQuantitie
+                create: productionApi.createCageQuantity,
+                update: productionApi.updateCageQuantity,
+                delete: productionApi.deleteCageQuantity
             }}
-            columns={[{ header: 'Name', accessor: 'name' }]}
-            formFields={[{ name: 'name', label: 'Name', required: true }]}
+            columns={[{ header: 'Quantity (pcs)', accessor: 'value_pcs' }]}
+            formFields={[{ name: 'value_pcs', label: 'Quantity per Cage', required: true, type: 'number' }]}
         />
     );
 };
