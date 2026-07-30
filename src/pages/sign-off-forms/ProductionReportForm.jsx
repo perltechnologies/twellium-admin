@@ -396,7 +396,7 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{(() => { const hrs = allPets.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()}</td>
                                     </tr>
                                     <tr>
-                                        <td className="label-cell">Total Units (Bottles)</td>
+                                        <td className="label-cell">Total Units (F.R)</td>
                                         <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
                                         <td className="label-cell">Total Packs</td>
                                         <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
@@ -416,38 +416,76 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()}</td>
                                         <td className="label-cell">Efficiency</td>
                                         <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
-                                        <td className="label-cell">Stoppage Reports</td>
-                                        <td className="input-cell numeric">{summary.total_stoppage_reports || ''}</td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
                                     </tr>
                                 </tbody>
                             </table>
 
-                            {/* Product Details - shown when a product is selected */}
-                            {selectedProduct && (
+                            {/* Product Details - shown when a product or specific PET is selected */}
+                            {(selectedProduct || selectedPet) && (
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={10}>Product Details</th>
+                                        <th colSpan={6}>Product Details</th>
+                                    </tr>
+                                    <tr className="sub-header-row">
+                                        <th style={{ width: '25%' }}>Product</th>
+                                        <th style={{ width: '15%' }}>Bottle Size</th>
+                                        <th style={{ width: '15%' }}>Line Speed (BPH)</th>
+                                        <th style={{ width: '15%' }}>Bottles/Pack</th>
+                                        <th style={{ width: '15%' }}>Packs/Pallet</th>
+                                        <th style={{ width: '15%' }}>Single Packs</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr>
-                                        <td className="label-cell">Product</td>
-                                        <td className="input-cell">{selectedProduct}</td>
-                                        <td className="label-cell">Line Speed (BPH)</td>
-                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.target_speed_bph || p?.line_speed || summary.line_speed || ''; })()}</td>
-                                        <td className="label-cell">Bottle Size</td>
-                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.size || p?.bottle_size || summary.bottle_size || ''; })()}</td>
-                                        <td className="label-cell">Bottles/Pack</td>
-                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.bottles_per_pack || summary.bottles_per_pack || ''; })()}</td>
-                                        <td className="label-cell">Packs/Pallet</td>
-                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.packs_per_pallet || summary.packs_per_pallet || ''; })()}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Single Packs</td>
-                                        <td className="input-cell numeric">{(() => { const p = products.find(pr => pr.name === selectedProduct); return p?.single_packs || summary.single_packs || ''; })()}</td>
-                                        <td colSpan={8}></td>
-                                    </tr>
+                                    {(() => {
+                                        // Group unique products from pet entries
+                                        const uniqueProducts = [];
+                                        const seen = new Set();
+                                        allPets.forEach(pet => {
+                                            const name = pet.product_name;
+                                            if (name && !seen.has(name)) {
+                                                seen.add(name);
+                                                uniqueProducts.push(pet);
+                                            }
+                                        });
+                                        // If no pet entries but selectedProduct, use product catalog
+                                        if (uniqueProducts.length === 0 && selectedProduct) {
+                                            const p = products.find(pr => pr.name === selectedProduct);
+                                            const fallback = allPetsUnfiltered.find(pe => pe.product_name === selectedProduct && pe.bottle_size) || {};
+                                            return (
+                                                <tr>
+                                                    <td className="label-cell">{selectedProduct}</td>
+                                                    <td className="input-cell numeric">{fallback.bottle_size || p?.bottle_size || (p?.size ? `${p.size}ml` : '') || summary.bottle_size || ''}</td>
+                                                    <td className="input-cell numeric">{fallback.line_speed || p?.target_speed_bph || p?.line_speed || summary.line_speed || ''}</td>
+                                                    <td className="input-cell numeric">{fallback.bottles_per_pack || p?.bottles_per_pack || summary.bottles_per_pack || ''}</td>
+                                                    <td className="input-cell numeric">{fallback.packs_per_pallet || p?.packs_per_pallet || summary.packs_per_pallet || ''}</td>
+                                                    <td className="input-cell numeric">{fallback.single_packs || p?.single_packs || summary.single_packs || ''}</td>
+                                                </tr>
+                                            );
+                                        }
+                                        return uniqueProducts.map((petEntry, idx) => {
+                                            const p = products.find(pr => pr.name === petEntry.product_name);
+                                            // Fallback: find same product from unfiltered entries that has values filled
+                                            const fallback = allPetsUnfiltered.find(pe => pe.product_name === petEntry.product_name && pe.bottle_size) || {};
+                                            const bottleSize = petEntry.bottle_size || fallback.bottle_size || p?.size || p?.bottle_size || summary.bottle_size || '';
+                                            const lineSpeed = petEntry.line_speed || fallback.line_speed || p?.target_speed_bph || p?.line_speed || summary.line_speed || '';
+                                            const bottlesPerPack = petEntry.bottles_per_pack || fallback.bottles_per_pack || p?.bottles_per_pack || summary.bottles_per_pack || '';
+                                            const packsPerPallet = petEntry.packs_per_pallet || fallback.packs_per_pallet || p?.packs_per_pallet || summary.packs_per_pallet || '';
+                                            const singlePacks = petEntry.single_packs || fallback.single_packs || p?.single_packs || summary.single_packs || '';
+                                            return (
+                                                <tr key={idx}>
+                                                    <td className="label-cell">{petEntry.product_name}</td>
+                                                    <td className="input-cell numeric">{bottleSize}</td>
+                                                    <td className="input-cell numeric">{lineSpeed}</td>
+                                                    <td className="input-cell numeric">{bottlesPerPack}</td>
+                                                    <td className="input-cell numeric">{packsPerPallet}</td>
+                                                    <td className="input-cell numeric">{singlePacks}</td>
+                                                </tr>
+                                            );
+                                        });
+                                    })()}
                                 </tbody>
                             </table>
                             )}
@@ -474,7 +512,7 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
                                         <td className="label-cell">CO2 Yield</td>
                                         <td className="input-cell numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
-                                        <td className="label-cell">Bottles Produced</td>
+                                        <td className="label-cell">Bottles Produced (R.W)</td>
                                         <td className="input-cell numeric">{fmt(summary.total_bottles_produced)}</td>
                                         <td className="label-cell">Target Met</td>
                                         <td className="input-cell numeric">{summary.target_met_count || ''}</td>
@@ -528,64 +566,6 @@ const ProductionReportForm = () => {
                             </table>
                             )}
 
-                            {/* Detailed Pet/Line Info (when a specific pet is selected) */}
-                            {selectedPet && allPets.length > 0 && (
-                            <table className="form-table section-table">
-                                <thead>
-                                    <tr className="section-header-row">
-                                        <th colSpan={6}>Line Detail — {pets.find(p => String(p.id) === String(selectedPet))?.pet_name || ''}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td className="label-cell">Product</td>
-                                        <td className="input-cell" colSpan={2}>{allPets.map(p => p.product_name).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ')}</td>
-                                        <td className="label-cell">Status</td>
-                                        <td className="input-cell" colSpan={2}>{allPets.map(p => p.status).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ')}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Total Bottles</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
-                                        <td className="label-cell">Total Packs</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
-                                        <td className="label-cell">Bottles Produced</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced)}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">OEE</td>
-                                        <td className="input-cell numeric">{summary.oee ? `${summary.oee}%` : ''}</td>
-                                        <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
-                                        <td className="label-cell">Availability</td>
-                                        <td className="input-cell numeric">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Performance</td>
-                                        <td className="input-cell numeric">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
-                                        <td className="label-cell">Quality</td>
-                                        <td className="input-cell numeric">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
-                                        <td className="label-cell">Target Met</td>
-                                        <td className="input-cell numeric">{summary.target_met_count || ''}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Syrup Yield</td>
-                                        <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
-                                        <td className="label-cell">CO2 Yield</td>
-                                        <td className="input-cell numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
-                                        <td className="label-cell">Stoppage Reports</td>
-                                        <td className="input-cell numeric">{summary.total_stoppage_reports || ''}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Total Downtime (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))}</td>
-                                        <td className="label-cell">Planned (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.planned_downtime_mins)}</td>
-                                        <td className="label-cell">Mechanical (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            )}
 
                             {/* Per-Product Breakdown (when a PET is selected and has multiple products) */}
                             {selectedPet && !selectedProduct && (() => {

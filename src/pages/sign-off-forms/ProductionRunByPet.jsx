@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { workersApi } from '../../api/workers';
+import { inventoryApi } from '../../api/inventory';
 
 const STORAGE_KEY = 'productionRunByPet_filters';
 
@@ -99,6 +100,22 @@ const ProductionRunByPet = () => {
         };
         fetchWorkers();
     }, [selectedPet]);
+
+    // Fetch products for fallback lookup
+    const [products, setProducts] = useState([]);
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                const res = await inventoryApi.getProducts({ page_size: 100 });
+                const productList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                const allProducts = Array.isArray(productList) ? productList : productList.results || [];
+                setProducts(allProducts);
+            } catch (err) {
+                console.error('Failed to fetch products:', err);
+            }
+        };
+        fetchProducts();
+    }, []);
 
     const fetchData = async () => {
         setLoading(true);
@@ -336,7 +353,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell" style={{ width: '8%' }}>Date</td>
                                         <td className="input-cell numeric" style={{ width: '25%' }}>{formatDateRange()}</td>
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
-                                        <td className="input-cell numeric" style={{ width: '10%' }}>{summary.line_speed || ''}</td>
+                                        <td className="input-cell numeric" style={{ width: '10%' }}>{summary.line_speed || allPetEntries.find(p => p.line_speed)?.line_speed || ''}</td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
                                         <td className="input-cell numeric" style={{ width: '12%' }}>{fmt(displayTotalBottles)}</td>
                                     </tr>
@@ -344,9 +361,9 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Shift</td>
                                         <td className="input-cell">{selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'}</td>
                                         <td className="label-cell">Batch N°</td>
-                                        <td className="input-cell">{batchNumbers.length > 0 ? batchNumbers.join(', ') : ''}</td>
+                                        <td className="input-cell">{batchNumbers.length > 0 ? batchNumbers.join(', ') : (summary.batch_numbers?.length > 0 ? summary.batch_numbers.join(', ') : '')}</td>
                                         <td className="label-cell">Syrup (Lts)</td>
-                                        <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''}</td>
+                                        <td className="input-cell numeric">{summary.total_syrup_liters ? fmt(summary.total_syrup_liters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : '')}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Flavor</td>
@@ -355,12 +372,65 @@ const ProductionRunByPet = () => {
                                 </tbody>
                             </table>
 
+                            {/* Product Details Breakdown */}
+                            {allPetEntries.length > 0 && (
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={6}>Product Details</th>
+                                    </tr>
+                                    <tr className="sub-header-row">
+                                        <th style={{ width: '25%' }}>Product</th>
+                                        <th style={{ width: '15%' }}>Bottle Size</th>
+                                        <th style={{ width: '15%' }}>Line Speed (BPH)</th>
+                                        <th style={{ width: '15%' }}>Bottles/Pack</th>
+                                        <th style={{ width: '15%' }}>Packs/Pallet</th>
+                                        <th style={{ width: '15%' }}>Single Packs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(() => {
+                                        const uniqueProducts = [];
+                                        const seen = new Set();
+                                        allPetEntries.forEach(pet => {
+                                            const name = pet.product_name;
+                                            if (name && !seen.has(name)) {
+                                                seen.add(name);
+                                                uniqueProducts.push(pet);
+                                            }
+                                        });
+                                        return uniqueProducts.map((petEntry, idx) => {
+                                            // Fallback: find same product from all entries (any shift/day) that has values filled
+                                            const fallback = allPetEntriesUnfiltered.find(p => p.product_name === petEntry.product_name && p.bottle_size) || {};
+                                            // Fallback: products API (has 'size' as ml number e.g. 350)
+                                            const productCatalog = products.find(pr => pr.name === petEntry.product_name) || {};
+                                            const bottleSize = petEntry.bottle_size || fallback.bottle_size || (productCatalog.size ? `${productCatalog.size}ml` : '') || summary.bottle_size || '';
+                                            const lineSpeed = petEntry.line_speed || fallback.line_speed || productCatalog.target_speed_bph || productCatalog.line_speed || summary.line_speed || '';
+                                            const bottlesPerPack = petEntry.bottles_per_pack || fallback.bottles_per_pack || productCatalog.bottles_per_pack || summary.bottles_per_pack || '';
+                                            const packsPerPallet = petEntry.packs_per_pallet || fallback.packs_per_pallet || productCatalog.packs_per_pallet || summary.packs_per_pallet || '';
+                                            const singlePacks = petEntry.single_packs || fallback.single_packs || productCatalog.single_packs || summary.single_packs || '';
+                                            return (
+                                                <tr key={idx}>
+                                                    <td className="label-cell">{petEntry.product_name}</td>
+                                                    <td className="input-cell numeric">{bottleSize}</td>
+                                                    <td className="input-cell numeric">{lineSpeed}</td>
+                                                    <td className="input-cell numeric">{bottlesPerPack}</td>
+                                                    <td className="input-cell numeric">{packsPerPallet}</td>
+                                                    <td className="input-cell numeric">{singlePacks}</td>
+                                                </tr>
+                                            );
+                                        });
+                                    })()}
+                                </tbody>
+                            </table>
+                            )}
+
                             {/* Row 21-23: Package & Production Totals */}
                             <table className="form-table">
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Package</td>
-                                        <td className="input-cell" style={{ width: '15%' }}>{summary.package_type || ''}</td>
+                                        <td className="input-cell" style={{ width: '15%' }}>{summary.bottle_size || summary.package_type || allPetEntries.find(p => p.bottle_size)?.bottle_size || ''}</td>
                                         <td className="input-cell" style={{ width: '15%' }}></td>
                                         <td className="input-cell" style={{ width: '15%' }}></td>
                                         <td className="label-cell" style={{ width: '15%' }}></td>
@@ -368,7 +438,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Physical Box</td>
-                                        <td className="input-cell numeric">{fmt(displayTotalPhysicalBoxes || cartonMat.total_used)}</td>
+                                        <td className="input-cell numeric">{summary.bottles_per_pack || allPetEntries.find(p => p.bottles_per_pack)?.bottles_per_pack || fmt(displayTotalPhysicalBoxes || cartonMat.total_used) || ''}</td>
                                         <td className="input-cell"></td>
                                         <td className="input-cell"></td>
                                         <td className="label-cell"></td>
@@ -376,11 +446,11 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Btls/Hr</td>
-                                        <td className="input-cell numeric">{totalBtlsPerHr ? fmt(totalBtlsPerHr) : ''}</td>
+                                        <td className="input-cell numeric">{summary.total_bottles_per_hr ? fmt(summary.total_bottles_per_hr) : (totalBtlsPerHr ? fmt(totalBtlsPerHr) : '')}</td>
                                         <td className="label-cell">Efficiency</td>
                                         <td className="input-cell numeric">{displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''}</td>
-                                        <td className="label-cell">Total (Lts)</td>
-                                        <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''}</td>
+                                        <td className="label-cell">Bev. (Lts)</td>
+                                        <td className="input-cell numeric">{summary.total_beverage_liters ? fmt(summary.total_beverage_liters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : '')}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -402,8 +472,8 @@ const ProductionRunByPet = () => {
                                         <td className="input-cell numeric">{fmt(displayTotalBottles)}</td>
                                         <td className="input-cell numeric">{displayAvgSyrupYield ? `${displayAvgSyrupYield}%` : ''}</td>
                                         <td className="input-cell numeric">{fmt(displayTotalBottlesProduced)}</td>
-                                        <td className="input-cell numeric">{fmt(shrinkMat.total_used)}</td>
-                                        <td className="input-cell numeric">{fmt(cartonMat.total_used)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_shrink_packs || shrinkMat.total_used)}</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_carton_packs || cartonMat.total_used)}</td>
                                         <td className="input-cell numeric">{fmt(displayTotalPacks)}</td>
                                     </tr>
                                 </tbody>
@@ -415,19 +485,19 @@ const ProductionRunByPet = () => {
                                     <tr className="section-header-row">
                                         <td className="label-cell" style={{ width: '30%' }}><strong>Paid Hours (overtime)</strong></td>
                                         <td className="label-cell" style={{ width: '15%' }}><strong>Time</strong></td>
-                                        <td className="input-cell" colSpan={2}>{totalPaidHours ? `${totalPaidHours}h${totalOvertimeHours ? ` (OT: ${totalOvertimeHours}h)` : ''}` : ''}</td>
+                                        <td className="input-cell" colSpan={2}>{summary.paid_hours ? `${summary.paid_hours}h` : (totalPaidHours ? `${totalPaidHours}h${totalOvertimeHours ? ` (OT: ${totalOvertimeHours}h)` : ''}` : '')}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
-                                        <td className="input-cell" colSpan={3}>{productionStartTimes[0] || ''}</td>
+                                        <td className="input-cell" colSpan={3}>{summary.production_start_time || productionStartTimes[0] || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shut Down Production</td>
-                                        <td className="input-cell" colSpan={3}>{productionEndTimes[productionEndTimes.length - 1] || ''}</td>
+                                        <td className="input-cell" colSpan={3}>{summary.production_end_time || productionEndTimes[productionEndTimes.length - 1] || ''}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Production Hrs</td>
-                                        <td className="input-cell" colSpan={3}>{totalProductionHrs ? totalProductionHrs.toFixed(1) : ''}</td>
+                                        <td className="input-cell" colSpan={3}>{summary.total_production_time_hrs || (totalProductionHrs ? totalProductionHrs.toFixed(1) : '')}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
@@ -435,7 +505,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Working Labours On Line</td>
-                                        <td className="input-cell" colSpan={3}>{workers.map(w => `${w.first_name || ''} ${w.surname || ''}`.trim()).filter(Boolean).join(', ')}</td>
+                                        <td className="input-cell" colSpan={3}>{workers.length > 0 ? workers.map(w => `${w.first_name || ''} ${w.surname || ''}`.trim()).filter(Boolean).join(', ') : (summary.worker_names?.length > 0 ? summary.worker_names.join(', ') : '')}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
@@ -443,7 +513,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Name Of Absent Labours</td>
-                                        <td className="input-cell" colSpan={3}>{absentWorkerNames.length > 0 ? absentWorkerNames.join(', ') : ''}</td>
+                                        <td className="input-cell" colSpan={3}>{absentWorkerNames.length > 0 ? absentWorkerNames.join(', ') : (summary.absent_worker_names?.length > 0 ? summary.absent_worker_names.join(', ') : '')}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -479,9 +549,9 @@ const ProductionRunByPet = () => {
                                                 <td className="label-cell">{label}</td>
                                                 <td className="unit-cell">{mat.unit || defaultUnit}</td>
                                                 <td className="input-cell numeric">{fmt(mat.expected_usage)}</td>
-                                                <td className="input-cell numeric">{fmt(mat.total_received)}</td>
+                                                <td className="input-cell numeric">{fmt(mat.received || mat.total_received)}</td>
                                                 <td className="input-cell numeric">{fmt(mat.total_used)}</td>
-                                                <td className="input-cell numeric">{fmt(mat.total_returned)}</td>
+                                                <td className="input-cell numeric">{fmt(mat.returned || mat.total_returned)}</td>
                                                 <td className="input-cell numeric">{fmt(mat.total_losses)}</td>
                                                 <td className="input-cell numeric">{lossPercent ? `${lossPercent}%` : ''}</td>
                                             </tr>
@@ -512,7 +582,7 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Combi Reading:</span>
-                                                <span className="meter-value numeric">{co2Meters.combi_reading != null ? fmt(co2Meters.combi_reading) : (productionMeters.filler_reading != null ? fmt(productionMeters.filler_reading) : '')}</span>
+                                                <span className="meter-value numeric">{productionMeters.combi_reading != null ? fmt(productionMeters.combi_reading) : (co2Meters.combi_reading != null ? fmt(co2Meters.combi_reading) : (productionMeters.filler_reading != null ? fmt(productionMeters.filler_reading) : ''))}</span>
                                             </div>
                                         </td>
                                         <td></td>
@@ -536,7 +606,7 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Difference in Balance:</span>
-                                                <span className="meter-value numeric">{co2Meters.difference_in_balance_kg != null ? fmt(co2Meters.difference_in_balance_kg, 1) : (co2Meters.start_reading_kg != null && co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg - co2Meters.start_reading_kg, 1) : '')}</span>
+                                                <span className="meter-value numeric">{co2Meters.difference_in_balance != null ? fmt(co2Meters.difference_in_balance, 1) : (co2Meters.difference_in_balance_kg != null ? fmt(co2Meters.difference_in_balance_kg, 1) : (co2Meters.start_reading_kg != null && co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg - co2Meters.start_reading_kg, 1) : ''))}</span>
                                             </div>
                                         </td>
                                         <td colSpan={2}></td>
@@ -554,13 +624,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/l:</span>
-                                                <span className="meter-value numeric">{co2Meters.co2_grams_per_liter != null ? co2Meters.co2_grams_per_liter : (summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : '')}</span>
+                                                <span className="meter-value numeric">{co2Meters.co2_g_per_liter != null ? co2Meters.co2_g_per_liter : (co2Meters.co2_grams_per_liter != null ? co2Meters.co2_grams_per_liter : (co2Meters.total_co2_consumed_kg && summary.total_beverage_liters ? ((co2Meters.total_co2_consumed_kg * 1000) / summary.total_beverage_liters).toFixed(2) : ''))}</span>
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/Btl:</span>
-                                                <span className="meter-value numeric">{co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : (co2Meters.total_co2_consumed_kg && summary.total_bottles_produced ? ((co2Meters.total_co2_consumed_kg * 1000) / summary.total_bottles_produced).toFixed(2) : '')}</span>
+                                                <span className="meter-value numeric">{co2Meters.co2_g_per_bottle != null ? co2Meters.co2_g_per_bottle : (co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : (co2Meters.total_co2_consumed_kg && displayTotalBottles ? ((co2Meters.total_co2_consumed_kg * 1000) / displayTotalBottles).toFixed(2) : ''))}</span>
                                             </div>
                                         </td>
                                         <td></td>
