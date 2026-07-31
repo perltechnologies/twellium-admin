@@ -233,8 +233,34 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0 }) => {
         }
     ], [chartData]);
 
-    const totalIncidents = chartData.reduce((sum, d) => sum + d.count, 0);
-    const totalDuration = chartData.reduce((sum, d) => sum + d.totalDuration, 0);
+    const totalIncidents = useMemo(() => {
+        let count = 0;
+        filteredStoppages.forEach(stoppage => {
+            count += (stoppage.incidents || []).length;
+        });
+        return count;
+    }, [filteredStoppages]);
+
+    const totalDuration = useMemo(() => {
+        let total = 0;
+        filteredStoppages.forEach(stoppage => {
+            (stoppage.incidents || []).forEach(incident => {
+                const raw = incident.incident_duration;
+                if (!raw) return;
+                if (typeof raw === 'number') { total += raw; return; }
+                if (typeof raw === 'string' && raw.includes(':')) {
+                    const parts = raw.split(':');
+                    const hours = parseInt(parts[0]) || 0;
+                    const mins = parseInt(parts[1]) || 0;
+                    const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
+                    total += (hours * 60) + mins + (secs / 60);
+                    return;
+                }
+                total += parseFloat(raw) || 0;
+            });
+        });
+        return total;
+    }, [filteredStoppages]);
     
     const dailyRate = useMemo(() => {
         if (!useRange || !startDate || !endDate) return null;
