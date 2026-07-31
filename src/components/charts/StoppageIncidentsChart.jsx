@@ -31,6 +31,7 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
     const [selectedSubCategory, setSelectedSubCategory] = useState('');
     const [stoppages, setStoppages] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [fetchKey, setFetchKey] = useState(0);
 
     useEffect(() => {
         const fetchStoppages = async () => {
@@ -89,7 +90,7 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
         };
 
         fetchStoppages();
-    }, [useRange, singleDate, startDate, endDate]);
+    }, [useRange, singleDate, startDate, endDate, fetchKey]);
 
     const availablePets = useMemo(() => {
         const pets = [...new Set(stoppages.map(s => s.pet_name || s.line_name).filter(Boolean))];
@@ -386,6 +387,7 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
                                     setStartDate(start);
                                     setEndDate(end);
                                     setSingleDate('');
+                                    setFetchKey(k => k + 1);
                                 }}
                             >
                                 Week
@@ -399,6 +401,7 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
                                     setStartDate(start);
                                     setEndDate(end);
                                     setSingleDate('');
+                                    setFetchKey(k => k + 1);
                                 }}
                             >
                                 Month
@@ -427,6 +430,7 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
                                 setSelectedPet('');
                                 setSelectedSubCategory('');
                                 setUseRange(false);
+                                setFetchKey(k => k + 1);
                             }}
                         >
                             Clear
