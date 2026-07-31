@@ -947,7 +947,7 @@ const Overview = () => {
                                         </div>
                                         <div className="col-4">
                                             <div className="border rounded p-3 bg-light">
-                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Downtime across all lines</div>
+                                                <div className="text-muted mb-1" style={{ fontSize: '0.75rem' }}>Total Downtime across all lines{currentShiftInfo?.name ? ` (${currentShiftInfo.name})` : ''}</div>
                                                 <div className={`fw-bold ${totalDowntime <= 60 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '1.25rem' }}>
                                                     {formatDuration(totalDowntime)}
                                                 </div>
