@@ -1377,7 +1377,7 @@ const Overview = () => {
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
                     <ChartErrorBoundary fallbackMessage="Failed to render stoppage incidents chart">
-                        <StoppageIncidentsChart shiftTotalDowntime={hourlyOeeByLine.reduce((sum, line) => sum + line.downtime, 0)} />
+                        <StoppageIncidentsChart shiftTotalDowntime={hourlyOeeByLine.reduce((sum, line) => sum + line.downtime, 0)} shiftName={currentShiftInfo?.name || ''} />
                     </ChartErrorBoundary>
                 </div>
             </div>

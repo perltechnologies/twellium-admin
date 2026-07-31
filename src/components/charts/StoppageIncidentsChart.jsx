@@ -21,7 +21,7 @@ const CATEGORY_COLORS = {
     'Other': '#6b7280',
 };
 
-const StoppageIncidentsChart = ({ shiftTotalDowntime = 0 }) => {
+const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
     const navigate = useNavigate();
     const [useRange, setUseRange] = useState(false);
     const [singleDate, setSingleDate] = useState('');
@@ -442,7 +442,7 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0 }) => {
                             </div>
                             <div className="col-3">
                                 <div className="border rounded p-3 text-center">
-                                    <small className="text-muted d-block mb-1">Shift Downtime</small>
+                                    <small className="text-muted d-block mb-1">Shift Downtime{shiftName ? ` (${shiftName})` : ''}</small>
                                     <h4 className={`mb-0 ${shiftTotalDowntime <= 60 ? 'text-success' : 'text-warning'}`}>{formatDuration(shiftTotalDowntime)}</h4>
                                     <small className="text-muted">from production reports</small>
                                 </div>
