@@ -21,7 +21,7 @@ const CATEGORY_COLORS = {
     'Other': '#6b7280',
 };
 
-const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
+const StoppageIncidentsChart = () => {
     const navigate = useNavigate();
     const [useRange, setUseRange] = useState(false);
     const [singleDate, setSingleDate] = useState('');
@@ -452,42 +452,24 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
                 ) : (
                     <>
                         <div className="row mb-3">
-                            <div className="col-3">
+                            <div className="col-4">
                                 <div className="border rounded p-3 text-center">
                                     <small className="text-muted d-block mb-1">Total Incidents</small>
                                     <h4 className="mb-0 text-primary">{totalIncidents}</h4>
                                 </div>
                             </div>
-                            <div className="col-3">
+                            <div className="col-4">
                                 <div className="border rounded p-3 text-center">
-                                    <small className="text-muted d-block mb-1">Stoppage Duration</small>
+                                    <small className="text-muted d-block mb-1">Total Duration</small>
                                     <h4 className={`mb-0 ${totalDuration <= 60 ? 'text-success' : 'text-danger'}`}>{formatDuration(totalDuration)}</h4>
-                                    <small className="text-muted">from incident logs</small>
                                 </div>
                             </div>
-                            <div className="col-3">
-                                <div className="border rounded p-3 text-center">
-                                    <small className="text-muted d-block mb-1">Shift Downtime{shiftName ? ` (${shiftName})` : ''}</small>
-                                    <h4 className={`mb-0 ${shiftTotalDowntime <= 60 ? 'text-success' : 'text-warning'}`}>{formatDuration(shiftTotalDowntime)}</h4>
-                                    <small className="text-muted">from production reports</small>
-                                </div>
-                            </div>
-                            {dailyRate ? (
-                                <div className="col-3">
+                            {dailyRate && (
+                                <div className="col-4">
                                     <div className="border rounded p-3 text-center">
                                         <small className="text-muted d-block mb-1">Daily Rate</small>
                                         <h4 className="mb-0 text-info">{dailyRate}</h4>
                                         <small className="text-muted">incidents/day</small>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="col-3">
-                                    <div className="border rounded p-3 text-center">
-                                        <small className="text-muted d-block mb-1">Variance</small>
-                                        <h4 className={`mb-0 ${Math.abs(totalDuration - shiftTotalDowntime) <= 30 ? 'text-success' : 'text-warning'}`}>
-                                            {totalDuration >= shiftTotalDowntime ? '+' : ''}{formatDuration(Math.abs(totalDuration - shiftTotalDowntime))}
-                                        </h4>
-                                        <small className="text-muted">{totalDuration >= shiftTotalDowntime ? 'over' : 'under'} shift report</small>
                                     </div>
                                 </div>
                             )}
