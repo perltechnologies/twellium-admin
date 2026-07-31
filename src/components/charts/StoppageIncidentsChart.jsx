@@ -234,7 +234,7 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0 }) => {
     ], [chartData]);
 
     const totalIncidents = chartData.reduce((sum, d) => sum + d.count, 0);
-    const totalDuration = shiftTotalDowntime;
+    const totalDuration = chartData.reduce((sum, d) => sum + d.totalDuration, 0);
     
     const dailyRate = useMemo(() => {
         if (!useRange || !startDate || !endDate) return null;
