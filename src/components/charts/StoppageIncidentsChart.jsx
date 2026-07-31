@@ -36,29 +36,50 @@ const StoppageIncidentsChart = ({ shiftTotalDowntime = 0, shiftName = '' }) => {
         const fetchStoppages = async () => {
             setLoading(true);
             try {
-                const params = { page_size: 1000 };
-                if (useRange) {
-                    if (startDate) params.start_date = startDate;
-                    if (endDate) params.end_date = endDate;
-                } else if (singleDate) {
-                    params.log_date = singleDate;
-                } else {
-                    // Default to today's production date (6am boundary)
-                    const now = new Date();
-                    const currentTime = now.toTimeString().slice(0, 5);
-                    let todayStr = now.toISOString().split('T')[0];
-                    if (currentTime < '06:00') {
-                        const yesterday = new Date(now);
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        todayStr = yesterday.toISOString().split('T')[0];
+                if (useRange && startDate && endDate) {
+                    // API only supports log_date for single day filtering.
+                    // For range, fetch each day individually and merge results.
+                    const start = new Date(startDate);
+                    const end = new Date(endDate);
+                    const allResults = [];
+                    const dayMs = 86400000;
+                    const fetchPromises = [];
+                    for (let d = start.getTime(); d <= end.getTime(); d += dayMs) {
+                        const dateStr = new Date(d).toISOString().split('T')[0];
+                        fetchPromises.push(
+                            productionApi.getStoppages({ page_size: 1000, log_date: dateStr })
+                                .then(res => {
+                                    const data = res.data?.data || res.data?.results || res.data || [];
+                                    return Array.isArray(data) ? data : [];
+                                })
+                                .catch(() => [])
+                        );
                     }
-                    params.log_date = todayStr;
+                    const results = await Promise.all(fetchPromises);
+                    results.forEach(dayData => allResults.push(...dayData));
+                    const filtered = allResults.filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
+                    setStoppages(filtered);
+                } else {
+                    const params = { page_size: 1000 };
+                    if (singleDate) {
+                        params.log_date = singleDate;
+                    } else {
+                        // Default to today's production date (6am boundary)
+                        const now = new Date();
+                        const currentTime = now.toTimeString().slice(0, 5);
+                        let todayStr = now.toISOString().split('T')[0];
+                        if (currentTime < '06:00') {
+                            const yesterday = new Date(now);
+                            yesterday.setDate(yesterday.getDate() - 1);
+                            todayStr = yesterday.toISOString().split('T')[0];
+                        }
+                        params.log_date = todayStr;
+                    }
+                    const res = await productionApi.getStoppages(params);
+                    const data = res.data?.data || res.data?.results || res.data || [];
+                    const filtered = (Array.isArray(data) ? data : []).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
+                    setStoppages(filtered);
                 }
-                
-                const res = await productionApi.getStoppages(params);
-                const data = res.data?.data || res.data?.results || res.data || [];
-                const filtered = (Array.isArray(data) ? data : []).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
-                setStoppages(filtered);
             } catch (err) {
                 console.error('Failed to fetch stoppages:', err);
                 setStoppages([]);
