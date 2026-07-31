@@ -173,6 +173,37 @@ const StoppageIncidentsChart = () => {
             .slice(0, 10);
     }, [filteredStoppages]);
 
+    // Planned Downtime breakdown by subcategory
+    const plannedDowntimeData = useMemo(() => {
+        const subCatMap = {};
+        filteredStoppages.forEach(stoppage => {
+            (stoppage.incidents || []).forEach(incident => {
+                const category = incident.downtime_category_name || '';
+                if (!category.toLowerCase().includes('planned')) return;
+                const subCategory = incident.sub_downtime_category_name || 'Uncategorized';
+                const duration = (() => {
+                    const raw = incident.incident_duration;
+                    if (!raw) return 0;
+                    if (typeof raw === 'number') return raw;
+                    if (typeof raw === 'string' && raw.includes(':')) {
+                        const parts = raw.split(':');
+                        const hours = parseInt(parts[0]) || 0;
+                        const mins = parseInt(parts[1]) || 0;
+                        const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
+                        return (hours * 60) + mins + (secs / 60);
+                    }
+                    return parseFloat(raw) || 0;
+                })();
+                if (!subCatMap[subCategory]) {
+                    subCatMap[subCategory] = { label: subCategory, count: 0, totalDuration: 0 };
+                }
+                subCatMap[subCategory].count += 1;
+                subCatMap[subCategory].totalDuration += duration;
+            });
+        });
+        return Object.values(subCatMap).sort((a, b) => b.totalDuration - a.totalDuration);
+    }, [filteredStoppages]);
+
     const chartOptions = useMemo(() => ({
         chart: {
             type: 'bar',
@@ -475,6 +506,45 @@ const StoppageIncidentsChart = () => {
                             )}
                         </div>
                         <ReactApexChart options={chartOptions} series={series} type="bar" height={700} />
+
+                        {/* Planned Downtime Subcategory Breakdown */}
+                        {plannedDowntimeData.length > 0 && (
+                            <div className="mt-4 pt-3 border-top">
+                                <h6 className="mb-3">
+                                    <i className="ti ti-clock-pause me-2"></i>
+                                    Planned Downtime by Subcategory
+                                    <span className="badge bg-info text-white ms-2">{plannedDowntimeData.reduce((s, d) => s + d.count, 0)} incidents</span>
+                                    <span className="badge bg-secondary text-white ms-1">{formatDuration(plannedDowntimeData.reduce((s, d) => s + d.totalDuration, 0))}</span>
+                                </h6>
+                                <ReactApexChart
+                                    options={{
+                                        chart: { type: 'bar', toolbar: { show: false } },
+                                        plotOptions: { bar: { horizontal: true, barHeight: '70%', borderRadius: 4 } },
+                                        dataLabels: { enabled: true, style: { fontSize: '11px' } },
+                                        xaxis: {
+                                            categories: plannedDowntimeData.map(d => d.label),
+                                            labels: { style: { fontSize: '11px' } }
+                                        },
+                                        yaxis: { labels: { style: { fontSize: '11px' } } },
+                                        tooltip: {
+                                            y: {
+                                                formatter: (val, opts) => {
+                                                    return opts?.seriesIndex === 0 ? `${val} incidents` : `${formatDuration(val)}`;
+                                                }
+                                            }
+                                        },
+                                        colors: ['#3b82f6', '#f59e0b'],
+                                        legend: { position: 'top', horizontalAlign: 'right', fontSize: '12px' }
+                                    }}
+                                    series={[
+                                        { name: 'Incidents', data: plannedDowntimeData.map(d => d.count) },
+                                        { name: 'Duration (min)', data: plannedDowntimeData.map(d => Math.round(d.totalDuration)) }
+                                    ]}
+                                    type="bar"
+                                    height={Math.max(200, plannedDowntimeData.length * 50)}
+                                />
+                            </div>
+                        )}
                     </>
                 )}
             </div>
