@@ -252,7 +252,7 @@ const Overview = () => {
                 setRefreshing(false);
             }
         }
-    }, [filters]);
+    }, [getParams]);
 
     // Fetch material consumptions
     useEffect(() => {
@@ -499,7 +499,7 @@ const Overview = () => {
         } finally {
             setShiftLoading(false);
         }
-    }, [shifts, selectedShiftId, shiftFilterDate, filters]);
+    }, [shifts, selectedShiftId, shiftFilterDate]);
 
     /* Re-fetch whenever filters change */
     useEffect(() => {
@@ -651,7 +651,7 @@ const Overview = () => {
         });
 
         return { stats, oee, oeeByLine, oeeDetailReports, downtimeCategories };
-    }, [metricsComparison, todayYesterdayComparison, rawPets, currentShiftInfo, shiftFilterDate]);
+    }, [metricsComparison, todayYesterdayComparison, currentShiftInfo, shiftFilterDate]);
 
     /* Hourly OEE by Line for per-PET gauges */
     const hourlyOeeByLine = useMemo(() => {
@@ -923,9 +923,6 @@ const Overview = () => {
                             {(() => {
                                 const totalProduction = hourlyOeeByLine.reduce((sum, line) => sum + line.production, 0);
                                 const totalDowntime = hourlyOeeByLine.reduce((sum, line) => sum + line.downtime, 0);
-                                const avgOEE = hourlyOeeByLine.length > 0
-                                    ? (hourlyOeeByLine.reduce((sum, line) => sum + line.oee, 0) / hourlyOeeByLine.length).toFixed(1)
-                                    : 0;
                                 const bestPerformer = [...hourlyOeeByLine].sort((a, b) => b.performance - a.performance)[0];
 
                                 return (
