@@ -142,7 +142,7 @@ const Overview = () => {
     const [shiftOutputByPet, setShiftOutputByPet] = useState({}); // total_output from shift_pet_metrics
 
     // Downtime chart local filters
-    const [dtFilter, setDtFilter] = useState('all');
+    const [dtFilter, setDtFilter] = useState('week');
     const [dtDate, setDtDate] = useState('');
     const [dtDateRange, setDtDateRange] = useState({ start: '', end: '' });
     const [dtUseRange, setDtUseRange] = useState(false);
@@ -763,7 +763,7 @@ const Overview = () => {
                                 <div>
                                     <h6 className="mb-0 fw-semibold">
                                         Mechanical vs Planned Downtime
-                                        <FilterBadge filters={filters} pets={pets} localFilter={dtFilter !== 'all' ? dtFilter : dtDate || (dtDateRange.start && 'Custom Range')} />
+                                        <FilterBadge filters={filters} pets={pets} localFilter={dtDate ? dtDate : (dtDateRange.start ? 'Custom Range' : dtFilter)} />
                                     </h6>
                                     <small className="text-muted">Downtime comparison by PET line</small>
                                 </div>
@@ -796,7 +796,7 @@ const Overview = () => {
                                 <div className="d-flex align-items-center gap-2">
                                     {!dtUseRange ? (
                                         <input type="date" className="form-control form-control-sm" style={{ maxWidth: 150 }}
-                                            value={dtDate} onChange={(e) => { setDtDate(e.target.value); setDtFilter('all'); }} />
+                                            value={dtDate} onChange={(e) => { setDtDate(e.target.value); setDtFilter(''); }} />
                                     ) : (
                                         <>
                                             <input type="date" className="form-control form-control-sm" style={{ maxWidth: 140 }}
@@ -811,8 +811,6 @@ const Overview = () => {
                                         <label className="form-check-label small">Range</label>
                                     </div>
                                     <div className="btn-group btn-group-sm">
-                                        <button className={`btn ${dtFilter === 'all' ? 'btn-primary' : 'btn-outline-primary'}`}
-                                            onClick={() => { setDtFilter('all'); setDtDate(''); setDtDateRange({ start: '', end: '' }); }}>All</button>
                                         <button className={`btn ${dtFilter === 'week' ? 'btn-primary' : 'btn-outline-primary'}`}
                                             onClick={() => { setDtFilter('week'); setDtDate(''); }}>Week</button>
                                         <button className={`btn ${dtFilter === 'month' ? 'btn-primary' : 'btn-outline-primary'}`}
