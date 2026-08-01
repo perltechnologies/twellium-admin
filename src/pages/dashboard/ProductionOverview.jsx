@@ -146,11 +146,81 @@ const Overview = () => {
     const [dtDate, setDtDate] = useState('');
     const [dtDateRange, setDtDateRange] = useState({ start: '', end: '' });
     const [dtUseRange, setDtUseRange] = useState(false);
+    const [dtDowntimeByLine, setDtDowntimeByLine] = useState(null);
 
-    // Use downtimeByLine from the main loadData (production_summary) as the active data
+    // Fetch downtime data when local filters change
+    useEffect(() => {
+        const fetchDowntime = async () => {
+            try {
+                let dateStart, dateEnd;
+                const today = new Date();
+
+                if (dtUseRange && dtDateRange.start && dtDateRange.end) {
+                    dateStart = dtDateRange.start;
+                    dateEnd = dtDateRange.end;
+                } else if (dtDate) {
+                    dateStart = dtDate;
+                    dateEnd = dtDate;
+                } else if (dtFilter === 'week') {
+                    const dayOfWeek = today.getDay();
+                    const sunday = new Date(today);
+                    sunday.setDate(today.getDate() - dayOfWeek);
+                    const saturday = new Date(sunday);
+                    saturday.setDate(sunday.getDate() + 6);
+                    dateStart = sunday.toISOString().split('T')[0];
+                    dateEnd = saturday.toISOString().split('T')[0];
+                } else if (dtFilter === 'month') {
+                    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+                    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    dateStart = firstDay.toISOString().split('T')[0];
+                    dateEnd = lastDay.toISOString().split('T')[0];
+                } else {
+                    // 'all' — use null to signal we should use the main loadData result
+                    setDtDowntimeByLine(null);
+                    return;
+                }
+
+                const res = await productionApi.getProductionSummary({ start_date: dateStart, end_date: dateEnd });
+                const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                const breakdown = envelope.downtime_breakdown || {};
+
+                const lineDowntimeMap = {};
+                (breakdown.categories || []).forEach(cat => {
+                    const isMechanical = cat.category_name?.toLowerCase().includes('mechanical');
+                    const isPlanned = cat.category_name?.toLowerCase().includes('planned');
+                    (cat.sub_categories || []).forEach(sub => {
+                        (sub.pets_affected || []).forEach(pet => {
+                            const name = pet.pet_name;
+                            if (!name) return;
+                            if (!lineDowntimeMap[name]) lineDowntimeMap[name] = { name, Mechanical: 0, Planned: 0 };
+                            if (isMechanical) lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                            else if (isPlanned) lineDowntimeMap[name].Planned += pet.duration_mins || 0;
+                            else lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                        });
+                    });
+                });
+
+                setDtDowntimeByLine(
+                    Object.values(lineDowntimeMap)
+                        .filter(l => l.Mechanical + l.Planned > 0)
+                        .sort((a, b) => {
+                            const aNum = parseInt(a.name.match(/(\d+)/)?.[0] || '999');
+                            const bNum = parseInt(b.name.match(/(\d+)/)?.[0] || '999');
+                            return aNum - bNum;
+                        })
+                );
+            } catch (err) {
+                console.error('Failed to fetch downtime data:', err);
+            }
+        };
+
+        fetchDowntime();
+    }, [dtFilter, dtDate, dtUseRange, dtDateRange]);
+
+    // Use local downtime data if available, otherwise fall back to main loadData result
     const activeDowntimeByLine = useMemo(() => {
-        return downtimeByLine;
-    }, [downtimeByLine]);
+        return dtDowntimeByLine !== null ? dtDowntimeByLine : downtimeByLine;
+    }, [dtDowntimeByLine, downtimeByLine]);
 
     const handlePetChange = (e) => {
         const petId = e.target.value;
