@@ -146,69 +146,11 @@ const Overview = () => {
     const [dtDate, setDtDate] = useState('');
     const [dtDateRange, setDtDateRange] = useState({ start: '', end: '' });
     const [dtUseRange, setDtUseRange] = useState(false);
-    const [allStoppages, setAllStoppages] = useState([]);
 
-    // Fetch all stoppages once for downtime chart
-    useEffect(() => {
-        productionApi.getStoppages({ page_size: 1000 })
-            .then(res => setAllStoppages(extractList(res).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'))))
-            .catch(err => console.error('Failed to fetch all stoppages:', err));
-    }, []);
-
-    // Derive downtime by line from allStoppages with client-side date filtering
+    // Use downtimeByLine from the main loadData (production_summary) as the active data
     const activeDowntimeByLine = useMemo(() => {
-        let filtered = [...allStoppages];
-
-        const getDate = (s) => (s.log_date || s.created_at || s.start_time || '').split('T')[0];
-
-        // Apply date filters
-        if (dtUseRange) {
-            if (dtDateRange.start) filtered = filtered.filter(s => getDate(s) >= dtDateRange.start);
-            if (dtDateRange.end) filtered = filtered.filter(s => getDate(s) <= dtDateRange.end);
-        } else if (dtDate) {
-            filtered = filtered.filter(s => getDate(s) === dtDate);
-        }
-
-        if (dtFilter !== 'all') {
-            const end = new Date();
-            const start = new Date();
-            if (dtFilter === 'week') {
-                const dayOfWeek = end.getDay();
-                start.setDate(end.getDate() - dayOfWeek);
-                end.setDate(start.getDate() + 6);
-            }
-            if (dtFilter === 'month') {
-                start.setDate(1);
-                end.setMonth(end.getMonth() + 1, 0);
-            }
-            const startStr = start.toISOString().split('T')[0];
-            const endStr = end.toISOString().split('T')[0];
-            filtered = filtered.filter(s => {
-                const d = getDate(s);
-                return d >= startStr && d <= endStr;
-            });
-        }
-
-        const lineMap = {};
-        filtered.forEach(s => {
-            const raw = s.pet_name || s.line_name || 'Unknown';
-            const key = raw.toLowerCase().trim();
-            if (!lineMap[key]) lineMap[key] = { name: raw, Mechanical: 0, Planned: 0 };
-            (s.incidents || []).forEach(inc => {
-                const cat = (inc.downtime_category_name || '').toLowerCase();
-                const dur = parseFloat(inc.incident_duration || 0);
-                if (cat.includes('mechanical')) lineMap[key].Mechanical += dur;
-                else if (cat.includes('planned')) lineMap[key].Planned += dur;
-            });
-        });
-        return Object.values(lineMap)
-            .filter(l => l.Mechanical + l.Planned > 0)
-            .sort((a, b) => {
-                const aNum = parseInt(a.name.match(/(\d+)/)?.[0] || '999');
-                const bNum = parseInt(b.name.match(/(\d+)/)?.[0] || '999');
-                return aNum - bNum;
-            });
-    }, [allStoppages, dtFilter, dtDate, dtUseRange, dtDateRange.start, dtDateRange.end]);
+        return downtimeByLine;
+    }, [downtimeByLine]);
 
     const handlePetChange = (e) => {
         const petId = e.target.value;
@@ -230,143 +172,97 @@ const Overview = () => {
 
         try {
             const params = getParams();
-            
-            // OEE params already have datetime format from getParams
-            const oeeParams = { ...params };
-            
-            console.log('ProductionOverview - Fetching with params:', params);
-            console.log('ProductionOverview - OEE params:', oeeParams);
 
-            const stoppageParams = getParams({}, true);
-
-            // Build date range for oee_date_range endpoint
+            // Build date range
             const today = new Date();
-            let oeeStartDate, oeeEndDate;
-            if (oeeParams.start_date && oeeParams.end_date) {
-                oeeStartDate = oeeParams.start_date;
-                oeeEndDate = oeeParams.end_date;
+            let dateStart, dateEnd;
+            if (params.start_date && params.end_date) {
+                dateStart = params.start_date;
+                dateEnd = params.end_date;
+            } else if (params.production_date) {
+                dateStart = params.production_date;
+                dateEnd = params.production_date;
             } else {
-                // Default to current week (Sun–Sat) if only single date
+                // Default to current week (Sun–Sat)
                 const dayOfWeek = today.getDay();
                 const sunday = new Date(today);
                 sunday.setDate(today.getDate() - dayOfWeek);
                 const saturday = new Date(sunday);
                 saturday.setDate(sunday.getDate() + 6);
-                oeeStartDate = oeeParams.production_date || sunday.toISOString().split('T')[0];
-                oeeEndDate = oeeParams.production_date || saturday.toISOString().split('T')[0];
+                dateStart = sunday.toISOString().split('T')[0];
+                dateEnd = saturday.toISOString().split('T')[0];
             }
 
-            const [reportsRes, stoppagesRes, oeeRes] = await Promise.all([
-                productionApi.getReports(params),
-                productionApi.getStoppages(stoppageParams),
-                productionApi.getOeeDateRange({ start_date: oeeStartDate, end_date: oeeEndDate }),
-            ]);
+            const summaryParams = { start_date: dateStart, end_date: dateEnd };
+            if (params.pet) summaryParams.pet = params.pet;
+            if (params.shift) summaryParams.shift = params.shift;
 
+            console.log('ProductionOverview - Fetching production_summary with:', summaryParams);
+
+            const res = await productionApi.getProductionSummary(summaryParams);
             if (controller.signal.aborted) return;
 
-            const reports = extractList(reportsRes).filter(r => !r.pet_name?.toLowerCase().includes('can'));
-            const stoppages = extractList(stoppagesRes).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
+            const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+            const summary = envelope.summary || {};
+            const dailyBreakdown = envelope.daily_breakdown || [];
+            const downtimeBreakdownData = envelope.downtime_breakdown || {};
+            const materialsData = envelope.material_consumptions || {};
 
-            // Fetch shift_pet_metrics for each date in the range for accurate output values
-            const dateList = [];
-            {
-                const todayStr = new Date().toISOString().split('T')[0];
-                let current = new Date(oeeStartDate);
-                const endDate = new Date(oeeEndDate);
-                while (current <= endDate) {
-                    const dateStr = current.toISOString().split('T')[0];
-                    if (dateStr <= todayStr) dateList.push(dateStr);
-                    current.setDate(current.getDate() + 1);
-                }
-            }
-            const shiftMetricsResults = await Promise.all(
-                dateList.map(date =>
-                    productionApi.getDashboardShiftPetMetrics({ date })
-                        .then(res => {
-                            const raw = res?.data?.data ?? res?.data ?? {};
-                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
-                                .filter(r => !r.pet_name?.toLowerCase().includes('can'));
-                        })
-                        .catch(() => [])
-                )
-            );
-            // Aggregate total_output by PET from shift_pet_metrics (using total_bottles like floor app)
-            const shiftMetricsOutputByPet = {};
-            shiftMetricsResults.flat().forEach(r => {
-                const name = r.pet_name || 'Unknown';
-                if (!shiftMetricsOutputByPet[name]) shiftMetricsOutputByPet[name] = 0;
-                shiftMetricsOutputByPet[name] += r.total_bottles || r.total_bottles_produced || 0;
-            });
-            setShiftOutputByPet(shiftMetricsOutputByPet);
-            
-            // oee_date_range returns { "2026-06-28": { oee, total_output, downtime, ... }, ... }
-            const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
-            const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
+            // Extract all pet entries from daily breakdown
+            const allPetEntries = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
 
-            console.log('OEE Date Range Response:', oeeRaw);
+            // Build stats
+            const totalDowntime = summary.total_downtime_minutes || summary.total_downtime_mins ||
+                ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0));
+            const totalProduced = summary.total_bottles_produced || summary.total_bottles || 0;
 
-            /* Build oeeData array for downstream usage (oeeSummary state) */
-            const oeeData = oeeEntries.map(([date, val]) => ({
-                production_date: date,
-                oee: val?.oee || 0,
-                availability: val?.availability_weighted_avg || 0,
-                performance: val?.performance_weighted_avg || val?.efficiency_weighted_avg || 0,
-                quality: val?.quality_weighted_avg || 0,
-                total_output: val?.total_bottles_produced || 0,
-                downtime: val?.downtime || 0,
-                planned_downtime: val?.planned_downtime || 0,
-                mechanical_downtime: val?.mechanical_downtime || 0,
-            }));
-            setOeeSummary(oeeData);
-
-            /* totals from oee_date_range */
-            let totalDowntime = 0;
-            let totalProduced = 0;
-            oeeEntries.forEach(([, val]) => {
-                totalProduced += val?.total_bottles_produced || 0;
-                totalDowntime += val?.downtime || 0;
-            });
-
-            // Fallback: if oee_date_range returned no data, use shift_pet_metrics output
-            if (oeeEntries.length === 0) {
-                stoppages.forEach(s => { totalDowntime += s.downtime_minutes || s.duration || 0; });
-                totalProduced = Object.values(shiftMetricsOutputByPet).reduce((s, v) => s + v, 0);
-            }
-            
-            // Get unique PET lines from reports
-            const uniquePets = new Set(reports.map(r => r.pet_name).filter(Boolean));
-            
             setStats({
-                totalReports: reports.length,
-                activeLines: uniquePets.size,
-                totalStoppages: stoppages.length,
+                totalReports: summary.total_reports || allPetEntries.length,
+                activeLines: new Set(allPetEntries.map(p => p.pet_name).filter(Boolean)).size,
+                totalStoppages: summary.total_stoppage_reports || downtimeBreakdownData.total_incidents || 0,
                 totalDowntime: Math.round(totalDowntime),
                 totalProduced,
             });
 
-            /* Store all reports for ProductionSummary */
-            setReports(reports);
+            // Build reports-like data from pet entries for downstream components
+            const reportData = allPetEntries.map(p => ({
+                pet_name: p.pet_name,
+                product_name: p.product_name,
+                shift: p.shift,
+                status: p.status,
+                production_date: dailyBreakdown.find(d => (d.pets || []).includes(p))?.date || dateStart,
+                total_bottles_produced: p.total_bottles_produced || 0,
+                total_bottles: p.total_bottles || 0,
+                total_packs: p.total_packs || 0,
+                oee: p.oee || 0,
+                efficiency: p.efficiency || 0,
+                availability: p.availability || 0,
+                performance: p.performance || 0,
+                quality: p.quality || 0,
+                total_downtime_minutes: p.total_downtime_minutes || 0,
+                planned_downtime_mins: p.planned_downtime_mins || 0,
+                mechanical_downtime_mins: p.mechanical_downtime_mins || 0,
+            }));
+            setReports(reportData);
 
-            /* recent reports */
-            const sorted = [...reports].sort((a, b) =>
-                new Date(b.production_date) - new Date(a.production_date)
-            );
-            setRecentReports(sorted.slice(0, 5));
+            // Recent reports (latest entries)
+            setRecentReports(reportData.slice(0, 5));
 
-            /* recent stoppages */
-            const sortedStops = [...stoppages].sort((a, b) =>
-                new Date(b.created_at || b.start_time || 0) - new Date(a.created_at || a.start_time || 0)
-            );
-            setRecentStoppages(sortedStops.slice(0, 5));
+            // Shift output by pet
+            const outputByPet = {};
+            allPetEntries.forEach(p => {
+                const name = p.pet_name || 'Unknown';
+                if (!outputByPet[name]) outputByPet[name] = 0;
+                outputByPet[name] += p.total_bottles_produced || p.total_bottles || 0;
+            });
+            setShiftOutputByPet(outputByPet);
 
-            /* plan vs actual per line - use total_output from shift_pet_metrics */
+            // Plan vs Actual per line
             const lineMap = {};
-            Object.entries(shiftMetricsOutputByPet).forEach(([line, totalOutput]) => {
+            Object.entries(outputByPet).forEach(([line, totalOutput]) => {
                 if (!lineMap[line]) lineMap[line] = { name: line, planned: 0, actual: 0 };
                 lineMap[line].actual += totalOutput;
-                // Use target_output from reports if available, else estimate
-                const reportForLine = reports.find(r => r.pet_name === line);
-                const planned = reportForLine?.target_output || reportForLine?.planned_output || Math.round(totalOutput * 1.05);
+                const planned = Math.round(totalOutput * 1.05); // Estimate target
                 lineMap[line].planned += planned;
             });
             const pvData = Object.values(lineMap).sort((a, b) => b.actual - a.actual).slice(0, 6);
@@ -376,59 +272,71 @@ const Overview = () => {
             const sumPlanned = pvData.reduce((s, d) => s + d.planned, 0);
             setTotals({ planned: sumPlanned, actual: sumActual });
 
-            /* status breakdown for donut */
+            // Status breakdown for donut
             const statusMap = {};
-            reports.forEach(r => {
-                const st = r.status || 'UNKNOWN';
+            allPetEntries.forEach(p => {
+                const st = p.status || 'UNKNOWN';
                 statusMap[st] = (statusMap[st] || 0) + 1;
             });
             setStatusBreakdown(
                 Object.entries(statusMap).map(([name, value]) => ({ name, value }))
             );
 
-            /* top lines for donut */
+            // Top lines for donut
             setTopLines(
                 pvData.slice(0, 4).map(l => ({ name: l.name, value: l.actual }))
             );
 
-            /* downtime breakdown from stoppages → incidents (all categories) */
-            const categoryMap = {};
-            stoppages.forEach(s => {
-                (s.incidents || []).forEach(inc => {
-                    const cat = inc.downtime_category_name || 'Uncategorized';
-                    const dur = parseFloat(inc.incident_duration || 0);
-                    categoryMap[cat] = (categoryMap[cat] || 0) + dur;
-                });
-            });
+            // OEE summary from daily breakdown
+            const oeeData = dailyBreakdown.map(d => ({
+                production_date: d.date,
+                oee: d.oee || 0,
+                availability: d.avg_availability || 0,
+                performance: d.avg_performance || 0,
+                quality: d.avg_quality || 0,
+                total_output: d.total_bottles_produced || d.total_bottles || 0,
+                downtime: d.total_downtime_minutes || ((d.planned_downtime_mins || 0) + (d.mechanical_downtime_mins || 0)),
+                planned_downtime: d.planned_downtime_mins || 0,
+                mechanical_downtime: d.mechanical_downtime_mins || 0,
+            }));
+            setOeeSummary(oeeData);
 
-            const categorisedMins = Object.values(categoryMap).reduce((s, v) => s + v, 0);
-            const noIncidentMins = Math.round(totalDowntime) - Math.round(categorisedMins);
-
-            const allCategories = [
-                ...Object.entries(categoryMap).map(([name, value]) => ({ name, value: Math.round(value) })),
-                ...(noIncidentMins > 0 ? [{ name: 'No Incidents Logged', value: noIncidentMins }] : [])
-            ].filter(d => d.value > 0).sort((a, b) => b.value - a.value);
-
+            // Downtime breakdown from production_summary downtime_breakdown
+            const allCategories = (downtimeBreakdownData.categories || []).map(cat => ({
+                name: cat.category_name,
+                value: Math.round(cat.total_duration_mins || 0),
+            })).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
             setDowntimeTypes(allCategories);
 
-            /* downtime by line for bar chart */
+            // Downtime by line from subcategory pets_affected
             const lineDowntimeMap = {};
-            stoppages.forEach(s => {
-                const lineName = s.pet_name || s.line_name || 'Unknown';
-                if (!lineDowntimeMap[lineName]) lineDowntimeMap[lineName] = { name: lineName, Mechanical: 0, Planned: 0 };
-                (s.incidents || []).forEach(inc => {
-                    const cat = (inc.downtime_category_name || '').toLowerCase();
-                    const dur = parseFloat(inc.incident_duration || 0);
-                    if (cat.includes('mechanical')) lineDowntimeMap[lineName].Mechanical += dur;
-                    else if (cat.includes('planned')) lineDowntimeMap[lineName].Planned += dur;
+            (downtimeBreakdownData.categories || []).forEach(cat => {
+                const isMechanical = cat.category_name?.toLowerCase().includes('mechanical');
+                const isPlanned = cat.category_name?.toLowerCase().includes('planned');
+                (cat.sub_categories || []).forEach(sub => {
+                    (sub.pets_affected || []).forEach(pet => {
+                        const name = pet.pet_name;
+                        if (!name) return;
+                        if (!lineDowntimeMap[name]) lineDowntimeMap[name] = { name, Mechanical: 0, Planned: 0 };
+                        if (isMechanical) lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                        else if (isPlanned) lineDowntimeMap[name].Planned += pet.duration_mins || 0;
+                        else lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                    });
                 });
             });
             setDowntimeByLine(
                 Object.values(lineDowntimeMap)
                     .filter(l => l.Mechanical + l.Planned > 0)
-                    .sort((a, b) => (b.Mechanical + b.Planned) - (a.Mechanical + a.Planned))
+                    .sort((a, b) => {
+                        const aNum = parseInt(a.name.match(/(\d+)/)?.[0] || '999');
+                        const bNum = parseInt(b.name.match(/(\d+)/)?.[0] || '999');
+                        return aNum - bNum;
+                    })
                     .slice(0, 6)
             );
+
+            // Recent stoppages - empty since we don't fetch individual stoppages anymore
+            setRecentStoppages([]);
 
             hasFetched.current = true;
         } catch (err) {
