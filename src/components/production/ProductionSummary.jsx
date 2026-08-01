@@ -70,7 +70,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
     const [summaryPeriod, setSummaryPeriod] = useState('today');
     const [summaryStartDate, setSummaryStartDate] = useState(() => new Date().toISOString().split('T')[0]);
     const [summaryEndDate, setSummaryEndDate] = useState(() => new Date().toISOString().split('T')[0]);
-    const [summaryReports, setSummaryReports] = useState([]);
+    const [, setSummaryReports] = useState([]);
     const [summaryData, setSummaryData] = useState(null);
     const [summaryLoading, setSummaryLoading] = useState(false);
     const summaryAbortRef = useRef(null);

@@ -1,15 +1,13 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production';
-import DowntimeBreakdownList from '../../components/charts/DowntimeBreakdownList';
 import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsChart';
 import ProductionSummary from '../../components/production/ProductionSummary';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
 import { useFilters } from '../../context/FilterContext';
-import ChartErrorBoundary, { SectionError } from '../../components/ui/ChartErrorBoundary';
+import ChartErrorBoundary from '../../components/ui/ChartErrorBoundary';
 import {
-    SkeletonStatCards, SkeletonGauges, SkeletonChart,
-    SkeletonTable, SkeletonDowntimeList
+    SkeletonGauges, SkeletonChart
 } from '../../components/ui/Skeletons';
 import CorporateStatCard from '../../components/production/CorporateStatCard';
 import CorporateGaugeChart from '../../components/charts/CorporateGaugeChart';
@@ -141,11 +139,7 @@ const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
     const { updateFilters } = useFilters();
-    const [selectedOutputPets, setSelectedOutputPets] = useState([]);
 
-    // Independent OEE gauges date filter (defaults to previous day)
-    const [oeeShowDetail, setOeeShowDetail] = useState(false);
-    
     // Filters for Production Output by PET
     const [outputUseRange, setOutputUseRange] = useState(true);
     const [outputSingleDate, setOutputSingleDate] = useState('');
@@ -179,14 +173,14 @@ const Overview = () => {
 
     const [rawPets, setRawPets] = useState([]);
     const [hourlyReports, setHourlyReports] = useState([]);
-    const [shiftOeeReports, setShiftOeeReports] = useState([]);
+    const [, setShiftOeeReports] = useState([]);
     const [shifts, setShifts] = useState([]);
     const [currentShiftInfo, setCurrentShiftInfo] = useState(null);
     const [selectedShiftId, setSelectedShiftId] = useState(null);
-    const [shiftLoading, setShiftLoading] = useState(false);
+    const [, setShiftLoading] = useState(false);
     const [shiftFilterDate, setShiftFilterDate] = useState('');
     const [shiftComparisonData, setShiftComparisonData] = useState({});
-    const [showShiftComparison, setShowShiftComparison] = useState(false);
+    const [showShiftComparison] = useState(false);
     const [metricsComparison, setMetricsComparison] = useState({});
     const [todayYesterdayComparison, setTodayYesterdayComparison] = useState({});
     const [materialConsumptions, setMaterialConsumptions] = useState([]);
@@ -524,7 +518,7 @@ const Overview = () => {
     }, [rawPets]);
 
     /* ── Derived data (recomputed when filter or raw data changes) ── */
-    const { stats, oee, oeeByLine, oeeDetailReports, downtimeCategories } = useMemo(() => {
+    useMemo(() => {
         const reports = [];
 
         /* Stats from metricsComparison endpoint */

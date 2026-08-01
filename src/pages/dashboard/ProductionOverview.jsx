@@ -15,18 +15,7 @@ import ChartErrorBoundary from '../../components/ui/ChartErrorBoundary';
 import {
     SkeletonChart, SkeletonDonut, SkeletonTable
 } from '../../components/ui/Skeletons';
-import { useFilters } from '../../context/FilterContext';
 import ReactApexChart from 'react-apexcharts';
-
-/* ── helpers ─────────────────────────────────────── */
-const extractList = (res) => {
-    const d = res?.data;
-    if (!d) return [];
-    const inner = d?.data ?? d;
-    if (Array.isArray(inner)) return inner;
-    if (inner?.results && Array.isArray(inner.results)) return inner.results;
-    return [];
-};
 
 const STATUS_BADGES = {
     STARTED: 'badge bg-soft-info text-info',
@@ -118,7 +107,6 @@ const FilterBadge = ({ filters, localFilter, pets = [] }) => {
 const Overview = () => {
     const navigate = useNavigate();
     const { getParams, filters } = useApiWithFilters();
-    const { updateFilters } = useFilters();
 
     /* Stale-while-revalidate: separate initial vs refresh state */
     const [initialLoading, setInitialLoading] = useState(true);
@@ -221,10 +209,6 @@ const Overview = () => {
         return dtDowntimeByLine || downtimeByLine;
     }, [dtDowntimeByLine, downtimeByLine]);
 
-    const handlePetChange = (e) => {
-        const petId = e.target.value;
-        updateFilters({ pet: petId });
-    };
 
     const loadData = useCallback(async () => {
         /* Cancel any in-flight request */
@@ -275,7 +259,6 @@ const Overview = () => {
             const summary = envelope.summary || {};
             const dailyBreakdown = envelope.daily_breakdown || [];
             const downtimeBreakdownData = envelope.downtime_breakdown || {};
-            const materialsData = envelope.material_consumptions || {};
 
             // Extract all pet entries from daily breakdown
             const allPetEntries = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));

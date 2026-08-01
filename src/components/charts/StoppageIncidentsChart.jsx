@@ -12,15 +12,6 @@ const formatDuration = (mins) => {
     return `${h}h ${m}m`;
 };
 
-const CATEGORY_COLORS = {
-    'Mechanical Downtime': '#ef4444',
-    'Planned Downtime': '#3b82f6',
-    'Electrical': '#f59e0b',
-    'Quality': '#8b5cf6',
-    'Material': '#10b981',
-    'Other': '#6b7280',
-};
-
 const StoppageIncidentsChart = () => {
     const navigate = useNavigate();
     const [useRange, setUseRange] = useState(false);
