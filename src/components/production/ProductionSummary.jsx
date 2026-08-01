@@ -293,10 +293,10 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                 onClick={() => {
                                     setSummaryPeriod('month');
                                     const today = new Date();
-                                    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                                    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                                    setSummaryStartDate(firstDay.toISOString().split('T')[0]);
-                                    setSummaryEndDate(lastDay.toISOString().split('T')[0]);
+                                    const start = new Date(today);
+                                    start.setDate(today.getDate() - 29);
+                                    setSummaryStartDate(start.toISOString().split('T')[0]);
+                                    setSummaryEndDate(today.toISOString().split('T')[0]);
                                 }}
                             >Month</button>
                         </div>
@@ -506,10 +506,10 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                             onClick={() => {
                                                 setChartPeriod('month');
                                                 const today = new Date();
-                                                const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                                                const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                                                setChartStartDate(firstDay.toISOString().split('T')[0]);
-                                                setChartEndDate(lastDay.toISOString().split('T')[0]);
+                                                const start = new Date(today);
+                                                start.setDate(today.getDate() - 29);
+                                                setChartStartDate(start.toISOString().split('T')[0]);
+                                                setChartEndDate(today.toISOString().split('T')[0]);
                                             }}
                                         >Month</button>
                                     </div>
