@@ -29,180 +29,143 @@ const StoppageIncidentsChart = () => {
     const [endDate, setEndDate] = useState('');
     const [selectedPet, setSelectedPet] = useState('');
     const [selectedSubCategory, setSelectedSubCategory] = useState('');
-    const [stoppages, setStoppages] = useState([]);
+    const [downtimeBreakdown, setDowntimeBreakdown] = useState(null);
     const [loading, setLoading] = useState(false);
     const [fetchKey, setFetchKey] = useState(0);
 
     useEffect(() => {
-        const fetchStoppages = async () => {
+        const fetchData = async () => {
             setLoading(true);
             try {
+                let dateStart, dateEnd;
                 if (useRange && startDate && endDate) {
-                    // API only supports log_date for single day filtering.
-                    // For range, fetch each day individually and merge results.
-                    const start = new Date(startDate);
-                    const end = new Date(endDate);
-                    const allResults = [];
-                    const dayMs = 86400000;
-                    const fetchPromises = [];
-                    for (let d = start.getTime(); d <= end.getTime(); d += dayMs) {
-                        const dateStr = new Date(d).toISOString().split('T')[0];
-                        fetchPromises.push(
-                            productionApi.getStoppages({ page_size: 1000, log_date: dateStr })
-                                .then(res => {
-                                    const data = res.data?.data || res.data?.results || res.data || [];
-                                    return Array.isArray(data) ? data : [];
-                                })
-                                .catch(() => [])
-                        );
-                    }
-                    const results = await Promise.all(fetchPromises);
-                    results.forEach(dayData => allResults.push(...dayData));
-                    const filtered = allResults.filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
-                    setStoppages(filtered);
+                    dateStart = startDate;
+                    dateEnd = endDate;
+                } else if (singleDate) {
+                    dateStart = singleDate;
+                    dateEnd = singleDate;
                 } else {
-                    const params = { page_size: 1000 };
-                    if (singleDate) {
-                        params.log_date = singleDate;
-                    } else {
-                        // Default to today's production date (6am boundary)
-                        const now = new Date();
-                        const currentTime = now.toTimeString().slice(0, 5);
-                        let todayStr = now.toISOString().split('T')[0];
-                        if (currentTime < '06:00') {
-                            const yesterday = new Date(now);
-                            yesterday.setDate(yesterday.getDate() - 1);
-                            todayStr = yesterday.toISOString().split('T')[0];
-                        }
-                        params.log_date = todayStr;
+                    const now = new Date();
+                    const currentTime = now.toTimeString().slice(0, 5);
+                    let todayStr = now.toISOString().split('T')[0];
+                    if (currentTime < '06:00') {
+                        const yesterday = new Date(now);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        todayStr = yesterday.toISOString().split('T')[0];
                     }
-                    const res = await productionApi.getStoppages(params);
-                    const data = res.data?.data || res.data?.results || res.data || [];
-                    const filtered = (Array.isArray(data) ? data : []).filter(s => !(s.pet_name || s.line_name || '').toLowerCase().includes('can'));
-                    setStoppages(filtered);
+                    dateStart = todayStr;
+                    dateEnd = todayStr;
                 }
+
+                const params = { start_date: dateStart, end_date: dateEnd };
+                const res = await productionApi.getProductionSummary(params);
+                const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+                setDowntimeBreakdown(envelope.downtime_breakdown || null);
             } catch (err) {
-                console.error('Failed to fetch stoppages:', err);
-                setStoppages([]);
+                console.error('Failed to fetch production summary:', err);
+                setDowntimeBreakdown(null);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchStoppages();
+        fetchData();
     }, [useRange, singleDate, startDate, endDate, fetchKey]);
 
+    // Extract available pets from downtime breakdown
     const availablePets = useMemo(() => {
-        const pets = [...new Set(stoppages.map(s => s.pet_name || s.line_name).filter(Boolean))];
-        return pets.sort((a, b) => {
+        if (!downtimeBreakdown?.categories) return [];
+        const petSet = new Set();
+        downtimeBreakdown.categories.forEach(cat => {
+            (cat.sub_categories || []).forEach(sub => {
+                (sub.pets_affected || []).forEach(pet => {
+                    if (pet.pet_name) petSet.add(pet.pet_name);
+                });
+            });
+        });
+        return [...petSet].sort((a, b) => {
             const aNum = parseInt(a.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [stoppages]);
+    }, [downtimeBreakdown]);
 
+    // Extract available subcategories
     const availableSubCategories = useMemo(() => {
+        if (!downtimeBreakdown?.categories) return [];
         const subCats = new Set();
-        stoppages.forEach(stoppage => {
-            (stoppage.incidents || []).forEach(incident => {
-                const subCat = incident.sub_downtime_category_name;
-                if (subCat) subCats.add(subCat);
+        downtimeBreakdown.categories.forEach(cat => {
+            (cat.sub_categories || []).forEach(sub => {
+                if (sub.sub_category_name) subCats.add(sub.sub_category_name);
             });
         });
-        return Array.from(subCats).sort();
-    }, [stoppages]);
+        return [...subCats].sort();
+    }, [downtimeBreakdown]);
 
-    const filteredStoppages = useMemo(() => {
-        let filtered = stoppages;
-        
-        if (selectedPet) {
-            filtered = filtered.filter(s => (s.pet_name || s.line_name) === selectedPet);
-        }
-        
-        if (selectedSubCategory) {
-            filtered = filtered.map(stoppage => ({
-                ...stoppage,
-                incidents: (stoppage.incidents || []).filter(
-                    incident => incident.sub_downtime_category_name === selectedSubCategory
-                )
-            })).filter(s => s.incidents.length > 0);
-        }
-        
-        return filtered;
-    }, [stoppages, selectedPet, selectedSubCategory]);
-
+    // Build chart data from downtime_breakdown subcategories
     const chartData = useMemo(() => {
-        const incidentMap = {};
-
-        filteredStoppages.forEach(stoppage => {
-            (stoppage.incidents || []).forEach(incident => {
-                const subCategory = incident.sub_downtime_category_name || 'Uncategorized';
-                const description = incident.incident_description || 'No Description';
-                const key = `${subCategory} - ${description}`;
-                const duration = (() => {
-                    const raw = incident.incident_duration;
-                    if (!raw) return 0;
-                    if (typeof raw === 'number') return raw;
-                    if (typeof raw === 'string' && raw.includes(':')) {
-                        const parts = raw.split(':');
-                        const hours = parseInt(parts[0]) || 0;
-                        const mins = parseInt(parts[1]) || 0;
-                        const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
-                        return (hours * 60) + mins + (secs / 60);
-                    }
-                    return parseFloat(raw) || 0;
-                })();
-
-                if (!incidentMap[key]) {
-                    incidentMap[key] = {
-                        label: key,
-                        subCategory,
-                        description,
-                        count: 0,
-                        totalDuration: 0
-                    };
+        if (!downtimeBreakdown?.categories) return [];
+        const items = [];
+        downtimeBreakdown.categories.forEach(cat => {
+            (cat.sub_categories || []).forEach(sub => {
+                if (selectedSubCategory && sub.sub_category_name !== selectedSubCategory) return;
+                
+                let count = sub.incident_count || 0;
+                let duration = sub.total_duration_mins || 0;
+                
+                // Filter by pet if selected
+                if (selectedPet && sub.pets_affected?.length > 0) {
+                    const petData = sub.pets_affected.find(p => p.pet_name === selectedPet);
+                    if (!petData) return;
+                    count = petData.count || 0;
+                    duration = petData.duration_mins || 0;
+                } else if (selectedPet && !sub.pets_affected?.length) {
+                    return;
                 }
-
-                incidentMap[key].count += 1;
-                incidentMap[key].totalDuration += duration;
+                
+                items.push({
+                    label: sub.sub_category_name || 'Unknown',
+                    category: cat.category_name,
+                    count,
+                    totalDuration: duration,
+                });
             });
         });
-
-        return Object.values(incidentMap)
-            .sort((a, b) => b.totalDuration - a.totalDuration)
-            .slice(0, 10);
-    }, [filteredStoppages]);
+        return items.sort((a, b) => b.totalDuration - a.totalDuration).slice(0, 15);
+    }, [downtimeBreakdown, selectedSubCategory, selectedPet]);
 
     // Planned Downtime breakdown by subcategory
     const plannedDowntimeData = useMemo(() => {
-        const subCatMap = {};
-        filteredStoppages.forEach(stoppage => {
-            (stoppage.incidents || []).forEach(incident => {
-                const category = incident.downtime_category_name || '';
-                if (!category.toLowerCase().includes('planned')) return;
-                const subCategory = incident.sub_downtime_category_name || 'Uncategorized';
-                const duration = (() => {
-                    const raw = incident.incident_duration;
-                    if (!raw) return 0;
-                    if (typeof raw === 'number') return raw;
-                    if (typeof raw === 'string' && raw.includes(':')) {
-                        const parts = raw.split(':');
-                        const hours = parseInt(parts[0]) || 0;
-                        const mins = parseInt(parts[1]) || 0;
-                        const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
-                        return (hours * 60) + mins + (secs / 60);
-                    }
-                    return parseFloat(raw) || 0;
-                })();
-                if (!subCatMap[subCategory]) {
-                    subCatMap[subCategory] = { label: subCategory, count: 0, totalDuration: 0 };
-                }
-                subCatMap[subCategory].count += 1;
-                subCatMap[subCategory].totalDuration += duration;
-            });
-        });
-        return Object.values(subCatMap).sort((a, b) => b.totalDuration - a.totalDuration);
-    }, [filteredStoppages]);
+        if (!downtimeBreakdown?.categories) return [];
+        const plannedCat = downtimeBreakdown.categories.find(c => c.category_name?.toLowerCase().includes('planned'));
+        if (!plannedCat) return [];
+        return (plannedCat.sub_categories || []).map(sub => {
+            let count = sub.incident_count || 0;
+            let duration = sub.total_duration_mins || 0;
+            if (selectedPet && sub.pets_affected?.length > 0) {
+                const petData = sub.pets_affected.find(p => p.pet_name === selectedPet);
+                if (!petData) return null;
+                count = petData.count || 0;
+                duration = petData.duration_mins || 0;
+            } else if (selectedPet && !sub.pets_affected?.length) {
+                return null;
+            }
+            return { label: sub.sub_category_name || 'Unknown', count, totalDuration: duration };
+        }).filter(Boolean).sort((a, b) => b.totalDuration - a.totalDuration);
+    }, [downtimeBreakdown, selectedPet]);
+
+    // Totals
+    const totalIncidents = useMemo(() => {
+        if (!downtimeBreakdown?.categories) return 0;
+        if (selectedSubCategory || selectedPet) return chartData.reduce((sum, d) => sum + d.count, 0);
+        return downtimeBreakdown.total_incidents || downtimeBreakdown.categories.reduce((s, c) => s + (c.incident_count || 0), 0);
+    }, [downtimeBreakdown, chartData, selectedSubCategory, selectedPet]);
+
+    const totalDuration = useMemo(() => {
+        if (!downtimeBreakdown?.categories) return 0;
+        if (selectedSubCategory || selectedPet) return chartData.reduce((sum, d) => sum + d.totalDuration, 0);
+        return downtimeBreakdown.total_downtime_mins || downtimeBreakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0);
+    }, [downtimeBreakdown, chartData, selectedSubCategory, selectedPet]);
 
     const chartOptions = useMemo(() => ({
         chart: {
@@ -285,35 +248,6 @@ const StoppageIncidentsChart = () => {
             data: chartData.map(d => Math.round(d.totalDuration))
         }
     ], [chartData]);
-
-    const totalIncidents = useMemo(() => {
-        let count = 0;
-        filteredStoppages.forEach(stoppage => {
-            count += (stoppage.incidents || []).length;
-        });
-        return count;
-    }, [filteredStoppages]);
-
-    const totalDuration = useMemo(() => {
-        let total = 0;
-        filteredStoppages.forEach(stoppage => {
-            (stoppage.incidents || []).forEach(incident => {
-                const raw = incident.incident_duration;
-                if (!raw) return;
-                if (typeof raw === 'number') { total += raw; return; }
-                if (typeof raw === 'string' && raw.includes(':')) {
-                    const parts = raw.split(':');
-                    const hours = parseInt(parts[0]) || 0;
-                    const mins = parseInt(parts[1]) || 0;
-                    const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
-                    total += (hours * 60) + mins + (secs / 60);
-                    return;
-                }
-                total += parseFloat(raw) || 0;
-            });
-        });
-        return total;
-    }, [filteredStoppages]);
     
     const dailyRate = useMemo(() => {
         if (!useRange || !startDate || !endDate) return null;
@@ -478,7 +412,7 @@ const StoppageIncidentsChart = () => {
                     <div className="text-center text-muted py-5">
                         <i className="ti ti-alert-circle fs-1 mb-3 d-block"></i>
                         <p className="mb-0">No incident data available</p>
-                        <small className="d-block mt-2">Total stoppages: {stoppages.length} | Filtered: {filteredStoppages.length}</small>
+                        <small className="d-block mt-2">No downtime data for selected filters</small>
                     </div>
                 ) : (
                     <>
