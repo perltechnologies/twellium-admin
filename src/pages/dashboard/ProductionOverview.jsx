@@ -154,6 +154,7 @@ const Overview = () => {
             try {
                 let dateStart, dateEnd;
                 const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
 
                 if (dtUseRange && dtDateRange.start && dtDateRange.end) {
                     dateStart = dtDateRange.start;
@@ -162,22 +163,20 @@ const Overview = () => {
                     dateStart = dtDate;
                     dateEnd = dtDate;
                 } else if (dtFilter === 'week') {
-                    const dayOfWeek = today.getDay();
-                    const sunday = new Date(today);
-                    sunday.setDate(today.getDate() - dayOfWeek);
-                    const saturday = new Date(sunday);
-                    saturday.setDate(sunday.getDate() + 6);
-                    dateStart = sunday.toISOString().split('T')[0];
-                    dateEnd = saturday.toISOString().split('T')[0];
+                    const start = new Date(today);
+                    start.setDate(today.getDate() - 6);
+                    dateStart = start.toISOString().split('T')[0];
+                    dateEnd = todayStr;
                 } else if (dtFilter === 'month') {
                     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-                    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
                     dateStart = firstDay.toISOString().split('T')[0];
-                    dateEnd = lastDay.toISOString().split('T')[0];
+                    dateEnd = todayStr;
                 } else {
-                    // 'all' — use null to signal we should use the main loadData result
-                    setDtDowntimeByLine(null);
-                    return;
+                    // 'all' — last 30 days
+                    const start = new Date(today);
+                    start.setDate(today.getDate() - 29);
+                    dateStart = start.toISOString().split('T')[0];
+                    dateEnd = todayStr;
                 }
 
                 const res = await productionApi.getProductionSummary({ start_date: dateStart, end_date: dateEnd });
@@ -217,9 +216,9 @@ const Overview = () => {
         fetchDowntime();
     }, [dtFilter, dtDate, dtUseRange, dtDateRange]);
 
-    // Use local downtime data if available, otherwise fall back to main loadData result
+    // Use local downtime data, fall back to main loadData result while loading
     const activeDowntimeByLine = useMemo(() => {
-        return dtDowntimeByLine !== null ? dtDowntimeByLine : downtimeByLine;
+        return dtDowntimeByLine || downtimeByLine;
     }, [dtDowntimeByLine, downtimeByLine]);
 
     const handlePetChange = (e) => {
