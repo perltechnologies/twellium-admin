@@ -1,66 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, DataTable, Badge, Button, Input } from '../../components/ui';
-import {
-    ArrowLeft,
-    Package,
-    Search,
-    Filter,
-    ArrowRight,
-    Barcode,
-    Smartphone,
-    Warehouse,
-    Truck,
-    AlertTriangle,
-    CheckCircle2,
-    Clock,
-    Factory,
-    Boxes,
-    ArrowUpRight
-} from 'lucide-react';
 import { inventoryApi } from '../../api/inventory';
 import { format } from 'date-fns';
-import { toast } from 'react-hot-toast';
-import { motion } from 'framer-motion';
-
-const STAGE_CONFIG = {
-    PRODUCTION: { label: 'Production', color: 'blue', icon: Factory },
-    WAREHOUSE: { label: 'Warehouse (Inbound)', color: 'indigo', icon: Warehouse },
-    FAULTY: { label: 'Warehouse (Reject)', color: 'red', icon: AlertTriangle },
-    QUALIFIED: { label: 'Warehouse (Restore)', color: 'emerald', icon: Boxes },
-    EXTERNAL_WAREHOUSE: { label: 'Ex-Warehouse', color: 'amber', icon: ArrowUpRight },
-    DAMAGED: { label: 'Damaged', color: 'slate', icon: AlertTriangle },
-    LOADING: { label: 'Loading', color: 'sky', icon: Truck },
-    LOADED: { label: 'Dispatched', color: 'blue', icon: Truck },
-};
 
 const PalletList = () => {
     const { stage } = useParams();
     const navigate = useNavigate();
     const [pallets, setPallets] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [stats, setStats] = useState({ total_units: 0, total_quantity: 0 });
+    const [search, setSearch] = useState('');
+    const [loading, setLoading] = useState(false);
 
-    const config = STAGE_CONFIG[stage?.toUpperCase()] || { label: stage, color: 'slate', icon: Package };
-
-    const fetchPallets = async () => {
+    const fetchPallets = async (searchTerm = '') => {
         setLoading(true);
         try {
-            const res = await inventoryApi.getStageDetails({ 
-                stage: stage?.toUpperCase(), 
-                search: searchTerm 
+            const response = await inventoryApi.getStageDetails({
+                stage,
+                search: searchTerm
             });
-            // The API expectedly returns lists of units for that stage
-            const data = res.data.data || [];
-            setPallets(data);
-            
-            // Calculate simple stats
-            const totalQty = data.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
-            setStats({ total_units: data.length, total_quantity: totalQty });
+            setPallets(response.data?.data || []);
         } catch (error) {
-            console.error('Error fetching pallets:', error);
-            toast.error("Failed to load pallets for this stage");
+            console.error('Failed to fetch pallets:', error);
         } finally {
             setLoading(false);
         }
@@ -72,154 +31,147 @@ const PalletList = () => {
 
     const handleSearch = (e) => {
         e.preventDefault();
-        fetchPallets();
+        fetchPallets(search);
     };
 
-    const columns = [
-        {
-            header: 'Handling Unit',
-            accessor: 'barcode',
-            render: (r) => (
-                <div className="flex flex-col">
-                    <div className="flex items-center gap-2 group cursor-pointer" onClick={() => navigate(`/post-production/pallets/details/${r.current_barcode || r.rfid_number}`)}>
-                        <Barcode size={14} className="text-slate-400" />
-                        <span className="font-mono font-black text-slate-900 dark:text-slate-100 group-hover:text-blue-500 transition-colors">
-                            {r.current_barcode || 'NO BARCODE'}
-                        </span>
-                    </div>
-                    {r.rfid_number && (
-                        <div className="flex items-center gap-2 mt-1">
-                            <Smartphone size={12} className="text-slate-400" />
-                            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-tight">
-                                RFID: {r.rfid_number}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            )
-        },
-        {
-            header: 'Product Details',
-            accessor: 'product_name',
-            render: (r) => (
-                <div className="max-w-[200px]">
-                    <p className="font-bold text-slate-900 dark:text-slate-100 truncate">{r.product_name || 'Unknown Product'}</p>
-                    <p className="text-xs text-slate-500">{r.pet_name || 'Standard Line'}</p>
-                </div>
-            )
-        },
-        {
-            header: 'Quantity',
-            accessor: 'quantity',
-            render: (r) => (
-                <div className="flex items-baseline gap-1">
-                    <span className="text-lg font-black text-slate-900 dark:text-slate-100">{r.quantity}</span>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Pcs</span>
-                </div>
-            )
-        },
-        {
-            header: 'Status',
-            accessor: 'current_status',
-            render: (r) => (
-                <Badge color={config.color}>{r.current_status || stage}</Badge>
-            )
-        },
-        {
-            header: 'Last Scanned',
-            accessor: 'updated_at',
-            render: (r) => (
-                <div className="flex items-center gap-2 text-slate-500">
-                    <Clock size={14} />
-                    <span className="text-xs font-medium">
-                        {r.updated_at ? format(new Date(r.updated_at), 'MMM dd, HH:mm') : 'N/A'}
-                    </span>
-                </div>
-            )
-        },
-        {
-            header: '',
-            accessor: 'id',
-            render: (r) => (
-                <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-500"
-                    onClick={() => navigate(`/post-production/pallets/details/${r.current_barcode || r.rfid_number}`)}
-                >
-                    <ArrowRight size={18} />
-                </Button>
-            )
-        }
-    ];
+    const getStatusBadge = (status) => {
+        const statusMap = {
+            PRODUCTION: 'bg-soft-info text-info',
+            WAREHOUSE: 'bg-soft-primary text-primary',
+            QUALIFIED: 'bg-soft-success text-success',
+            LOADING: 'bg-soft-warning text-warning',
+            LOADED: 'bg-soft-success text-success',
+            DAMAGED: 'bg-soft-danger text-danger',
+        };
+        const cls = statusMap[status] || 'bg-soft-secondary text-secondary';
+        return <span className={`badge ${cls}`}>{status}</span>;
+    };
+
+    const handleRowClick = (barcode) => {
+        navigate(`/post-production/pallets/details/${barcode}`);
+    };
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                <div className="flex items-center gap-4">
-                    <Button 
-                        variant="secondary" 
-                        size="sm" 
-                        className="rounded-xl p-2"
-                        onClick={() => navigate(-1)}
-                    >
-                        <ArrowLeft size={20} />
-                    </Button>
-                    <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-2xl bg-${config.color}-100 dark:bg-${config.color}-500/10 text-${config.color}-600 dark:text-${config.color}-500`}>
-                            <config.icon size={24} />
-                        </div>
+        <div className="container-fluid">
+            {/* Page Header */}
+            <div className="row mb-4">
+                <div className="col-12">
+                    <div className="d-flex align-items-center justify-content-between">
                         <div>
-                            <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight leading-none mb-1">
-                                {config.label}
-                            </h1>
-                            <p className="text-sm text-slate-500 font-medium">Browse and manage pallets currently in this stage</p>
+                            <h4 className="mb-1">
+                                <i className="ti ti-box me-2"></i>
+                                {stage} Pallets
+                            </h4>
+                            <p className="text-muted mb-0">View all pallets in the {stage} stage</p>
                         </div>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-6">
-                    <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Pallets</p>
-                        <p className="text-2xl font-black text-slate-900 dark:text-slate-100 leading-none">{stats.total_units}</p>
-                    </div>
-                    <div className="h-10 w-px bg-slate-100 dark:bg-slate-800" />
-                    <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Pieces</p>
-                        <p className="text-2xl font-black text-slate-900 dark:text-slate-100 leading-none">{stats.total_quantity.toLocaleString()}</p>
+                        <button
+                            className="btn btn-outline-secondary"
+                            onClick={() => navigate(-1)}
+                        >
+                            <i className="ti ti-arrow-left me-1"></i>
+                            Back
+                        </button>
                     </div>
                 </div>
             </div>
 
-            {/* Filters */}
-            <Card className="p-4 border-none shadow-sm dark:bg-slate-900/50">
-                <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-4">
-                    <div className="relative flex-1 min-w-[300px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
-                        <Input
-                            placeholder="Search by Barcode, RFID or Product..."
-                            className="h-11 pl-10 bg-slate-50 dark:bg-slate-800 border-none rounded-xl"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+            {/* Search */}
+            <div className="row mb-4">
+                <div className="col-12">
+                    <div className="card">
+                        <div className="card-body">
+                            <form onSubmit={handleSearch}>
+                                <div className="row g-3 align-items-end">
+                                    <div className="col-md-9">
+                                        <label className="form-label">Search</label>
+                                        <input
+                                            type="text"
+                                            className="form-control"
+                                            placeholder="Search by barcode, RFID, or product..."
+                                            value={search}
+                                            onChange={(e) => setSearch(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="col-md-3">
+                                        <button type="submit" className="btn btn-primary w-100" disabled={loading}>
+                                            <i className="ti ti-search me-2"></i>
+                                            {loading ? 'Searching...' : 'Search'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                    <Button type="submit" className="h-11 px-6 rounded-xl gap-2">
-                        <Filter size={18} />
-                        Apply Filters
-                    </Button>
-                </form>
-            </Card>
+                </div>
+            </div>
 
             {/* Table */}
-            <Card className="p-0 overflow-hidden border-none shadow-xl dark:bg-slate-900">
-                <DataTable
-                    columns={columns}
-                    data={pallets}
-                    isLoading={loading}
-                    emptyMessage={`No pallets found in ${config.label}.`}
-                />
-            </Card>
+            <div className="row">
+                <div className="col-12">
+                    <div className="card">
+                        <div className="card-header d-flex align-items-center justify-content-between">
+                            <h5 className="card-title mb-0">
+                                <i className="ti ti-list me-2"></i>
+                                Pallets
+                            </h5>
+                            <span className="badge bg-soft-primary text-primary">
+                                {pallets.length} items
+                            </span>
+                        </div>
+                        <div className="card-body p-0">
+                            {loading ? (
+                                <div className="text-center py-5">
+                                    <div className="spinner-border text-primary" role="status">
+                                        <span className="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            ) : pallets.length === 0 ? (
+                                <div className="text-center py-5 text-muted">
+                                    <i className="ti ti-box-off fs-1 d-block mb-2"></i>
+                                    No pallets found
+                                </div>
+                            ) : (
+                                <div className="table-responsive">
+                                    <table className="table table-striped table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Barcode</th>
+                                                <th>RFID</th>
+                                                <th>Product</th>
+                                                <th>Line</th>
+                                                <th>Qty</th>
+                                                <th>Status</th>
+                                                <th>Last Updated</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {pallets.map((pallet) => (
+                                                <tr
+                                                    key={pallet.id}
+                                                    onClick={() => handleRowClick(pallet.current_barcode)}
+                                                    style={{ cursor: 'pointer' }}
+                                                >
+                                                    <td><code>{pallet.current_barcode}</code></td>
+                                                    <td>{pallet.rfid_number || '—'}</td>
+                                                    <td>{pallet.product_name}</td>
+                                                    <td>{pallet.pet_name}</td>
+                                                    <td>{pallet.quantity}</td>
+                                                    <td>{getStatusBadge(pallet.current_status)}</td>
+                                                    <td>
+                                                        {pallet.updated_at
+                                                            ? format(new Date(pallet.updated_at), 'dd MMM yyyy HH:mm')
+                                                            : '—'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

@@ -1,148 +1,216 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, DataTable, Input, Select } from '../../components/ui';
-import {
-    History,
-    Search,
-    ArrowDownCircle,
-    Settings,
-    Clock,
-    Barcode,
-    Tag
-} from 'lucide-react';
 import { inventoryApi } from '../../api/inventory';
 import { format } from 'date-fns';
 
+const ACTION_TYPES = [
+  { value: '', label: 'All Actions' },
+  { value: 'PRODUCTION_GENERATE', label: 'Production Generate' },
+  { value: 'WAREHOUSE_INBOUND', label: 'Warehouse Inbound' },
+  { value: 'WAREHOUSE_OUTBOUND', label: 'Warehouse Outbound' },
+  { value: 'SHIPMENT_CREATE', label: 'Shipment Create' },
+  { value: 'UNIT_SCAN', label: 'Unit Scan' },
+];
+
+const BADGE_COLORS = {
+  PRODUCTION_GENERATE: 'bg-soft-success',
+  WAREHOUSE_INBOUND: 'bg-soft-primary',
+  WAREHOUSE_OUTBOUND: 'bg-soft-warning',
+  SHIPMENT_CREATE: 'bg-soft-info',
+  UNIT_SCAN: 'bg-soft-secondary',
+};
+
 const ActivityLogs = () => {
-    const navigate = useNavigate();
-    const [logs, setLogs] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [params, setParams] = useState({
-        page: 1,
-        page_size: 20,
-        search: '',
-        action_type: ''
-    });
+  const navigate = useNavigate();
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [actionType, setActionType] = useState('');
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
+  const [count, setCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
 
-    useEffect(() => {
-        const fetchLogs = async () => {
-            setLoading(true);
-            try {
-                const res = await inventoryApi.getActivityLogs(params);
-                setLogs(res.data.data || []);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchLogs();
-    }, [params]);
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      const params = { page, page_size: pageSize };
+      if (search.trim()) params.search = search.trim();
+      if (actionType) params.action_type = actionType;
+      const response = await inventoryApi.getActivityLogs(params);
+      const data = response.data;
+      setLogs(data.data || []);
+      setCount(data.count || 0);
+      setHasNext(!!data.next);
+      setHasPrevious(!!data.previous);
+    } catch (error) {
+      console.error('Failed to fetch activity logs', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const columns = [
-        {
-            header: 'Action', accessor: 'activity_type', render: (r) => {
-                const getIcon = () => {
-                    const type = (r.activity_type || '').toLowerCase();
-                    if (type.includes('barcode')) return <Barcode size={14} className="text-indigo-500" />;
-                    if (type.includes('rfid')) return <Tag size={14} className="text-emerald-500" />;
-                    if (type.includes('transition') || type.includes('move')) return <ArrowDownCircle size={14} className="text-blue-500" />;
-                    return <Settings size={14} className="text-slate-400" />;
-                };
-                return (
-                    <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800">
-                            {getIcon()}
-                        </div>
-                        <span className="font-bold text-slate-900 dark:text-slate-100 uppercase text-[11px] tracking-wider">
-                            {(r.activity_type || 'UNKNOWN').replace(/_/g, ' ')}
-                        </span>
-                    </div>
-                );
-            }
-        },
-        {
-            header: 'Unit ID',
-            accessor: 'unit_internal_id',
-            render: (r) => <span className="font-mono text-xs text-blue-500 font-bold">{r.unit_internal_id || r.unit_internal_id}</span>
-        },
-        {
-            header: 'Description',
-            accessor: 'description',
-            wrap: true,
-            render: (r) => <p className="text-slate-500 text-sm leading-relaxed">{r.description}</p>
-        },
-        {
-            header: 'Operator', accessor: 'performed_by_name', render: (r) => (
-                <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold">
-                        {r.performed_by_name?.[0]}
-                    </div>
-                    <span className="text-sm font-medium">{r.performed_by_name}</span>
-                </div>
-            )
-        },
-        {
-            header: 'Timestamp', accessor: 'timestamp', render: (r) => (
-                <div className="flex flex-col items-end">
-                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{format(new Date(r.timestamp), 'MMM dd, yyyy')}</span>
-                    <span className="text-xs text-slate-400 flex items-center gap-1">
-                        <Clock size={10} />
-                        {format(new Date(r.timestamp), 'HH:mm:ss')}
-                    </span>
-                </div>
-            )
-        }
-    ];
+  useEffect(() => {
+    fetchLogs();
+  }, [page, pageSize, actionType]);
 
-    return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl">
-                        <History className="text-slate-600 dark:text-slate-400" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold">Activity Logs</h1>
-                        <p className="text-sm text-slate-500">Track every movement and transaction in the system</p>
-                    </div>
-                </div>
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setPage(1);
+    fetchLogs();
+  };
 
-                <div className="flex items-center gap-2">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
-                        <Input
-                            placeholder="Search descriptions..."
-                            className="pl-10 w-64"
-                            value={params.search}
-                            onChange={(e) => setParams({ ...params, search: e.target.value })}
-                        />
-                    </div>
-                    <Select
-                        className="w-48"
-                        value={params.action_type}
-                        onChange={(e) => setParams({ ...params, action_type: e.target.value })}
-                    >
-                        <option value="">All Actions</option>
-                        <option value="PRODUCTION_GENERATE">Production</option>
-                        <option value="WAREHOUSE_INBOUND">Warehouse In</option>
-                        <option value="WAREHOUSE_OUTBOUND">Warehouse Out</option>
-                        <option value="SHIPMENT_CREATE">Shipment</option>
-                        <option value="UNIT_SCAN">Unit Scan</option>
-                    </Select>
-                </div>
-            </div>
+  const totalPages = Math.ceil(count / pageSize);
 
-            <Card className="p-0 overflow-hidden">
-                <DataTable
-                    columns={columns}
-                    data={logs}
-                    isLoading={loading}
-                    onView={(row) => navigate(`/post-production/activity-logs/${row.id}`)}
-                />
-            </Card>
+  return (
+    <div className="container-fluid">
+      <div className="card">
+        <div className="card-header">
+          <h5 className="mb-0">
+            <i className="ti ti-activity me-2"></i>
+            Activity Logs
+          </h5>
         </div>
-    );
+        <div className="card-body">
+          {/* Filters */}
+          <form onSubmit={handleSearchSubmit} className="row g-3 mb-4">
+            <div className="col-md-4">
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Search logs..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="col-md-3">
+              <select
+                className="form-select"
+                value={actionType}
+                onChange={(e) => {
+                  setActionType(e.target.value);
+                  setPage(1);
+                }}
+              >
+                {ACTION_TYPES.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-2">
+              <select
+                className="form-select"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+              >
+                <option value={10}>10 / page</option>
+                <option value={20}>20 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+            </div>
+            <div className="col-md-2">
+              <button type="submit" className="btn btn-primary w-100">
+                <i className="ti ti-search me-1"></i>
+                Search
+              </button>
+            </div>
+          </form>
+
+          {/* Table */}
+          <div className="table-responsive">
+            <table className="table table-striped table-hover">
+              <thead>
+                <tr>
+                  <th>Activity Type</th>
+                  <th>Unit ID</th>
+                  <th>Description</th>
+                  <th>Performed By</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan="5" className="text-center py-4">
+                      Loading...
+                    </td>
+                  </tr>
+                ) : logs.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="text-center py-4 text-muted">
+                      No activity logs found
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((log) => (
+                    <tr
+                      key={log.id}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/post-production/activity-logs/${log.id}`)}
+                    >
+                      <td>
+                        <span className={`badge ${BADGE_COLORS[log.activity_type] || 'bg-soft-secondary'}`}>
+                          {log.activity_type}
+                        </span>
+                      </td>
+                      <td>{log.unit_internal_id || '—'}</td>
+                      <td>{log.description || '—'}</td>
+                      <td>{log.performed_by_name || '—'}</td>
+                      <td>
+                        {log.timestamp
+                          ? format(new Date(log.timestamp), 'dd MMM yyyy HH:mm')
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="d-flex justify-content-between align-items-center mt-3">
+              <small className="text-muted">
+                Page {page} of {totalPages} ({count} total)
+              </small>
+              <nav>
+                <ul className="pagination pagination-sm mb-0">
+                  <li className={`page-item ${!hasPrevious ? 'disabled' : ''}`}>
+                    <button
+                      className="page-link"
+                      onClick={() => setPage((p) => p - 1)}
+                      disabled={!hasPrevious}
+                    >
+                      <i className="ti ti-chevron-left"></i>
+                    </button>
+                  </li>
+                  <li className="page-item active">
+                    <span className="page-link">{page}</span>
+                  </li>
+                  <li className={`page-item ${!hasNext ? 'disabled' : ''}`}>
+                    <button
+                      className="page-link"
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={!hasNext}
+                    >
+                      <i className="ti ti-chevron-right"></i>
+                    </button>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ActivityLogs;

@@ -1,281 +1,238 @@
 import React, { useState, useEffect } from 'react';
-import { Card, DataTable, Button, Input } from '../../components/ui';
-import { Truck, Plus, Search, Gauge, Trash2, Edit3, X, Loader2 } from 'lucide-react';
 import { logisticsApi } from '../../api/logistics';
-import { toast } from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
+import toast from 'react-hot-toast';
 
 const VehicleList = () => {
-    const [vehicles, setVehicles] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState('');
-    const [page, setPage] = useState(1);
-    const [pagination, setPagination] = useState({ count: 0, next: null, previous: null });
+  const [vehicles, setVehicles] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
 
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingVehicle, setEditingVehicle] = useState(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [vehicleToDelete, setVehicleToDelete] = useState(null);
-    const [formLoading, setFormLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState(null);
+  const [formData, setFormData] = useState({ plate_number: '', capacity: '' });
 
-    const [formData, setFormData] = useState({
-        plate_number: '',
-        capacity: ''
-    });
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-    const fetchVehicles = async () => {
-        setLoading(true);
-        try {
-            const res = await logisticsApi.getVehicles({ search, page });
-            setVehicles(res.data.data || []);
-            setPagination({
-                count: res.data.count,
-                next: res.data.next,
-                previous: res.data.previous
-            });
-        } catch (err) {
-            console.error(err);
-            toast.error("Failed to load vehicles");
-        } finally {
-            setLoading(false);
-        }
-    };
+  useEffect(() => {
+    fetchVehicles();
+  }, [page, search]);
 
-    useEffect(() => {
-        fetchVehicles();
-    }, [search, page]);
+  const fetchVehicles = async () => {
+    setLoading(true);
+    try {
+      const res = await logisticsApi.getVehicles({ search, page });
+      setVehicles(res.data.data || []);
+      setTotalCount(res.data.count || 0);
+      setHasNext(!!res.data.next);
+      setHasPrevious(!!res.data.previous);
+    } catch (error) {
+      toast.error('Failed to load vehicles');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const handleOpenModal = (vehicle = null) => {
-        if (vehicle) {
-            setEditingVehicle(vehicle);
-            setFormData({
-                plate_number: vehicle.plate_number || '',
-                capacity: vehicle.capacity || ''
-            });
-        } else {
-            setEditingVehicle(null);
-            setFormData({
-                plate_number: '',
-                capacity: ''
-            });
-        }
-        setIsModalOpen(true);
-    };
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value);
+    setPage(1);
+  };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setFormLoading(true);
-        try {
-            if (editingVehicle) {
-                await logisticsApi.updateVehicle(editingVehicle.id, formData);
-                toast.success("Vehicle updated successfully");
-            } else {
-                await logisticsApi.createVehicle(formData);
-                toast.success("Vehicle registered successfully");
-            }
-            setIsModalOpen(false);
-            fetchVehicles();
-        } catch (err) {
-            toast.error(err.response?.data?.message || "Failed to save vehicle");
-        } finally {
-            setFormLoading(false);
-        }
-    };
+  const openAddModal = () => {
+    setEditingVehicle(null);
+    setFormData({ plate_number: '', capacity: '' });
+    setShowModal(true);
+  };
 
-    const handleDelete = async () => {
-        if (!vehicleToDelete) return;
-        setIsDeleting(true);
-        try {
-            await logisticsApi.deleteVehicle(vehicleToDelete.id);
-            toast.success("Vehicle removed successfully");
-            setVehicleToDelete(null);
-            fetchVehicles();
-        } catch (err) {
-            toast.error("Failed to delete vehicle");
-        } finally {
-            setIsDeleting(false);
-        }
-    };
+  const openEditModal = (vehicle) => {
+    setEditingVehicle(vehicle);
+    setFormData({ plate_number: vehicle.plate_number, capacity: vehicle.capacity });
+    setShowModal(true);
+  };
 
-    const columns = [
-        {
-            header: 'Plate Number', accessor: 'plate_number', render: (r) => (
-                <span className="font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-2 py-1 rounded border border-blue-100 dark:border-blue-500/20">{r.plate_number}</span>
-            )
-        },
-        {
-            header: 'Capacity (Tons)', accessor: 'capacity', render: (r) => (
-                <div className="flex items-center gap-1">
-                    <Gauge size={14} className="text-slate-400" />
-                    <span className="font-medium">{r.capacity}</span>
-                </div>
-            )
-        },
-        {
-            header: 'Status', accessor: 'status', render: (r) => (
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border uppercase tracking-wider ${r.status === 'AVAILABLE'
-                        ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                        : 'bg-amber-50 text-amber-600 border-amber-200'
-                    }`}>
-                    {r.status || 'AVAILABLE'}
-                </span>
-            )
-        },
-        {
-            header: 'Actions', accessor: 'id', render: (r) => (
-                <div className="flex items-center gap-2">
-                    <button onClick={() => handleOpenModal(r)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-blue-500 transition-colors">
-                        <Edit3 size={16} />
-                    </button>
-                    <button onClick={() => setVehicleToDelete(r)} className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-500 transition-colors">
-                        <Trash2 size={16} />
-                    </button>
-                </div>
-            )
-        }
-    ];
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.plate_number || !formData.capacity) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    setLoading(true);
+    try {
+      if (editingVehicle) {
+        await logisticsApi.updateVehicle(editingVehicle.id, formData);
+        toast.success('Vehicle updated successfully');
+      } else {
+        await logisticsApi.createVehicle(formData);
+        toast.success('Vehicle created successfully');
+      }
+      setShowModal(false);
+      fetchVehicles();
+    } catch (error) {
+      toast.error(editingVehicle ? 'Failed to update vehicle' : 'Failed to create vehicle');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-blue-100 dark:bg-blue-500/10 rounded-2xl">
-                        <Truck className="text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-bold">Vehicles</h1>
-                        <p className="text-sm text-slate-500 font-medium">Manage fleet for product dispatch</p>
-                    </div>
-                </div>
-                <Button onClick={() => handleOpenModal()} className="gap-2 h-11 px-6 shadow-blue-500/20 shadow-lg bg-blue-600 hover:bg-blue-700">
-                    <Plus size={18} />
-                    Register Vehicle
-                </Button>
+  const openDeleteModal = (vehicle) => {
+    setDeleteTarget(vehicle);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setLoading(true);
+    try {
+      await logisticsApi.deleteVehicle(deleteTarget.id);
+      toast.success('Vehicle deleted successfully');
+      setShowDeleteModal(false);
+      setDeleteTarget(null);
+      fetchVehicles();
+    } catch (error) {
+      toast.error('Failed to delete vehicle');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="container-fluid">
+      <div className="row">
+        <div className="col-12">
+          <div className="card">
+            <div className="card-header d-flex align-items-center justify-content-between">
+              <h5 className="card-title mb-0">
+                <i className="ti ti-truck me-2"></i>Vehicles
+              </h5>
+              <button className="btn btn-primary" onClick={openAddModal}>
+                <i className="ti ti-plus me-1"></i>Add Vehicle
+              </button>
             </div>
-
-            <Card className="p-0 overflow-hidden">
-                <div className="p-4 border-b dark:border-slate-800 flex justify-end">
-                    <div className="relative w-64 group">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4 group-focus-within:text-blue-500 transition-colors" />
-                        <Input
-                            placeholder="Search plate numbers..."
-                            className="pl-10 h-11 focus:ring-blue-500/20 focus:border-blue-500"
-                            value={search}
-                            onChange={(e) => {
-                                setSearch(e.target.value);
-                                setPage(1);
-                            }}
-                        />
-                    </div>
+            <div className="card-body">
+              <div className="row mb-3">
+                <div className="col-md-4">
+                  <div className="input-group">
+                    <span className="input-group-text"><i className="ti ti-search"></i></span>
+                    <input type="text" className="form-control" placeholder="Search vehicles..." value={search} onChange={handleSearchChange} />
+                  </div>
                 </div>
-                <DataTable
-                    columns={columns}
-                    data={vehicles}
-                    isLoading={loading}
-                />
+              </div>
 
-                {/* Pagination Controls */}
-                <div className="p-4 border-t dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
-                    <div className="text-sm text-slate-500">
-                        Total <span className="font-bold text-slate-900 dark:text-slate-100">{pagination.count}</span> vehicles in fleet
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={!pagination.previous || loading}
-                            onClick={() => setPage(page - 1)}
-                            className="h-9 px-4"
-                        >
-                            Previous
-                        </Button>
-                        <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border flex items-center justify-center font-bold text-xs ring-2 ring-blue-500/10">
-                            {page}
-                        </div>
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={!pagination.next || loading}
-                            onClick={() => setPage(page + 1)}
-                            className="h-9 px-4"
-                        >
-                            Next
-                        </Button>
-                    </div>
-                </div>
-            </Card>
+              <div className="table-responsive">
+                <table className="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>Plate Number</th>
+                      <th>Capacity (tons)</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading && (
+                      <tr><td colSpan="3" className="text-center py-4"><span className="spinner-border spinner-border-sm me-2"></span>Loading...</td></tr>
+                    )}
+                    {!loading && vehicles.length === 0 && (
+                      <tr><td colSpan="3" className="text-center py-4 text-muted">No vehicles found.</td></tr>
+                    )}
+                    {!loading && vehicles.map((vehicle) => (
+                      <tr key={vehicle.id}>
+                        <td><i className="ti ti-car me-1"></i>{vehicle.plate_number}</td>
+                        <td>{vehicle.capacity}</td>
+                        <td>
+                          <button className="btn btn-sm btn-outline-primary me-1" onClick={() => openEditModal(vehicle)}>
+                            <i className="ti ti-edit"></i>
+                          </button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => openDeleteModal(vehicle)}>
+                            <i className="ti ti-trash"></i>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-            {/* Add/Edit Modal */}
-            <AnimatePresence>
-                {isModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden relative"
-                        >
-                            <div className="p-6 border-b dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-blue-100 dark:bg-blue-500/10 rounded-xl text-blue-600">
-                                        <Truck size={20} />
-                                    </div>
-                                    <h3 className="text-lg font-black">{editingVehicle ? 'Edit Vehicle' : 'Register Vehicle'}</h3>
-                                </div>
-                                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
-                                    <X size={20} />
-                                </button>
-                            </div>
-
-                            <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                                <div className="space-y-4">
-                                    <Input
-                                        label="Plate Number"
-                                        placeholder="e.g. GS-1234-22"
-                                        value={formData.plate_number}
-                                        onChange={(e) => setFormData({ ...formData, plate_number: e.target.value })}
-                                        required
-                                        className="h-12 uppercase font-bold tracking-wider"
-                                    />
-                                    <Input
-                                        label="Capacity (Tons)"
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="e.g. 15.5"
-                                        value={formData.capacity}
-                                        onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
-                                        required
-                                        className="h-12"
-                                    />
-                                </div>
-
-                                <div className="pt-4 flex items-center gap-3">
-                                    <Button type="button" variant="ghost" className="flex-1 h-12" onClick={() => setIsModalOpen(false)}>
-                                        Cancel
-                                    </Button>
-                                    <Button type="submit" className="flex-1 h-12 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" disabled={formLoading}>
-                                        {formLoading ? <Loader2 className="animate-spin" /> : (editingVehicle ? 'Update Vehicle' : 'Register Vehicle')}
-                                    </Button>
-                                </div>
-                            </form>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
-
-            <ConfirmationModal
-                isOpen={!!vehicleToDelete}
-                onClose={() => setVehicleToDelete(null)}
-                onConfirm={handleDelete}
-                title="Remove Vehicle"
-                message={`Are you sure you want to remove truck ${vehicleToDelete?.plate_number}? This action cannot be undone if there are no linked active shipments.`}
-                confirmText="Remove Vehicle"
-                variant="destructive"
-                isLoading={isDeleting}
-            />
+              <div className="d-flex align-items-center justify-content-between">
+                <span className="text-muted">Total: {totalCount} vehicle(s)</span>
+                <nav>
+                  <ul className="pagination mb-0">
+                    <li className={`page-item ${!hasPrevious ? 'disabled' : ''}`}>
+                      <button className="page-link" onClick={() => setPage(page - 1)} disabled={!hasPrevious}>
+                        <i className="ti ti-chevron-left"></i>
+                      </button>
+                    </li>
+                    <li className="page-item active"><span className="page-link">{page}</span></li>
+                    <li className={`page-item ${!hasNext ? 'disabled' : ''}`}>
+                      <button className="page-link" onClick={() => setPage(page + 1)} disabled={!hasNext}>
+                        <i className="ti ti-chevron-right"></i>
+                      </button>
+                    </li>
+                  </ul>
+                </nav>
+              </div>
+            </div>
+          </div>
         </div>
-    );
+      </div>
+
+      {showModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  <i className={`ti ${editingVehicle ? 'ti-edit' : 'ti-plus'} me-2`}></i>
+                  {editingVehicle ? 'Edit Vehicle' : 'Add Vehicle'}
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowModal(false)}></button>
+              </div>
+              <form onSubmit={handleSubmit}>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Plate Number</label>
+                    <input type="text" className="form-control" placeholder="Enter plate number" value={formData.plate_number} onChange={(e) => setFormData({ ...formData, plate_number: e.target.value })} required />
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label">Capacity (tons)</label>
+                    <input type="number" className="form-control" placeholder="Enter capacity" value={formData.capacity} onChange={(e) => setFormData({ ...formData, capacity: e.target.value })} required />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? <span className="spinner-border spinner-border-sm me-1"></span> : <i className="ti ti-check me-1"></i>}
+                    {editingVehicle ? 'Update' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Confirm Delete</h5>
+                <button type="button" className="btn-close" onClick={() => setShowDeleteModal(false)}></button>
+              </div>
+              <div className="modal-body">Are you sure you want to delete vehicle <strong>{deleteTarget?.plate_number}</strong>?</div>
+              <div className="modal-footer">
+                <button className="btn btn-secondary" onClick={() => setShowDeleteModal(false)}>Cancel</button>
+                <button className="btn btn-danger" onClick={confirmDelete}>Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default VehicleList;

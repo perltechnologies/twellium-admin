@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const navigation = [
         {
@@ -119,6 +119,7 @@ const navigation = [
 const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
     const nav = navProp || navigation;
     const location = useLocation();
+    const navigate = useNavigate();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [openSubmenus, setOpenSubmenus] = useState({ production: false, configs: false, definitions: false, reporting: false });
 
@@ -172,6 +173,30 @@ const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
                     </button>
                 </div>
                 <div className="sidebar-inner" data-simplebar>
+                    {/* Switch Mode Button */}
+                    <div className="px-3 pt-3 pb-2">
+                        {location.pathname.startsWith('/post-production') ? (
+                            <button
+                                onClick={() => navigate('/dashboard')}
+                                className="btn btn-outline-primary w-100 d-flex align-items-center justify-content-center gap-2"
+                                style={{ borderRadius: '10px', padding: '10px 16px' }}
+                            >
+                                <i className="ti ti-arrow-left"></i>
+                                <span>Pre-Production</span>
+                                <i className="ti ti-building-factory ms-auto"></i>
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => navigate('/post-production')}
+                                className="btn btn-outline-success w-100 d-flex align-items-center justify-content-center gap-2"
+                                style={{ borderRadius: '10px', padding: '10px 16px' }}
+                            >
+                                <i className="ti ti-truck"></i>
+                                <span>Post-Production</span>
+                                <i className="ti ti-arrow-right ms-auto"></i>
+                            </button>
+                        )}
+                    </div>
                     <div id="sidebar-menu" className="sidebar-menu">
                         <ul>
                             {nav.map((section, idx) => (
