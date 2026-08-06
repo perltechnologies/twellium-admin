@@ -56,7 +56,7 @@ const ProductionList = () => {
 
     // Compute display date labels for charts
     const chart1DateLabel = useMemo(() => {
-        if (useDateRange && chartDateRange.start && chartDateRange.end) {
+        if ((useDateRange || chartFilter === 'week' || chartFilter === 'month') && chartDateRange.start && chartDateRange.end) {
             return `${chartDateRange.start} – ${chartDateRange.end}`;
         } else if (chartDate) {
             return chartDate;
@@ -77,7 +77,7 @@ const ProductionList = () => {
     }, [chartFilter, chartDate, useDateRange, chartDateRange.start, chartDateRange.end]);
 
     const chart2DateLabel = useMemo(() => {
-        if (useDateRange2 && chart2DateRange.start && chart2DateRange.end) {
+        if ((useDateRange2 || chart2Filter === 'week' || chart2Filter === 'month') && chart2DateRange.start && chart2DateRange.end) {
             return `${chart2DateRange.start} – ${chart2DateRange.end}`;
         } else if (chart2Date) {
             return chart2Date;
@@ -111,6 +111,23 @@ const ProductionList = () => {
                 if (useDateRange2 && chart2DateRange.start && chart2DateRange.end) {
                     start = chart2DateRange.start;
                     end = chart2DateRange.end;
+                } else if (chart2Filter === 'week' || chart2Filter === 'month') {
+                    if (chart2DateRange.start && chart2DateRange.end) {
+                        start = chart2DateRange.start;
+                        end = chart2DateRange.end;
+                    } else if (chart2Filter === 'week') {
+                        const e = new Date();
+                        const s = new Date();
+                        s.setDate(e.getDate() - 6);
+                        start = s.toISOString().split('T')[0];
+                        end = e.toISOString().split('T')[0];
+                    } else {
+                        const e = new Date();
+                        const s = new Date();
+                        s.setMonth(e.getMonth() - 1);
+                        start = s.toISOString().split('T')[0];
+                        end = e.toISOString().split('T')[0];
+                    }
                 } else if (chart2Date) {
                     start = chart2Date;
                     end = chart2Date;
@@ -118,18 +135,6 @@ const ProductionList = () => {
                     const today = new Date().toISOString().split('T')[0];
                     start = today;
                     end = today;
-                } else if (chart2Filter === 'week') {
-                    const e = new Date();
-                    const s = new Date();
-                    s.setDate(e.getDate() - 6);
-                    start = s.toISOString().split('T')[0];
-                    end = e.toISOString().split('T')[0];
-                } else if (chart2Filter === 'month') {
-                    const e = new Date();
-                    const s = new Date();
-                    s.setMonth(e.getMonth() - 1);
-                    start = s.toISOString().split('T')[0];
-                    end = e.toISOString().split('T')[0];
                 } else {
                     const today = new Date().toISOString().split('T')[0];
                     start = today;
@@ -245,25 +250,33 @@ const ProductionList = () => {
             const approved = listData.filter(r => r.status === 'APPROVED').length;
             const uniquePets = new Set(listData.map(r => r.pet_name).filter(Boolean));
 
-            // Fetch oee_date_range for accurate stats
+            // Fetch summary + oee_date_range + stoppages for accurate stats
             const today = new Date().toISOString().split('T')[0];
             const oeeStart = globalFilters.start_date || filters.production_date || globalFilters.log_date || today;
             const oeeEnd = globalFilters.end_date || oeeStart;
             try {
-                const [oeeRes, stoppagesRes] = await Promise.all([
+                const summaryParams = { start_date: oeeStart, end_date: oeeEnd };
+                if (filters.pet) summaryParams.pet = filters.pet;
+                const [summaryRes, oeeRes, stoppagesRes] = await Promise.all([
+                    productionApi.getProductionSummary(summaryParams),
                     productionApi.getOeeDateRange({ start_date: oeeStart, end_date: oeeEnd }),
                     productionApi.getStoppagesSummary({ production_date: oeeStart }),
                 ]);
 
+                const summaryEnvelope = summaryRes?.data?.data?.data ?? summaryRes?.data?.data ?? summaryRes?.data ?? {};
+                const summaryTotalOutput = summaryEnvelope.summary?.total_bottles_produced || summaryEnvelope.total_bottles_produced || 0;
+
                 const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
                 const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
 
-                let totalOutput = 0;
+                let oeeTotalOutput = 0;
                 let totalDowntime = 0;
                 oeeEntries.forEach(([, val]) => {
-                    totalOutput += val?.total_bottles_produced || 0;
+                    oeeTotalOutput += val?.total_bottles_produced || val?.total_output || 0;
                     totalDowntime += val?.downtime || 0;
                 });
+
+                const totalOutput = summaryTotalOutput || oeeTotalOutput;
 
                 // Stoppages count from stoppages_summary
                 const stoppagesData = stoppagesRes?.data?.data ?? stoppagesRes?.data ?? {};
@@ -320,7 +333,7 @@ const ProductionList = () => {
         return () => clearTimeout(timeoutId);
     }, [filters, globalFilters.start_date, globalFilters.end_date]);
 
-    // Fetch broad dataset for charts (all reports, no date restriction)
+    // Fetch broad dataset for charts from production_summary (Bottles by PET)
     const fetchChartData = useCallback(async () => {
         setChartDataLoading(true);
         try {
@@ -330,55 +343,46 @@ const ProductionList = () => {
             const getDates = () => {
                 if (useDateRange && chartDateRange.start && chartDateRange.end) {
                     return { start: chartDateRange.start, end: chartDateRange.end };
+                } else if (chartFilter === 'week' || chartFilter === 'month') {
+                    if (chartDateRange.start && chartDateRange.end) {
+                        return { start: chartDateRange.start, end: chartDateRange.end };
+                    }
+                    if (chartFilter === 'week') {
+                        const end = new Date();
+                        const start = new Date();
+                        start.setDate(end.getDate() - 6);
+                        return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+                    }
+                    const end = new Date();
+                    const start = new Date();
+                    start.setMonth(end.getMonth() - 1);
+                    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
                 } else if (chartDate) {
                     return { start: chartDate, end: chartDate };
                 } else if (chartFilter === 'day') {
                     const today = new Date().toISOString().split('T')[0];
                     return { start: today, end: today };
-                } else if (chartFilter === 'week') {
-                    const end = new Date();
-                    const start = new Date();
-                    start.setDate(end.getDate() - 6);
-                    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
-                } else if (chartFilter === 'month') {
-                    const end = new Date();
-                    const start = new Date();
-                    start.setMonth(end.getMonth() - 1);
-                    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
                 }
                 return { start: new Date().toISOString().split('T')[0], end: new Date().toISOString().split('T')[0] };
             };
 
             const { start, end } = getDates();
 
-            // Generate date array
-            const dates = [];
-            let current = new Date(start);
-            const endDate = new Date(end);
-            while (current <= endDate) {
-                dates.push(current.toISOString().split('T')[0]);
-                current.setDate(current.getDate() + 1);
-            }
+            const res = await productionApi.getProductionSummary({ start_date: start, end_date: end });
+            const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
+            const dailyBreakdown = envelope.daily_breakdown || [];
 
-            // Fetch shift_pet_metrics for each date (parallel, max 7 concurrent)
-            const results = await Promise.all(
-                dates.map(date => 
-                    productionApi.getDashboardShiftPetMetrics({ date })
-                        .then(res => {
-                            const raw = res?.data?.data ?? res?.data ?? {};
-                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
-                                .filter(r => !r.pet_name?.toLowerCase().includes('can'));
-                        })
-                        .catch(() => [])
-                )
-            );
-
-            // Aggregate across all dates
-            results.flat().forEach(r => {
-                const name = r.pet_name || 'Unknown';
-                if (!lineMap[name]) lineMap[name] = { name, bottles: 0, planned: 0, actual: 0 };
-                lineMap[name].bottles += r.total_bottles_produced || 0;
-                lineMap[name].actual += r.total_bottles_produced || 0;
+            // Aggregate bottles per PET from production_summary daily_breakdown
+            dailyBreakdown.forEach(day => {
+                (day.pets || [])
+                    .filter(p => !p.pet_name?.toLowerCase().includes('can'))
+                    .forEach(p => {
+                        const name = p.pet_name || 'Unknown';
+                        if (!lineMap[name]) lineMap[name] = { name, bottles: 0, planned: 0, actual: 0 };
+                        const bottles = p.total_bottles_produced || p.total_bottles || p.total_output || p.total_units || 0;
+                        lineMap[name].bottles += bottles;
+                        lineMap[name].actual += bottles;
+                    });
             });
 
             setChartReports(Object.values(lineMap).sort((a, b) => {
@@ -690,7 +694,7 @@ const ProductionList = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        {!useDateRange ? (
+                                        {!useDateRange && chartFilter !== 'week' && chartFilter !== 'month' ? (
                                             <div className="col-12">
                                                 <input 
                                                     type="date" 
@@ -733,14 +737,28 @@ const ProductionList = () => {
                                     <button 
                                         type="button" 
                                         className={`btn ${chartFilter === 'week' ? 'btn-danger' : 'btn-light border'}`}
-                                        onClick={() => setChartFilter('week')}
+                                        onClick={() => {
+                                            setChartFilter('week');
+                                            setChartDate('');
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setDate(end.getDate() - 6);
+                                            setChartDateRange({ start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] });
+                                        }}
                                     >
                                         Week
                                     </button>
                                     <button 
                                         type="button" 
                                         className={`btn ${chartFilter === 'month' ? 'btn-danger' : 'btn-light border'}`}
-                                        onClick={() => setChartFilter('month')}
+                                        onClick={() => {
+                                            setChartFilter('month');
+                                            setChartDate('');
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setMonth(end.getMonth() - 1);
+                                            setChartDateRange({ start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] });
+                                        }}
                                     >
                                         Month
                                     </button>
@@ -814,7 +832,7 @@ const ProductionList = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        {!useDateRange2 ? (
+                                        {!useDateRange2 && chart2Filter !== 'week' && chart2Filter !== 'month' ? (
                                             <div className="col-12">
                                                 <input 
                                                     type="date" 
@@ -857,14 +875,28 @@ const ProductionList = () => {
                                     <button 
                                         type="button" 
                                         className={`btn ${chart2Filter === 'week' ? 'btn-danger' : 'btn-light border'}`}
-                                        onClick={() => setChart2Filter('week')}
+                                        onClick={() => {
+                                            setChart2Filter('week');
+                                            setChart2Date('');
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setDate(end.getDate() - 6);
+                                            setChart2DateRange({ start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] });
+                                        }}
                                     >
                                         Week
                                     </button>
                                     <button 
                                         type="button" 
                                         className={`btn ${chart2Filter === 'month' ? 'btn-danger' : 'btn-light border'}`}
-                                        onClick={() => setChart2Filter('month')}
+                                        onClick={() => {
+                                            setChart2Filter('month');
+                                            setChart2Date('');
+                                            const end = new Date();
+                                            const start = new Date();
+                                            start.setMonth(end.getMonth() - 1);
+                                            setChart2DateRange({ start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] });
+                                        }}
                                     >
                                         Month
                                     </button>
