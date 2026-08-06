@@ -464,7 +464,7 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
                                         <td className="label-cell">Single Packs</td>
                                         <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
-                                        <td className="label-cell">Total Report</td>
+                                        <td className="label-cell">Total Packs</td>
                                         <td className="input-cell numeric">{summary.total_reports || dayData.report_count || ''}</td>
                                     </tr>
                                     <tr>
