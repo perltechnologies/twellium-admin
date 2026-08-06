@@ -161,6 +161,14 @@ const ProductionRunByPet = () => {
     const allPetEntriesUnfiltered = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
     const productNames = [...new Set(allPetEntriesUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
 
+    // Enforce single-product selection: auto-select the first available product
+    useEffect(() => {
+        if (productNames.length > 0 && (!selectedProduct || !productNames.includes(selectedProduct))) {
+            setSelectedProduct(productNames[0]);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [productNames.length, productNames[0], selectedProduct]);
+
     // Filter by selected product
     const allPetEntries = selectedProduct
         ? allPetEntriesUnfiltered.filter(p => p.product_name === selectedProduct)
@@ -285,7 +293,6 @@ const ProductionRunByPet = () => {
                             onChange={(e) => setSelectedProduct(e.target.value)}
                             style={{ width: '170px' }}
                         >
-                            <option value="">All Products</option>
                             {productNames.map((prod) => (
                                 <option key={prod} value={prod}>
                                     {prod}

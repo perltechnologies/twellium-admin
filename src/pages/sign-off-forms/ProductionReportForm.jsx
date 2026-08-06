@@ -376,66 +376,19 @@ const ProductionReportForm = () => {
                                 <span><strong>Product:</strong> {selectedProduct || 'All Products'}</span>
                             </div>
 
-                            {/* Production Info Table */}
-                            <table className="form-table">
-                                <tbody>
-                                    <tr>
-                                        <td className="label-cell" style={{ width: '15%' }}>Date</td>
-                                        <td className="input-cell numeric" style={{ width: '20%' }}>{dayData.date || selectedDate}</td>
-                                        <td className="label-cell" style={{ width: '15%' }}>Shift</td>
-                                        <td className="input-cell" style={{ width: '15%' }}>{selectedShift ? shifts.find(s => String(s.id) === String(selectedShift))?.name || '' : 'All Shifts'}</td>
-                                        <td className="label-cell" style={{ width: '15%' }}>Line</td>
-                                        <td className="input-cell" style={{ width: '20%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Production Start Time</td>
-                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_start_time).filter(Boolean).sort(); return times[0] || ''; })()}</td>
-                                        <td className="label-cell">Production End Time</td>
-                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_end_time).filter(Boolean).sort(); return times[times.length - 1] || ''; })()}</td>
-                                        <td className="label-cell">Total Production Time (Hrs)</td>
-                                        <td className="input-cell numeric">{(() => { const hrs = allPets.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Total Units (F.R)</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
-                                        <td className="label-cell">Total Packs</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
-                                        <td className="label-cell">Total Reports</td>
-                                        <td className="input-cell numeric">{summary.total_reports || dayData.report_count || ''}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Total Downtime (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))}</td>
-                                        <td className="label-cell">Planned Downtime (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.planned_downtime_mins)}</td>
-                                        <td className="label-cell">Mechanical Downtime (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Workers Count</td>
-                                        <td className="input-cell numeric">{(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()}</td>
-                                        <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell numeric">{summary.avg_efficiency ? `${summary.avg_efficiency}%` : ''}</td>
-                                        <td className="label-cell"></td>
-                                        <td className="input-cell numeric"></td>
-                                    </tr>
-                                </tbody>
-                            </table>
-
                             {/* Product Details - shown when a product or specific PET is selected */}
                             {(selectedProduct || selectedPet) && (
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={6}>Product Details</th>
+                                        <th colSpan={5}>Product Details</th>
                                     </tr>
                                     <tr className="sub-header-row">
-                                        <th style={{ width: '25%' }}>Product</th>
-                                        <th style={{ width: '15%' }}>Bottle Size</th>
-                                        <th style={{ width: '15%' }}>Line Speed (BPH)</th>
-                                        <th style={{ width: '15%' }}>Bottles/Pack</th>
-                                        <th style={{ width: '15%' }}>Packs/Pallet</th>
-                                        <th style={{ width: '15%' }}>Single Packs</th>
+                                        <th style={{ width: '28%' }}>Product</th>
+                                        <th style={{ width: '18%' }}>Bottle Size</th>
+                                        <th style={{ width: '18%' }}>Line Speed (BPH)</th>
+                                        <th style={{ width: '18%' }}>Bottles/Pack</th>
+                                        <th style={{ width: '18%' }}>Packs/Pallet</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -461,7 +414,6 @@ const ProductionReportForm = () => {
                                                     <td className="input-cell numeric">{fallback.line_speed || p?.target_speed_bph || p?.line_speed || summary.line_speed || ''}</td>
                                                     <td className="input-cell numeric">{fallback.bottles_per_pack || p?.bottles_per_pack || summary.bottles_per_pack || ''}</td>
                                                     <td className="input-cell numeric">{fallback.packs_per_pallet || p?.packs_per_pallet || summary.packs_per_pallet || ''}</td>
-                                                    <td className="input-cell numeric">{fallback.single_packs || p?.single_packs || summary.single_packs || ''}</td>
                                                 </tr>
                                             );
                                         }
@@ -473,7 +425,6 @@ const ProductionReportForm = () => {
                                             const lineSpeed = petEntry.line_speed || fallback.line_speed || p?.target_speed_bph || p?.line_speed || summary.line_speed || '';
                                             const bottlesPerPack = petEntry.bottles_per_pack || fallback.bottles_per_pack || p?.bottles_per_pack || summary.bottles_per_pack || '';
                                             const packsPerPallet = petEntry.packs_per_pallet || fallback.packs_per_pallet || p?.packs_per_pallet || summary.packs_per_pallet || '';
-                                            const singlePacks = petEntry.single_packs || fallback.single_packs || p?.single_packs || summary.single_packs || '';
                                             return (
                                                 <tr key={idx}>
                                                     <td className="label-cell">{petEntry.product_name}</td>
@@ -481,7 +432,6 @@ const ProductionReportForm = () => {
                                                     <td className="input-cell numeric">{lineSpeed}</td>
                                                     <td className="input-cell numeric">{bottlesPerPack}</td>
                                                     <td className="input-cell numeric">{packsPerPallet}</td>
-                                                    <td className="input-cell numeric">{singlePacks}</td>
                                                 </tr>
                                             );
                                         });
@@ -489,6 +439,53 @@ const ProductionReportForm = () => {
                                 </tbody>
                             </table>
                             )}
+
+                            {/* Production Info Table */}
+                            <table className="form-table">
+                                <tbody>
+                                    <tr>
+                                        <td className="label-cell" style={{ width: '15%' }}>Date</td>
+                                        <td className="input-cell numeric" style={{ width: '20%' }}>{dayData.date || selectedDate}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Shift</td>
+                                        <td className="input-cell" style={{ width: '15%' }}>{selectedShift ? shifts.find(s => String(s.id) === String(selectedShift))?.name || '' : 'All Shifts'}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Line</td>
+                                        <td className="input-cell" style={{ width: '20%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Production Start Time</td>
+                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_start_time).filter(Boolean).sort(); return times[0] || ''; })()}</td>
+                                        <td className="label-cell">Production End Time</td>
+                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_end_time).filter(Boolean).sort(); return times[times.length - 1] || ''; })()}</td>
+                                        <td className="label-cell">Total Production Time (Hrs)</td>
+                                        <td className="input-cell numeric">{(() => { const hrs = allPets.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Total Pallets</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
+                                        <td className="label-cell">Single Packs</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
+                                        <td className="label-cell">Total Report</td>
+                                        <td className="input-cell numeric">{summary.total_reports || dayData.report_count || ''}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Total Downtime (min)</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))}</td>
+                                        <td className="label-cell">Planned Downtime (min)</td>
+                                        <td className="input-cell numeric">{fmt(summary.planned_downtime_mins)}</td>
+                                        <td className="label-cell">Mechanical Downtime (min)</td>
+                                        <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Workers Count</td>
+                                        <td className="input-cell numeric">{(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()}</td>
+                                        <td className="label-cell">Bottles Produced (R.W)</td>
+                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced)}</td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
 
                             <table className="form-table section-table">
                                 <thead>
@@ -502,7 +499,7 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{summary.oee ? `${summary.oee}%` : ''}</td>
                                         <td className="label-cell">Availability</td>
                                         <td className="input-cell numeric">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
-                                        <td className="label-cell">Performance</td>
+                                        <td className="label-cell">Performance (Efficiency)</td>
                                         <td className="input-cell numeric">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
                                         <td className="label-cell">Quality</td>
                                         <td className="input-cell numeric">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
