@@ -200,8 +200,8 @@ const ProductionList = () => {
             
             // Handle date filtering
             if (globalFilters.start_date && globalFilters.end_date) {
-                params.production_date_after = globalFilters.start_date;
-                params.production_date_before = globalFilters.end_date;
+                params.datetime_start_time = `${globalFilters.start_date}T00:00:00Z`;
+                params.datetime_end_time = `${globalFilters.end_date}T23:59:59Z`;
             } else if (filters.production_date) {
                 params.production_date = filters.production_date;
             }
@@ -247,7 +247,7 @@ const ProductionList = () => {
 
             // Fetch oee_date_range for accurate stats
             const today = new Date().toISOString().split('T')[0];
-            const oeeStart = globalFilters.start_date || globalFilters.log_date || today;
+            const oeeStart = globalFilters.start_date || filters.production_date || globalFilters.log_date || today;
             const oeeEnd = globalFilters.end_date || oeeStart;
             try {
                 const [oeeRes, stoppagesRes] = await Promise.all([
