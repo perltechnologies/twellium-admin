@@ -35,7 +35,7 @@ const STATUS_COLORS = {
     IDLE: '#6b7280',
 };
 
-const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#14b8a6', '#ec4899', '#6366f1'];
 
 const DOWNTIME_COLORS = {
     'Mechanical Downtime': '#ef4444',
@@ -118,7 +118,6 @@ const Overview = () => {
     const [stats, setStats] = useState({ totalReports: 0, activeLines: 0, totalStoppages: 0, totalDowntime: 0, totalProduced: 0 });
     const [recentReports, setRecentReports] = useState([]);
     const [recentStoppages, setRecentStoppages] = useState([]);
-    const [reports, setReports] = useState([]);
     const [pets, setPets] = useState([]);
     const [planVsActual, setPlanVsActual] = useState([]);
     const [statusBreakdown, setStatusBreakdown] = useState([]);
@@ -127,7 +126,7 @@ const Overview = () => {
     const [downtimeTypes, setDowntimeTypes] = useState([]);
     const [downtimeByLine, setDowntimeByLine] = useState([]);
     const [oeeSummary, setOeeSummary] = useState([]); // OEE data from API
-    const [shiftOutputByPet, setShiftOutputByPet] = useState({}); // total_output from shift_pet_metrics
+    const [bottlesByPetOutput, setBottlesByPetOutput] = useState({}); // bottles per PET from production_summary
 
     // Downtime chart local filters
     const [dtFilter, setDtFilter] = useState('week');
@@ -252,8 +251,30 @@ const Overview = () => {
 
             console.log('ProductionOverview - Fetching production_summary with:', summaryParams);
 
-            const res = await productionApi.getProductionSummary(summaryParams);
+            // Fetch production_summary and shift_pet_metrics in parallel
+            // shift_pet_metrics provides reliable per-PET bottle counts
+            const dates = [];
+            const start = new Date(dateStart);
+            const end = new Date(dateEnd);
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                dates.push(new Date(d).toISOString().split('T')[0]);
+            }
+
+            const [res, ...petMetricsResults] = await Promise.all([
+                productionApi.getProductionSummary(summaryParams),
+                ...dates.map(date =>
+                    productionApi.getDashboardShiftPetMetrics({ date })
+                        .then(r => {
+                            const raw = r?.data?.data ?? r?.data ?? {};
+                            return (Array.isArray(raw.pets) ? raw.pets : (Array.isArray(raw) ? raw : []))
+                                .filter(p => !p.pet_name?.toLowerCase().includes('can'));
+                        })
+                        .catch(() => [])
+                )
+            ]);
             if (controller.signal.aborted) return;
+
+            const shiftPetMetrics = petMetricsResults.flat();
 
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             const summary = envelope.summary || {};
@@ -266,7 +287,7 @@ const Overview = () => {
             // Build stats
             const totalDowntime = summary.total_downtime_minutes || summary.total_downtime_mins ||
                 ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0));
-            const totalProduced = summary.total_bottles_produced || summary.total_bottles || 0;
+            const totalProduced = summary.total_bottles_produced || summary.total_output || summary.total_bottles || 0;
 
             setStats({
                 totalReports: summary.total_reports || allPetEntries.length,
@@ -283,8 +304,8 @@ const Overview = () => {
                 shift: p.shift,
                 status: p.status,
                 production_date: dailyBreakdown.find(d => (d.pets || []).includes(p))?.date || dateStart,
-                total_bottles_produced: p.total_bottles_produced || 0,
-                total_bottles: p.total_bottles || 0,
+                total_bottles_produced: p.total_bottles || p.total_bottles_produced || p.total_output || p.total_units || 0,
+                total_bottles: p.total_bottles || p.total_bottles_produced || p.total_output || p.total_units || 0,
                 total_packs: p.total_packs || 0,
                 oee: p.oee || 0,
                 efficiency: p.efficiency || 0,
@@ -295,21 +316,34 @@ const Overview = () => {
                 planned_downtime_mins: p.planned_downtime_mins || 0,
                 mechanical_downtime_mins: p.mechanical_downtime_mins || 0,
             }));
-            setReports(reportData);
 
             // Recent reports (latest entries)
             setRecentReports(reportData.slice(0, 5));
 
-            // Shift output by pet
-            const outputByPet = {};
+            // Bottles by PET distribution from production_summary daily_breakdown
+            const summaryOutputByPet = {};
             allPetEntries.forEach(p => {
                 const name = p.pet_name || 'Unknown';
-                if (!outputByPet[name]) outputByPet[name] = 0;
-                outputByPet[name] += p.total_bottles_produced || p.total_bottles || 0;
+                if (!summaryOutputByPet[name]) summaryOutputByPet[name] = 0;
+                summaryOutputByPet[name] += p.total_bottles_produced || p.total_bottles || p.total_output || p.total_units || 0;
             });
-            setShiftOutputByPet(outputByPet);
+            setBottlesByPetOutput(summaryOutputByPet);
 
             // Plan vs Actual per line
+            const outputByPet = {};
+            if (shiftPetMetrics.length > 0) {
+                shiftPetMetrics.forEach(p => {
+                    const name = p.pet_name || 'Unknown';
+                    if (!outputByPet[name]) outputByPet[name] = 0;
+                    outputByPet[name] += p.total_bottles_produced || p.total_bottles || p.total_output || p.total_units || 0;
+                });
+            } else {
+                allPetEntries.forEach(p => {
+                    const name = p.pet_name || 'Unknown';
+                    if (!outputByPet[name]) outputByPet[name] = 0;
+                    outputByPet[name] += p.total_bottles || p.total_bottles_produced || p.total_output || p.total_units || 0;
+                });
+            }
             const lineMap = {};
             Object.entries(outputByPet).forEach(([line, totalOutput]) => {
                 if (!lineMap[line]) lineMap[line] = { name: line, planned: 0, actual: 0 };
@@ -346,7 +380,7 @@ const Overview = () => {
                 availability: d.avg_availability || 0,
                 performance: d.avg_performance || 0,
                 quality: d.avg_quality || 0,
-                total_output: d.total_bottles_produced || d.total_bottles || 0,
+                total_output: d.total_bottles_produced || d.total_output || d.total_bottles || 0,
                 downtime: d.total_downtime_minutes || ((d.planned_downtime_mins || 0) + (d.mechanical_downtime_mins || 0)),
                 planned_downtime: d.planned_downtime_mins || 0,
                 mechanical_downtime: d.mechanical_downtime_mins || 0,
@@ -416,9 +450,9 @@ const Overview = () => {
 
     const efficiency = totals.planned > 0 ? (totals.actual / totals.planned) * 100 : 0;
 
-    // Filtered planVsActual for Bottles by PET - uses global date filters + optional PET filter
-    const filteredPlanVsActual = useMemo(() => {
-        let outputEntries = Object.entries(shiftOutputByPet);
+    // Bottles by PET - production distribution across lines (from production_summary)
+    const bottlesByPetData = useMemo(() => {
+        let outputEntries = Object.entries(bottlesByPetOutput);
 
         // Apply PET filter if selected
         if (filters.pet) {
@@ -426,16 +460,12 @@ const Overview = () => {
             if (selectedPetName) outputEntries = outputEntries.filter(([name]) => name === selectedPetName);
         }
 
-        const lineMap = {};
-        outputEntries.forEach(([line, totalOutput]) => {
-            if (!lineMap[line]) lineMap[line] = { name: line, planned: 0, actual: 0 };
-            lineMap[line].actual += totalOutput;
-            const reportForLine = reports.find(r => r.pet_name === line);
-            const planned = reportForLine?.target_output || reportForLine?.planned_output || Math.round(totalOutput * 1.05);
-            lineMap[line].planned += planned;
-        });
-        return Object.values(lineMap).sort((a, b) => b.actual - a.actual).filter(l => l.actual > 0);
-    }, [shiftOutputByPet, reports, filters.pet, pets]);
+        return outputEntries
+            .map(([name, value]) => ({ name, value }))
+            .filter(l => l.value > 0)
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 6);
+    }, [bottlesByPetOutput, filters.pet, pets]);
 
     // PET Contribution to Quality - uses OEE summary API, aggregated per PET
     const petQuality = useMemo(() => {
@@ -852,7 +882,7 @@ const Overview = () => {
                     {isLoading ? <SkeletonDonut /> : (
                     <ChartErrorBoundary fallbackMessage="Failed to render bottles by PET chart">
                     <div className="card border-0 shadow-sm w-100">
-                        <div className="card-header bg-transparent border-0 pt-3 pb-0">
+                        <div className="card-header bg-transparent border-0 pt-3 pb-0 d-flex align-items-center justify-content-between">
                             <div>
                                 <h6 className="mb-0 fw-semibold">
                                     Production Output by PET
@@ -860,43 +890,56 @@ const Overview = () => {
                                 </h6>
                                 <small className="text-muted">Production distribution across lines</small>
                             </div>
+                            <button onClick={() => navigate('/production')} className="btn btn-primary btn-xs">
+                                <i className="ti ti-external-link me-1"></i>Details
+                            </button>
                         </div>
                         <div className="card-body">
                             {(() => {
-                                const totalOutput = filteredPlanVsActual.reduce((s, l) => s + l.actual, 0);
-                                const series = filteredPlanVsActual.map(l => totalOutput > 0 ? Number(((l.actual / totalOutput) * 100).toFixed(1)) : 0);
-                                const labels = filteredPlanVsActual.map(l => l.name);
-                                return filteredPlanVsActual.length > 0 ? (
+                                const totalOutput = bottlesByPetData.reduce((s, l) => s + l.value, 0);
+                                const series = bottlesByPetData.map(l => l.value);
+                                const labels = bottlesByPetData.map(l => l.name);
+                                return bottlesByPetData.length > 0 ? (
                                     <ReactApexChart
                                         options={{
-                                            chart: { type: 'radialBar' },
+                                            chart: { type: 'donut' },
+                                            labels,
+                                            colors: DONUT_COLORS.slice(0, labels.length),
                                             plotOptions: {
-                                                radialBar: {
-                                                    hollow: { size: '15%' },
-                                                    track: { strokeWidth: '100%', margin: 8 },
-                                                    dataLabels: {
-                                                        total: {
+                                                pie: {
+                                                    donut: {
+                                                        size: '55%',
+                                                        labels: {
                                                             show: true,
-                                                            label: 'TOTAL',
-                                                            formatter: () => formatNum(totalOutput)
+                                                            total: {
+                                                                show: true,
+                                                                label: 'TOTAL',
+                                                                formatter: () => formatNum(totalOutput)
+                                                            }
                                                         }
                                                     }
                                                 }
                                             },
-                                            labels,
-                                            colors: DONUT_COLORS.slice(0, labels.length),
+                                            dataLabels: {
+                                                enabled: true,
+                                                formatter: (val) => `${val.toFixed(1)}%`
+                                            },
                                             legend: {
                                                 show: true,
                                                 position: 'bottom',
                                                 formatter: (name, opts) => {
-                                                    const val = filteredPlanVsActual[opts.seriesIndex]?.actual || 0;
+                                                    const val = series[opts.seriesIndex] || 0;
                                                     return `${name}: ${formatNum(val)}`;
                                                 }
                                             },
-                                            stroke: { lineCap: 'round' }
+                                            tooltip: {
+                                                y: {
+                                                    formatter: (val) => formatNum(val)
+                                                }
+                                            }
                                         }}
                                         series={series}
-                                        type="radialBar"
+                                        type="donut"
                                         height={380}
                                     />
                                 ) : (
