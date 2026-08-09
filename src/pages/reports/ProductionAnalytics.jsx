@@ -50,7 +50,7 @@ const ProductionAnalytics = () => {
             // Default to timeRange-based dates
             if (!params.start_date) {
                 const now = new Date();
-                if (timeRange === 'week' || (!params.start_date && timeRange !== 'custom')) {
+                if (timeRange === 'week') {
                     const dayOfWeek = now.getDay();
                     const sunday = new Date(now);
                     sunday.setDate(now.getDate() - dayOfWeek);
@@ -62,6 +62,13 @@ const ProductionAnalytics = () => {
                 } else if (timeRange === 'quarter') {
                     const quarter = Math.floor(now.getMonth() / 3);
                     params.start_date = new Date(now.getFullYear(), quarter * 3, 1).toISOString().split('T')[0];
+                    params.end_date = now.toISOString().split('T')[0];
+                } else {
+                    // fallback to week
+                    const dayOfWeek = now.getDay();
+                    const sunday = new Date(now);
+                    sunday.setDate(now.getDate() - dayOfWeek);
+                    params.start_date = sunday.toISOString().split('T')[0];
                     params.end_date = now.toISOString().split('T')[0];
                 }
             }
@@ -517,7 +524,7 @@ const ProductionAnalytics = () => {
                     <div className="card">
                         <div className="card-header">
                             <h6 className="mb-0">Line Performance Ranking</h6>
-                            <small className="text-muted">Lines ranked by OEE</small>
+                            <small className="text-muted">Lines ranked by Performance</small>
                         </div>
                         <div className="card-body p-0">
                             <div className="table-responsive">
@@ -526,7 +533,7 @@ const ProductionAnalytics = () => {
                                         <tr>
                                             <th>Rank</th>
                                             <th>PET Line</th>
-                                            <th>OEE</th>
+                                            <th>Performance</th>
                                             <th>Status</th>
                                         </tr>
                                     </thead>

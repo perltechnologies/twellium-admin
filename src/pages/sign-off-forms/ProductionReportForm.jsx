@@ -468,20 +468,20 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric">{summary.total_reports || dayData.report_count || ''}</td>
                                     </tr>
                                     <tr>
+                                        <td className="label-cell">Workers Count</td>
+                                        <td className="input-cell numeric">{(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()}</td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
+                                    </tr>
+                                    <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
                                         <td className="input-cell numeric">{fmt(summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))}</td>
                                         <td className="label-cell">Planned Downtime (min)</td>
                                         <td className="input-cell numeric">{fmt(summary.planned_downtime_mins)}</td>
                                         <td className="label-cell">Mechanical Downtime (min)</td>
                                         <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Workers Count</td>
-                                        <td className="input-cell numeric">{(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()}</td>
-                                        <td className="label-cell">Bottles Produced (R.W)</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced)}</td>
-                                        <td className="label-cell"></td>
-                                        <td className="input-cell numeric"></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -506,13 +506,13 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Syrup Yield</td>
-                                        <td className="input-cell numeric">{summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : ''}</td>
+                                        <td className="input-cell numeric">{syrupMeters.syrup_yield_percent != null ? `${syrupMeters.syrup_yield_percent}%` : (summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : '')}</td>
                                         <td className="label-cell">CO2 Yield</td>
                                         <td className="input-cell numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
-                                        <td className="label-cell">Bottles Produced (R.W)</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles_produced)}</td>
                                         <td className="label-cell">Target Met</td>
                                         <td className="input-cell numeric">{summary.target_met_count || ''}</td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
                                     </tr>
                                 </tbody>
                             </table>

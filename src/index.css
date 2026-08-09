@@ -406,6 +406,7 @@ h6 { font-size: 0.875rem; }
 .btn-primary {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   border: none;
+  color: #fff !important;
   box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
 }
 

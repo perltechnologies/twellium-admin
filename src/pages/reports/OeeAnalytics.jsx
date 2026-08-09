@@ -47,7 +47,7 @@ const OeeAnalytics = () => {
 
             if (!params.start_date) {
                 const now = new Date();
-                if (timeRange === 'week' || timeRange !== 'custom') {
+                if (timeRange === 'week') {
                     const dayOfWeek = now.getDay();
                     const sunday = new Date(now);
                     sunday.setDate(now.getDate() - dayOfWeek);
@@ -59,6 +59,13 @@ const OeeAnalytics = () => {
                 } else if (timeRange === 'quarter') {
                     const quarter = Math.floor(now.getMonth() / 3);
                     params.start_date = new Date(now.getFullYear(), quarter * 3, 1).toISOString().split('T')[0];
+                    params.end_date = now.toISOString().split('T')[0];
+                } else {
+                    // fallback to week
+                    const dayOfWeek = now.getDay();
+                    const sunday = new Date(now);
+                    sunday.setDate(now.getDate() - dayOfWeek);
+                    params.start_date = sunday.toISOString().split('T')[0];
                     params.end_date = now.toISOString().split('T')[0];
                 }
             }
@@ -400,7 +407,41 @@ const OeeAnalytics = () => {
                                             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                             <XAxis dataKey="pet" tick={{ fontSize: 12 }} />
                                             <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} tickFormatter={v => `${v}%`} />
-                                            <Tooltip formatter={(v) => [`${parseFloat(v).toFixed(1)}%`, 'OEE']} />
+                                            <Tooltip
+                                                cursor={{ fill: 'rgba(0,0,0,0.05)' }}
+                                                content={({ active, payload }) => {
+                                                    if (active && payload && payload.length) {
+                                                        const data = payload[0]?.payload;
+                                                        if (!data) return null;
+                                                        return (
+                                                            <div style={{ background: '#fff', padding: '12px 16px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid #e2e8f0', minWidth: 180 }}>
+                                                                <p style={{ fontWeight: 700, marginBottom: 8, borderBottom: '1px solid #e2e8f0', paddingBottom: 6 }}>{data.pet}</p>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                                    <span style={{ color: '#8b5cf6' }}>● OEE:</span>
+                                                                    <span style={{ fontWeight: 600 }}>{data.oee.toFixed(1)}%</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                                    <span style={{ color: '#06b6d4' }}>● Availability:</span>
+                                                                    <span style={{ fontWeight: 600 }}>{data.availability.toFixed(1)}%</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                                    <span style={{ color: '#f59e0b' }}>● Performance:</span>
+                                                                    <span style={{ fontWeight: 600 }}>{data.performance.toFixed(1)}%</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                                    <span style={{ color: '#22c55e' }}>● Quality:</span>
+                                                                    <span style={{ fontWeight: 600 }}>{data.quality.toFixed(1)}%</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e2e8f0', color: '#64748b', fontSize: 12 }}>
+                                                                    <span>Reports:</span>
+                                                                    <span>{data.count}</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                }}
+                                            />
                                             <ReferenceLine y={OEE_TARGET} stroke="#22c55e" strokeDasharray="5 5" />
                                             <Bar dataKey="oee" name="OEE %" radius={[4, 4, 0, 0]}>
                                                 {oeeByPet.map((entry, idx) => (
@@ -424,6 +465,24 @@ const OeeAnalytics = () => {
                                         <RadarChart data={radarData}>
                                             <PolarGrid stroke="#e2e8f0" />
                                             <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12 }} />
+                                            <Tooltip
+                                                content={({ active, payload }) => {
+                                                    if (active && payload && payload.length) {
+                                                        const data = payload[0]?.payload;
+                                                        if (!data) return null;
+                                                        return (
+                                                            <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: '1px solid #e2e8f0', minWidth: 140 }}>
+                                                                <p style={{ fontWeight: 700, marginBottom: 4, fontSize: 13 }}>{data.metric}</p>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span style={{ color: '#8b5cf6' }}>● Value:</span>
+                                                                    <span style={{ fontWeight: 600 }}>{data.value.toFixed(1)}%</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                }}
+                                            />
                                             <Radar name="Current" dataKey="value" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.3} strokeWidth={2} />
                                         </RadarChart>
                                     </ResponsiveContainer>

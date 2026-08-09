@@ -13,7 +13,7 @@ const ProductionList = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [filters, setFilters] = useState({
-        production_date: globalFilters.log_date || '',
+        production_date: '',
         status: '',
         search: '',
         pet: globalFilters.pet || '',
@@ -240,6 +240,13 @@ const ProductionList = () => {
 
             // Filter out canlines
             listData = listData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+
+            // Sort by PET line number (Pet 1, Pet 2, Pet 3, ...)
+            listData.sort((a, b) => {
+                const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
+                const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
+                return aNum - bNum;
+            });
 
             setReports(listData);
             setTotalCount(count);
@@ -1089,37 +1096,53 @@ const ProductionList = () => {
                         </div>
                     )}
                 </div>
-                {totalPages > 1 && (
-                    <div className="card-footer d-flex align-items-center justify-content-between">
+                <div className="card-footer d-flex align-items-center justify-content-between flex-wrap gap-2">
+                    <div className="d-flex align-items-center gap-2">
                         <p className="mb-0 text-muted">
                             Showing {((filters.page - 1) * filters.page_size) + 1} to {Math.min(filters.page * filters.page_size, totalCount)} of {totalCount} entries
                         </p>
-                        <nav>
-                            <ul className="pagination mb-0">
-                                <li className={`page-item ${!paginationLinks.previous ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => handlePageChange(filters.page - 1)} disabled={!paginationLinks.previous}>
-                                        <i className="ti ti-chevron-left"></i>
-                                    </button>
-                                </li>
-                                {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                                    const pageNum = i + 1;
-                                    return (
-                                        <li key={pageNum} className={`page-item ${filters.page === pageNum ? 'active' : ''}`}>
-                                            <button className="page-link" onClick={() => handlePageChange(pageNum)}>
-                                                {pageNum}
-                                            </button>
-                                        </li>
-                                    );
-                                })}
-                                <li className={`page-item ${!paginationLinks.next ? 'disabled' : ''}`}>
-                                    <button className="page-link" onClick={() => handlePageChange(filters.page + 1)} disabled={!paginationLinks.next}>
-                                        <i className="ti ti-chevron-right"></i>
-                                    </button>
-                                </li>
-                            </ul>
-                        </nav>
+                        <div className="d-flex align-items-center gap-1">
+                            <label className="text-muted small mb-0">Per page</label>
+                            <select
+                                className="form-select form-select-sm"
+                                style={{ width: 'auto' }}
+                                value={filters.page_size}
+                                onChange={(e) => setFilters(prev => ({ ...prev, page_size: Number(e.target.value), page: 1 }))}
+                            >
+                                {[5, 10, 15, 25, 50].map(n => (
+                                    <option key={n} value={n}>{n}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
-                )}
+                    <nav>
+                        <ul className="pagination mb-0">
+                            <li className={`page-item ${!paginationLinks.previous ? 'disabled' : ''}`}>
+                                <button className="page-link" onClick={() => handlePageChange(filters.page - 1)} disabled={!paginationLinks.previous}>
+                                    <i className="ti ti-chevron-left"></i>
+                                </button>
+                            </li>
+                            {[...Array(totalPages)].map((_, i) => {
+                                const pageNum = i + 1;
+                                const startPage = Math.max(1, Math.min(filters.page - 2, totalPages - 4));
+                                const endPage = Math.min(totalPages, startPage + 4);
+                                if (pageNum < startPage || pageNum > endPage) return null;
+                                return (
+                                    <li key={pageNum} className={`page-item ${filters.page === pageNum ? 'active' : ''}`}>
+                                        <button className="page-link" onClick={() => handlePageChange(pageNum)}>
+                                            {pageNum}
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                            <li className={`page-item ${!paginationLinks.next ? 'disabled' : ''}`}>
+                                <button className="page-link" onClick={() => handlePageChange(filters.page + 1)} disabled={!paginationLinks.next}>
+                                    <i className="ti ti-chevron-right"></i>
+                                </button>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
             </div>
 
             {/* Delete Confirmation Modal */}

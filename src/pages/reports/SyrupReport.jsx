@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { productionApi } from '../../api/production';
 import FilterInputs from '../../components/FilterInputs';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, ReferenceLine } from 'recharts';
@@ -21,8 +21,9 @@ const SyrupReport = () => {
     const { filters } = useFilters();
     const [rawData, setRawData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [timeRange, setTimeRange] = useState('week');
+    const [timeRange, setTimeRange] = useState('yesterday');
     const [viewMode, setViewMode] = useState('chart');
+    const prevFiltersRef = useRef({ log_date: filters.log_date, start_date: filters.start_date, end_date: filters.end_date });
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -30,28 +31,34 @@ const SyrupReport = () => {
             const params = {};
             if (filters.pet) params.pet = filters.pet;
 
-            if (filters.log_date) {
-                params.start_date = filters.log_date;
-                params.end_date = filters.log_date;
-            } else if (filters.start_date && filters.end_date) {
-                params.start_date = filters.start_date;
-                params.end_date = filters.end_date;
-            } else {
+            if (timeRange === 'custom') {
+                if (filters.log_date) {
+                    params.start_date = filters.log_date;
+                    params.end_date = filters.log_date;
+                } else if (filters.start_date && filters.end_date) {
+                    params.start_date = filters.start_date;
+                    params.end_date = filters.end_date;
+                }
+            }
+
+            if (!params.start_date) {
                 const now = new Date();
-                if (timeRange === 'today') {
-                    const today = now.toISOString().split('T')[0];
-                    params.start_date = today;
-                    params.end_date = today;
-                } else if (timeRange === 'week') {
-                    const dayOfWeek = now.getDay();
-                    const sunday = new Date(now);
-                    sunday.setDate(now.getDate() - dayOfWeek);
-                    params.start_date = sunday.toISOString().split('T')[0];
-                    params.end_date = now.toISOString().split('T')[0];
+                if (timeRange === 'yesterday') {
+                    const yesterday = new Date(now);
+                    yesterday.setDate(now.getDate() - 1);
+                    const yesterdayStr = yesterday.toISOString().split('T')[0];
+                    params.start_date = yesterdayStr;
+                    params.end_date = yesterdayStr;
                 } else if (timeRange === 'month') {
                     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
                     params.start_date = firstDay.toISOString().split('T')[0];
                     params.end_date = now.toISOString().split('T')[0];
+                } else {
+                    const end = new Date();
+                    const start = new Date();
+                    start.setDate(end.getDate() - 6);
+                    params.start_date = start.toISOString().split('T')[0];
+                    params.end_date = end.toISOString().split('T')[0];
                 }
             }
 
@@ -69,7 +76,12 @@ const SyrupReport = () => {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        if (filters.log_date || filters.start_date || filters.end_date) setTimeRange('custom');
+        const prev = prevFiltersRef.current;
+        const changed = prev.log_date !== filters.log_date
+            || prev.start_date !== filters.start_date
+            || prev.end_date !== filters.end_date;
+        prevFiltersRef.current = { log_date: filters.log_date, start_date: filters.start_date, end_date: filters.end_date };
+        if (changed && (filters.log_date || filters.start_date || filters.end_date)) setTimeRange('custom');
     }, [filters.log_date, filters.start_date, filters.end_date]);
 
     const dateRangeLabel = useMemo(() => {
@@ -202,9 +214,21 @@ const SyrupReport = () => {
                 <div className="d-flex gap-2 align-items-center">
                     {loading && <span className="spinner-border spinner-border-sm text-primary" role="status" />}
                     <div className="btn-group btn-group-sm">
-                        <button className={`btn ${timeRange === 'today' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('today')}>Today</button>
-                        <button className={`btn ${timeRange === 'week' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('week')}>Week</button>
-                        <button className={`btn ${timeRange === 'month' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setTimeRange('month')}>Month</button>
+                        <button
+                            className="btn"
+                            style={timeRange === 'yesterday' ? { background: '#2563eb', color: '#fff', borderColor: '#2563eb' } : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}
+                            onClick={() => setTimeRange('yesterday')}
+                        >Yesterday</button>
+                        <button
+                            className="btn"
+                            style={timeRange === 'week' ? { background: '#2563eb', color: '#fff', borderColor: '#2563eb' } : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}
+                            onClick={() => setTimeRange('week')}
+                        >Week</button>
+                        <button
+                            className="btn"
+                            style={timeRange === 'month' ? { background: '#2563eb', color: '#fff', borderColor: '#2563eb' } : { background: '#fff', color: '#64748b', borderColor: '#e2e8f0' }}
+                            onClick={() => setTimeRange('month')}
+                        >Month</button>
                     </div>
                     <div className="btn-group btn-group-sm">
                         <button className={`btn ${viewMode === 'chart' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => setViewMode('chart')}>

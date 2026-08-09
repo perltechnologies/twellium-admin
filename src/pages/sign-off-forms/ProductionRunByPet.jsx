@@ -103,6 +103,7 @@ const ProductionRunByPet = () => {
 
     // Fetch products for fallback lookup
     const [products, setProducts] = useState([]);
+    const [reportsList, setReportsList] = useState([]);
     useEffect(() => {
         const fetchProducts = async () => {
             try {
@@ -128,6 +129,32 @@ const ProductionRunByPet = () => {
             const res = await productionApi.getProductionSummary(params);
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             setData(envelope);
+
+            // Also fetch individual reports to get detailed batch data
+            const reportParams = { page_size: 100 };
+            if (startDate === endDate) {
+                reportParams.production_date = startDate;
+            } else {
+                reportParams.datetime_start_time = `${startDate}T00:00:00Z`;
+                reportParams.datetime_end_time = `${endDate}T23:59:59Z`;
+            }
+            if (selectedPet) reportParams.pet = selectedPet;
+            if (selectedShift) reportParams.shift = selectedShift;
+            const reportRes = await productionApi.getReports(reportParams);
+            const reportData = reportRes?.data?.data ?? reportRes?.data ?? {};
+            let reportList = [];
+            if (Array.isArray(reportData)) {
+                reportList = reportData;
+            } else if (reportData.results && Array.isArray(reportData.results)) {
+                reportList = reportData.results;
+            } else if (reportData.data && Array.isArray(reportData.data)) {
+                reportList = reportData.data;
+            }
+            // Filter by product if selected
+            if (selectedProduct) {
+                reportList = reportList.filter(r => r.product_name === selectedProduct);
+            }
+            setReportsList(reportList);
         } catch (err) {
             console.error('Failed to fetch production data:', err);
             setError(err?.message || 'Failed to fetch data');
@@ -155,6 +182,7 @@ const ProductionRunByPet = () => {
     const metersReading = data?.meters_reading || {};
     const co2Meters = metersReading.co2 || {};
     const productionMeters = metersReading.production || {};
+    const syrupMeters = metersReading.syrup || {};
     const selectedPetName = pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '';
 
     // Get product names from daily breakdown (unfiltered for dropdown)
@@ -175,14 +203,34 @@ const ProductionRunByPet = () => {
         : allPetEntriesUnfiltered;
 
     // Derived values from per-pet data
-    const totalProductionHrs = allPetEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0);
-    const productionStartTimes = allPetEntries.map(p => p.production_start_time).filter(Boolean).sort();
-    const productionEndTimes = allPetEntries.map(p => p.production_end_time).filter(Boolean).sort();
-    const totalPaidHours = allPetEntries.reduce((sum, p) => sum + (p.workers?.paid_hours || 0), 0);
-    const totalOvertimeHours = allPetEntries.reduce((sum, p) => sum + (p.workers?.overtime_hours || 0), 0);
-    const absentWorkerNames = [...new Set(allPetEntries.flatMap(p => p.workers?.absent_worker_names || []))];
-    const batchNumbers = [...new Set(allPetEntries.flatMap(p => (p.batches || []).map(b => b.batch_number)).filter(Boolean))];
-    const totalSyrupLiters = allPetEntries.reduce((sum, p) => sum + (p.meters_reading?.syrup?.total_syrup_used_l || 0), 0) || (data?.meters_reading?.syrup?.total_syrup_used_l || 0);
+    const totalProductionHrs = allPetEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0)
+        || reportsList.reduce((sum, r) => sum + (r.total_production_time_hrs || r.production_hours || 0), 0);
+    const productionStartTimes = [
+        ...allPetEntries.map(p => p.production_start_time),
+        ...reportsList.map(r => r.production_start_time || r.start_time)
+    ].filter(Boolean).sort();
+    const productionEndTimes = [
+        ...allPetEntries.map(p => p.production_end_time),
+        ...reportsList.map(r => r.production_end_time || r.end_time)
+    ].filter(Boolean).sort();
+    const totalPaidHours = allPetEntries.reduce((sum, p) => sum + (p.workers?.paid_hours || 0), 0)
+        || reportsList.reduce((sum, r) => sum + (r.paid_hours || r.workers_paid_hours || 0), 0);
+    const totalOvertimeHours = allPetEntries.reduce((sum, p) => sum + (p.workers?.overtime_hours || 0), 0)
+        || reportsList.reduce((sum, r) => sum + (r.overtime_hours || r.workers_overtime_hours || 0), 0);
+    const absentWorkerNames = [...new Set([
+        ...allPetEntries.flatMap(p => p.workers?.absent_worker_names || []),
+        ...reportsList.flatMap(r => r.absent_worker_names || r.absent_workers || [])
+    ])];
+    const batchNumbers = [...new Set([
+        ...allPetEntries.flatMap(p => (p.batches || []).map(b => b.batch_number)),
+        ...reportsList.flatMap(r => (r.batches || []).map(b => b.batch_number))
+    ].filter(Boolean))];
+    const totalSyrupLiters = allPetEntries.reduce((sum, p) => sum + (p.meters_reading?.syrup?.total_syrup_used_l || 0), 0)
+        || reportsList.reduce((sum, r) => sum + (r.total_syrup_used_l || r.syrup_liters || 0), 0)
+        || (data?.meters_reading?.syrup?.total_syrup_used_l || 0);
+    const totalBeverageLiters = allPetEntries.reduce((sum, p) => sum + (p.meters_reading?.beverage?.total_beverage_liters || p.beverage_liters || 0), 0)
+        || reportsList.reduce((sum, r) => sum + (r.total_beverage_liters || r.beverage_liters || 0), 0)
+        || (data?.meters_reading?.beverage?.total_beverage_liters || summary.total_beverage_liters || 0);
 
     // Derive totals from filtered allPetEntries so product filter is respected
     const filteredTotalBottles = allPetEntries.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0);
@@ -368,10 +416,10 @@ const ProductionRunByPet = () => {
                                     <tr>
                                         <td className="label-cell">Shift</td>
                                         <td className="input-cell">{selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'}</td>
-                                        <td className="label-cell">Batch N°</td>
-                                        <td className="input-cell">{batchNumbers.length > 0 ? batchNumbers.join(', ') : (summary.batch_numbers?.length > 0 ? summary.batch_numbers.join(', ') : '')}</td>
+                                        <td className="label-cell">Total Batches</td>
+                                        <td className="input-cell numeric">{batchNumbers.length || ''}</td>
                                         <td className="label-cell">Syrup (Lts)</td>
-                                        <td className="input-cell numeric">{summary.total_syrup_liters ? fmt(summary.total_syrup_liters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : '')}</td>
+                                        <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : (summary.total_syrup_liters ? fmt(summary.total_syrup_liters, 1) : '')}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Flavor</td>
@@ -458,7 +506,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Efficiency</td>
                                         <td className="input-cell numeric">{displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''}</td>
                                         <td className="label-cell">Bev. (Lts)</td>
-                                        <td className="input-cell numeric">{summary.total_beverage_liters ? fmt(summary.total_beverage_liters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : '')}</td>
+                                        <td className="input-cell numeric">{summary.total_beverage_liters ? fmt(summary.total_beverage_liters, 1) : (totalBeverageLiters ? fmt(totalBeverageLiters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''))}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -488,6 +536,93 @@ const ProductionRunByPet = () => {
                             </table>
 
                             {/* Row 28-34: Paid Hours / Time / Workers */}
+                            {/* Batch Details Table */}
+                            {(() => {
+                                // Default batch numbers to always show
+                                const defaultBatchNumbers = ['323', '320', '108', '477', '105', '476', '106', '107', '256', '321', '162', '322'];
+
+                                // Dilution ratio for computing beverage liters from syrup
+                                const dilutionRatio = parseFloat(syrupMeters.syrup_dilution_ratio) || 0;
+
+                                // Collect batch data from reports list (individual reports have detailed batch info)
+                                const batchMap = {};
+                                defaultBatchNumbers.forEach(bNum => {
+                                    batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
+                                });
+
+                                // From individual reports (most detailed source)
+                                reportsList.forEach(report => {
+                                    (report.batches || []).forEach(batch => {
+                                        const bNum = String(batch.batch_number || '');
+                                        if (!bNum) return;
+                                        if (!batchMap[bNum]) {
+                                            batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
+                                        }
+                                        const syrup = parseFloat(batch.syrup_liters || batch.syrup_used_l || batch.total_syrup_used_l || 0);
+                                        const bev = parseFloat(batch.beverage_liters || batch.bev_liters || batch.total_beverage_liters || 0);
+                                        batchMap[bNum].syrup_liters += syrup;
+                                        // Use beverage_liters if available, otherwise compute from syrup × dilution ratio
+                                        batchMap[bNum].beverage_liters += bev > 0 ? bev : (dilutionRatio > 0 && syrup > 0 ? syrup * dilutionRatio : 0);
+                                    });
+                                });
+
+                                // Also check pet entries from production summary as fallback
+                                allPetEntries.forEach(pet => {
+                                    (pet.batches || []).forEach(batch => {
+                                        const bNum = String(batch.batch_number || '');
+                                        if (!bNum) return;
+                                        if (!batchMap[bNum]) {
+                                            batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
+                                        }
+                                        // Only add if not already populated from reports
+                                        if (batchMap[bNum].syrup_liters === 0) {
+                                            const syrup = parseFloat(batch.syrup_liters || batch.syrup_used_l || batch.total_syrup_used_l || 0);
+                                            batchMap[bNum].syrup_liters += syrup;
+                                            if (batchMap[bNum].beverage_liters === 0) {
+                                                const bev = parseFloat(batch.beverage_liters || batch.bev_liters || batch.total_beverage_liters || 0);
+                                                batchMap[bNum].beverage_liters += bev > 0 ? bev : (dilutionRatio > 0 && syrup > 0 ? syrup * dilutionRatio : 0);
+                                            }
+                                        }
+                                    });
+                                });
+
+                                // Ensure default batches come first in order, then any additional from API
+                                const batchRows = [
+                                    ...defaultBatchNumbers.map(bNum => batchMap[bNum]),
+                                    ...Object.values(batchMap).filter(b => !defaultBatchNumbers.includes(b.batch_number))
+                                ];
+
+                                return (
+                                    <table className="form-table section-table">
+                                        <thead>
+                                            <tr className="section-header-row">
+                                                <th colSpan={3}>Batch Details</th>
+                                            </tr>
+                                            <tr className="sub-header-row">
+                                                <th style={{ width: '40%' }}>Batch No</th>
+                                                <th style={{ width: '30%' }}>Syrup (Lts)</th>
+                                                <th style={{ width: '30%' }}>Bev (Lts)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {batchRows.map((batch, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="label-cell">{batch.batch_number}</td>
+                                                    <td className="input-cell numeric">{batch.syrup_liters ? fmt(batch.syrup_liters, 1) : ''}</td>
+                                                    <td className="input-cell numeric">{batch.beverage_liters ? fmt(batch.beverage_liters, 1) : ''}</td>
+                                                </tr>
+                                            ))}
+                                            <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
+                                                <td className="label-cell">TOTAL</td>
+                                                <td className="input-cell numeric">{fmt(batchRows.reduce((s, b) => s + b.syrup_liters, 0), 1)}</td>
+                                                <td className="input-cell numeric">{fmt(batchRows.reduce((s, b) => s + b.beverage_liters, 0), 1)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                );
+                            })()}
+
+                            {/* Paid Hours / Time / Workers */}
                             <table className="form-table">
                                 <tbody>
                                     <tr className="section-header-row">
@@ -510,10 +645,6 @@ const ProductionRunByPet = () => {
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
                                         <td className="input-cell numeric" colSpan={3}>{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Working Labours On Line</td>
-                                        <td className="input-cell" colSpan={3}>{workers.length > 0 ? workers.map(w => `${w.first_name || ''} ${w.surname || ''}`.trim()).filter(Boolean).join(', ') : (summary.worker_names?.length > 0 ? summary.worker_names.join(', ') : '')}</td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
