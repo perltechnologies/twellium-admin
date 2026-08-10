@@ -6,6 +6,32 @@ import { inventoryApi } from '../../api/inventory';
 
 const STORAGE_KEY = 'productionRunByPet_filters';
 
+// Generic editable input that preserves its own state while syncing with initial value changes
+const EditableField = ({ value, type = 'text', className = '', onChange, step, min, max, readOnly }) => {
+    const [val, setVal] = useState(() =>
+        value === null || value === undefined || value === '' ? '' : String(value)
+    );
+    useEffect(() => {
+        setVal(value === null || value === undefined || value === '' ? '' : String(value));
+    }, [value]);
+    return (
+        <input
+            type={type}
+            step={step}
+            min={min}
+            max={max}
+            readOnly={readOnly}
+            className={`form-control form-control-sm ${className}`}
+            style={{ minWidth: '60px', textAlign: 'right' }}
+            value={val}
+            onChange={(e) => {
+                setVal(e.target.value);
+                if (onChange) onChange(e.target.value);
+            }}
+        />
+    );
+};
+
 const getStoredFilters = () => {
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
@@ -407,23 +433,23 @@ const ProductionRunByPet = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '8%' }}>Date</td>
-                                        <td className="input-cell numeric" style={{ width: '25%' }}>{formatDateRange()}</td>
+                                        <td className="input-cell numeric" style={{ width: '25%' }}><EditableField value={formatDateRange()} /></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
-                                        <td className="input-cell numeric" style={{ width: '10%' }}>{summary.line_speed || allPetEntries.find(p => p.line_speed)?.line_speed || ''}</td>
+                                        <td className="input-cell numeric" style={{ width: '10%' }}><EditableField value={summary.line_speed || allPetEntries.find(p => p.line_speed)?.line_speed || ''} /></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
-                                        <td className="input-cell numeric" style={{ width: '12%' }}>{fmt(displayTotalBottles)}</td>
+                                        <td className="input-cell numeric" style={{ width: '12%' }}><EditableField type="number" value={displayTotalBottles || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shift</td>
-                                        <td className="input-cell">{selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'}</td>
+                                        <td className="input-cell"><EditableField value={selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'} /></td>
                                         <td className="label-cell">Total Batches</td>
-                                        <td className="input-cell numeric">{batchNumbers.length || ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={batchNumbers.length || ''} /></td>
                                         <td className="label-cell">Syrup (Lts)</td>
-                                        <td className="input-cell numeric">{totalSyrupLiters ? fmt(totalSyrupLiters, 1) : (summary.total_syrup_liters ? fmt(summary.total_syrup_liters, 1) : '')}</td>
+                                        <td className="input-cell numeric"><EditableField value={totalSyrupLiters ? fmt(totalSyrupLiters, 1) : (summary.total_syrup_liters ? fmt(summary.total_syrup_liters, 1) : '')} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Flavor</td>
-                                        <td className="input-cell" colSpan={5}>{selectedProduct || productNames.join(', ') || ''}</td>
+                                        <td className="input-cell" colSpan={5}><EditableField value={selectedProduct || productNames.join(', ') || ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -468,11 +494,11 @@ const ProductionRunByPet = () => {
                                             return (
                                                 <tr key={idx}>
                                                     <td className="label-cell">{petEntry.product_name}</td>
-                                                    <td className="input-cell numeric">{bottleSize}</td>
-                                                    <td className="input-cell numeric">{lineSpeed}</td>
-                                                    <td className="input-cell numeric">{bottlesPerPack}</td>
-                                                    <td className="input-cell numeric">{packsPerPallet}</td>
-                                                    <td className="input-cell numeric">{singlePacks}</td>
+                                                    <td className="input-cell numeric"><EditableField value={bottleSize} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={lineSpeed} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={bottlesPerPack} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={packsPerPallet} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={singlePacks} /></td>
                                                 </tr>
                                             );
                                         });
@@ -486,7 +512,7 @@ const ProductionRunByPet = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Package</td>
-                                        <td className="input-cell" style={{ width: '15%' }}>{summary.bottle_size || summary.package_type || allPetEntries.find(p => p.bottle_size)?.bottle_size || ''}</td>
+                                        <td className="input-cell" style={{ width: '15%' }}><EditableField value={summary.bottle_size || summary.package_type || allPetEntries.find(p => p.bottle_size)?.bottle_size || ''} /></td>
                                         <td className="input-cell" style={{ width: '15%' }}></td>
                                         <td className="input-cell" style={{ width: '15%' }}></td>
                                         <td className="label-cell" style={{ width: '15%' }}></td>
@@ -494,7 +520,7 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Physical Box</td>
-                                        <td className="input-cell numeric">{summary.bottles_per_pack || allPetEntries.find(p => p.bottles_per_pack)?.bottles_per_pack || fmt(displayTotalPhysicalBoxes || cartonMat.total_used) || ''}</td>
+                                        <td className="input-cell numeric"><EditableField value={summary.bottles_per_pack || allPetEntries.find(p => p.bottles_per_pack)?.bottles_per_pack || fmt(displayTotalPhysicalBoxes || cartonMat.total_used) || ''} /></td>
                                         <td className="input-cell"></td>
                                         <td className="input-cell"></td>
                                         <td className="label-cell"></td>
@@ -502,11 +528,11 @@ const ProductionRunByPet = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Btls/Hr</td>
-                                        <td className="input-cell numeric">{summary.total_bottles_per_hr ? fmt(summary.total_bottles_per_hr) : (totalBtlsPerHr ? fmt(totalBtlsPerHr) : '')}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles_per_hr || totalBtlsPerHr || ''} /></td>
                                         <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell numeric">{displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''}</td>
+                                        <td className="input-cell numeric"><EditableField value={displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''} /></td>
                                         <td className="label-cell">Bev. (Lts)</td>
-                                        <td className="input-cell numeric">{summary.total_beverage_liters ? fmt(summary.total_beverage_liters, 1) : (totalBeverageLiters ? fmt(totalBeverageLiters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''))}</td>
+                                        <td className="input-cell numeric"><EditableField value={summary.total_beverage_liters ? fmt(summary.total_beverage_liters, 1) : (totalBeverageLiters ? fmt(totalBeverageLiters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''))} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -525,12 +551,12 @@ const ProductionRunByPet = () => {
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td className="input-cell numeric">{fmt(displayTotalBottles)}</td>
-                                        <td className="input-cell numeric">{displayAvgSyrupYield ? `${displayAvgSyrupYield}%` : ''}</td>
-                                        <td className="input-cell numeric">{fmt(displayTotalBottlesProduced)}</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_shrink_packs || shrinkMat.total_used)}</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_carton_packs || cartonMat.total_used)}</td>
-                                        <td className="input-cell numeric">{fmt(displayTotalPacks)}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalBottles || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField value={displayAvgSyrupYield ? `${displayAvgSyrupYield}%` : ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalBottlesProduced || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_shrink_packs || shrinkMat.total_used || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_carton_packs || cartonMat.total_used || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalPacks || ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -608,14 +634,14 @@ const ProductionRunByPet = () => {
                                             {batchRows.map((batch, idx) => (
                                                 <tr key={idx}>
                                                     <td className="label-cell">{batch.batch_number}</td>
-                                                    <td className="input-cell numeric">{batch.syrup_liters ? fmt(batch.syrup_liters, 1) : ''}</td>
-                                                    <td className="input-cell numeric">{batch.beverage_liters ? fmt(batch.beverage_liters, 1) : ''}</td>
+                                                    <td className="input-cell numeric"><EditableField value={batch.syrup_liters ? fmt(batch.syrup_liters, 1) : ''} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={batch.beverage_liters ? fmt(batch.beverage_liters, 1) : ''} /></td>
                                                 </tr>
                                             ))}
                                             <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
                                                 <td className="label-cell">TOTAL</td>
-                                                <td className="input-cell numeric">{fmt(batchRows.reduce((s, b) => s + b.syrup_liters, 0), 1)}</td>
-                                                <td className="input-cell numeric">{fmt(batchRows.reduce((s, b) => s + b.beverage_liters, 0), 1)}</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(batchRows.reduce((s, b) => s + b.syrup_liters, 0), 1)} /></td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(batchRows.reduce((s, b) => s + b.beverage_liters, 0), 1)} /></td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -628,31 +654,31 @@ const ProductionRunByPet = () => {
                                     <tr className="section-header-row">
                                         <td className="label-cell" style={{ width: '30%' }}><strong>Paid Hours (overtime)</strong></td>
                                         <td className="label-cell" style={{ width: '15%' }}><strong>Time</strong></td>
-                                        <td className="input-cell" colSpan={2}>{summary.paid_hours ? `${summary.paid_hours}h` : (totalPaidHours ? `${totalPaidHours}h${totalOvertimeHours ? ` (OT: ${totalOvertimeHours}h)` : ''}` : '')}</td>
+                                        <td className="input-cell" colSpan={2}><EditableField value={summary.paid_hours ? `${summary.paid_hours}h` : (totalPaidHours ? `${totalPaidHours}h${totalOvertimeHours ? ` (OT: ${totalOvertimeHours}h)` : ''}` : '')} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
-                                        <td className="input-cell" colSpan={3}>{summary.production_start_time || productionStartTimes[0] || ''}</td>
+                                        <td className="input-cell" colSpan={3}><EditableField value={summary.production_start_time || productionStartTimes[0] || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shut Down Production</td>
-                                        <td className="input-cell" colSpan={3}>{summary.production_end_time || productionEndTimes[productionEndTimes.length - 1] || ''}</td>
+                                        <td className="input-cell" colSpan={3}><EditableField value={summary.production_end_time || productionEndTimes[productionEndTimes.length - 1] || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Production Hrs</td>
-                                        <td className="input-cell" colSpan={3}>{summary.total_production_time_hrs || (totalProductionHrs ? totalProductionHrs.toFixed(1) : '')}</td>
+                                        <td className="input-cell" colSpan={3}><EditableField type="number" step="0.1" value={summary.total_production_time_hrs || (totalProductionHrs ? totalProductionHrs.toFixed(1) : '')} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
-                                        <td className="input-cell numeric" colSpan={3}>{fmt((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))}</td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={(summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0) || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
-                                        <td className="input-cell numeric" colSpan={3}>{workers.length || summary.worker_count || ''}</td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={workers.length || summary.worker_count || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Name Of Absent Labours</td>
-                                        <td className="input-cell" colSpan={3}>{absentWorkerNames.length > 0 ? absentWorkerNames.join(', ') : (summary.absent_worker_names?.length > 0 ? summary.absent_worker_names.join(', ') : '')}</td>
+                                        <td className="input-cell" colSpan={3}><EditableField value={absentWorkerNames.length > 0 ? absentWorkerNames.join(', ') : (summary.absent_worker_names?.length > 0 ? summary.absent_worker_names.join(', ') : '')} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -686,13 +712,13 @@ const ProductionRunByPet = () => {
                                         return (
                                             <tr key={type}>
                                                 <td className="label-cell">{label}</td>
-                                                <td className="unit-cell">{mat.unit || defaultUnit}</td>
-                                                <td className="input-cell numeric">{fmt(mat.expected_usage)}</td>
-                                                <td className="input-cell numeric">{fmt(mat.received || mat.total_received)}</td>
-                                                <td className="input-cell numeric">{fmt(mat.total_used)}</td>
-                                                <td className="input-cell numeric">{fmt(mat.returned || mat.total_returned)}</td>
-                                                <td className="input-cell numeric">{fmt(mat.total_losses)}</td>
-                                                <td className="input-cell numeric">{lossPercent ? `${lossPercent}%` : ''}</td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || defaultUnit} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.expected_usage || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.received || mat.total_received || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.returned || mat.total_returned || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent ? `${lossPercent}%` : ''} /></td>
                                             </tr>
                                         );
                                     })}
@@ -715,13 +741,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading (Kg):</span>
-                                                <span className="meter-value numeric">{co2Meters.start_reading_kg != null ? fmt(co2Meters.start_reading_kg, 1) : ''}</span>
+                                                <EditableField value={co2Meters.start_reading_kg != null ? co2Meters.start_reading_kg : ''} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Combi Reading:</span>
-                                                <span className="meter-value numeric">{productionMeters.combi_reading != null ? fmt(productionMeters.combi_reading) : (co2Meters.combi_reading != null ? fmt(co2Meters.combi_reading) : (productionMeters.filler_reading != null ? fmt(productionMeters.filler_reading) : ''))}</span>
+                                                <EditableField value={productionMeters.combi_reading != null ? productionMeters.combi_reading : (co2Meters.combi_reading != null ? co2Meters.combi_reading : (productionMeters.filler_reading != null ? productionMeters.filler_reading : ''))} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -730,13 +756,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading (Kg):</span>
-                                                <span className="meter-value numeric">{co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg, 1) : ''}</span>
+                                                <EditableField value={co2Meters.end_reading_kg != null ? co2Meters.end_reading_kg : ''} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Shrink Reading:</span>
-                                                <span className="meter-value numeric">{productionMeters.shrink_reading != null ? fmt(productionMeters.shrink_reading) : ''}</span>
+                                                <EditableField value={productionMeters.shrink_reading != null ? productionMeters.shrink_reading : ''} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -745,7 +771,7 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Difference in Balance:</span>
-                                                <span className="meter-value numeric">{co2Meters.difference_in_balance != null ? fmt(co2Meters.difference_in_balance, 1) : (co2Meters.difference_in_balance_kg != null ? fmt(co2Meters.difference_in_balance_kg, 1) : (co2Meters.start_reading_kg != null && co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg - co2Meters.start_reading_kg, 1) : ''))}</span>
+                                                <EditableField value={co2Meters.difference_in_balance != null ? co2Meters.difference_in_balance : (co2Meters.difference_in_balance_kg != null ? co2Meters.difference_in_balance_kg : (co2Meters.start_reading_kg != null && co2Meters.end_reading_kg != null ? (co2Meters.end_reading_kg - co2Meters.start_reading_kg).toFixed(1) : ''))} />
                                             </div>
                                         </td>
                                         <td colSpan={2}></td>
@@ -754,7 +780,7 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Total CO2 Consumed (Kg):</span>
-                                                <span className="meter-value numeric">{co2Meters.total_co2_consumed_kg != null ? fmt(co2Meters.total_co2_consumed_kg, 1) : ''}</span>
+                                                <EditableField value={co2Meters.total_co2_consumed_kg != null ? co2Meters.total_co2_consumed_kg : ''} />
                                             </div>
                                         </td>
                                         <td colSpan={2}></td>
@@ -763,13 +789,13 @@ const ProductionRunByPet = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/l:</span>
-                                                <span className="meter-value numeric">{co2Meters.co2_g_per_liter != null ? co2Meters.co2_g_per_liter : (co2Meters.co2_grams_per_liter != null ? co2Meters.co2_grams_per_liter : (co2Meters.total_co2_consumed_kg && summary.total_beverage_liters ? ((co2Meters.total_co2_consumed_kg * 1000) / summary.total_beverage_liters).toFixed(2) : ''))}</span>
+                                                <EditableField value={co2Meters.co2_g_per_liter != null ? co2Meters.co2_g_per_liter : (co2Meters.co2_grams_per_liter != null ? co2Meters.co2_grams_per_liter : (co2Meters.total_co2_consumed_kg && summary.total_beverage_liters ? ((co2Meters.total_co2_consumed_kg * 1000) / summary.total_beverage_liters).toFixed(2) : ''))} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/Btl:</span>
-                                                <span className="meter-value numeric">{co2Meters.co2_g_per_bottle != null ? co2Meters.co2_g_per_bottle : (co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : (co2Meters.total_co2_consumed_kg && displayTotalBottles ? ((co2Meters.total_co2_consumed_kg * 1000) / displayTotalBottles).toFixed(2) : ''))}</span>
+                                                <EditableField value={co2Meters.co2_g_per_bottle != null ? co2Meters.co2_g_per_bottle : (co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : (co2Meters.total_co2_consumed_kg && displayTotalBottles ? ((co2Meters.total_co2_consumed_kg * 1000) / displayTotalBottles).toFixed(2) : ''))} />
                                             </div>
                                         </td>
                                         <td></td>

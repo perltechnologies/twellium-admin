@@ -3,11 +3,10 @@ import { productionApi } from '../../api/production';
 import FilterInputs from '../../components/FilterInputs';
 import { LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, Cell } from 'recharts';
 import { PieChart, Pie } from 'recharts';
-import { exportToExcel, exportChartToPDF } from '../../utils/exportUtils';
+import { exportToExcel } from '../../utils/exportUtils';
 import { useFilters } from '../../context/FilterContext';
 
 const DONUT_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
-const PET_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 const OEE_TARGET = 85;
 
 const getStatusConfig = (value, target = OEE_TARGET) => {
@@ -96,8 +95,8 @@ const ProductionAnalytics = () => {
         if (filters.log_date || filters.start_date || filters.end_date) setTimeRange('custom');
     }, [filters.log_date, filters.start_date, filters.end_date]);
 
-    const summaryData = rawData?.summary || {};
-    const dailyBreakdown = rawData?.daily_breakdown || [];
+    const summaryData = useMemo(() => rawData?.summary || {}, [rawData]);
+    const dailyBreakdown = useMemo(() => rawData?.daily_breakdown || [], [rawData]);
 
     const dateRangeLabel = useMemo(() => {
         const f = rawData?.filters;
@@ -132,18 +131,6 @@ const ProductionAnalytics = () => {
             });
         });
         return Object.entries(petMap).map(([name, value]) => ({ name, value })).filter(p => p.value > 0);
-    }, [dailyBreakdown]);
-
-    // Output by shift
-    const outputByShift = useMemo(() => {
-        const shiftMap = {};
-        dailyBreakdown.forEach(day => {
-            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                const shift = p.shift || 'Unknown';
-                shiftMap[shift] = (shiftMap[shift] || 0) + (p.total_bottles_produced || p.total_bottles || 0);
-            });
-        });
-        return Object.entries(shiftMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
     }, [dailyBreakdown]);
 
     // Helper: get total output from a daily breakdown entry

@@ -191,7 +191,7 @@ const ProductionList = () => {
             .sort((a, b) => b.quality - a.quality);
     }, [oeeData]);
 
-    const fetchReports = async () => {
+    const fetchReports = useCallback(async () => {
         setLoading(true);
         setRefreshing(true);
         try {
@@ -330,7 +330,7 @@ const ProductionList = () => {
             setLoading(false);
             setRefreshing(false);
         }
-    };
+    }, [filters, globalFilters.start_date, globalFilters.end_date, globalFilters.log_date, pets]);
 
     useEffect(() => {
         // Debounce search
@@ -338,7 +338,7 @@ const ProductionList = () => {
             fetchReports();
         }, 500);
         return () => clearTimeout(timeoutId);
-    }, [filters, globalFilters.start_date, globalFilters.end_date]);
+    }, [filters, globalFilters.start_date, globalFilters.end_date, globalFilters.log_date, fetchReports]);
 
     // Fetch broad dataset for charts from production_summary (Bottles by PET)
     const fetchChartData = useCallback(async () => {
@@ -430,10 +430,6 @@ const ProductionList = () => {
         } finally {
             setDeleting(false);
         }
-    };
-
-    const handleView = (item) => {
-        navigate(`/dashboard/production/${item.id}`);
     };
 
     const handleStatusChange = async (report, newStatus) => {

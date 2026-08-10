@@ -1,96 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Clock, Activity, AlertTriangle, Layers, User, Box, Package } from 'lucide-react';
-import { DataTable, Card } from '../../components/ui';
+
 import { productionApi } from '../../api/production';
+import { inventoryApi } from '../../api/inventory';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList
 } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
 
-// OEE Circular Gauge Component
-const OEECircularGauge = ({ title, value, color }) => (
-    <div className="card h-100">
-        <div className="card-header">
-            <h6 className="mb-0">{title}</h6>
-        </div>
-        <div className="card-body d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '300px' }}>
-            <div className="position-relative" style={{ width: '200px', height: '200px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                        <Pie
-                            data={[
-                                { name: title, value: value },
-                                { name: 'Remaining', value: 100 - value }
-                            ]}
-                            cx="50%"
-                            cy="50%"
-                            startAngle={90}
-                            endAngle={-270}
-                            innerRadius={60}
-                            outerRadius={80}
-                            paddingAngle={0}
-                            dataKey="value"
-                            stroke="none"
-                        >
-                            <Cell fill={color} />
-                            <Cell fill="#e9ecef" />
-                        </Pie>
-                    </PieChart>
-                </ResponsiveContainer>
-                <div className="position-absolute top-50 start-50 translate-middle text-center">
-                    <h2 className="mb-0 fw-bold" style={{ color: color }}>{value}%</h2>
-                    <small className="text-muted text-uppercase">{title}</small>
-                </div>
-            </div>
-        </div>
-    </div>
-);
-
-const statCardColorMap = {
-    success: { bg: 'var(--success-transparent)', border: 'var(--success)', text: 'var(--success)', decorImg: '/img/icons/elemnt-02.svg' },
-    primary: { bg: 'var(--primary-transparent)', border: 'var(--primary)', text: 'var(--primary)', decorImg: '/img/icons/elemnt-01.svg' },
-    info: { bg: 'var(--info-transparent)', border: 'var(--info)', text: 'var(--info)', decorImg: '/img/icons/elemnt-01.svg' },
-    indigo: { bg: 'var(--indigo-transparent)', border: 'var(--indigo)', text: 'var(--indigo)', decorImg: '/img/icons/elemnt-01.svg' },
-    warning: { bg: 'var(--warning-transparent)', border: 'var(--warning)', text: 'var(--warning)', decorImg: '/img/icons/elemnt-03.svg' },
-    danger: { bg: 'var(--danger-transparent)', border: 'var(--danger)', text: 'var(--danger)', decorImg: '/img/icons/elemnt-04.svg' },
-};
-
-const StatCard = ({ title, value, icon: Icon, cardColor }) => {
-    const c = statCardColorMap[cardColor] || statCardColorMap.primary;
-    return (
-        <div className="card position-relative overflow-hidden mb-0">
-            <div className="card-body p-4 position-relative" style={{ zIndex: 1 }}>
-                <div className="d-flex align-items-start justify-content-between">
-                    <div>
-                        <p className="text-muted small mb-1">{title}</p>
-                        <h5 className="mb-0 fw-semibold">{value}</h5>
-                    </div>
-                    <span
-                        className="d-inline-flex align-items-center justify-content-center rounded-circle border"
-                        style={{ backgroundColor: c.bg, borderColor: c.border, width: '40px', height: '40px' }}
-                    >
-                        <Icon className="h-4 w-4" style={{ color: c.text }} />
-                    </span>
-                </div>
-            </div>
-            <img src={c.decorImg} alt="" className="position-absolute top-0 start-0" style={{ width: 'auto', height: 'auto' }} />
-        </div>
-    );
-};
-
 const DetailRow = ({ label, value }) => (
     <div className="py-2 border-bottom">
         <small className="text-muted d-block text-uppercase">{label}</small>
         <span className="fw-medium">{value !== null && value !== undefined ? value : '-'}</span>
-    </div>
-);
-
-const SectionHeader = ({ title, icon: Icon }) => (
-    <div className="d-flex align-items-center gap-2 mb-3">
-        <Icon className="h-4 w-4 text-primary" />
-        <h6 className="mb-0 text-uppercase fw-bold small">{title}</h6>
     </div>
 );
 
@@ -562,9 +485,23 @@ const ReportDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [report, setReport] = useState(null);
+    const [products, setProducts] = useState([]);
     const [shiftData, setShiftData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('batches');
+
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                const res = await inventoryApi.getProducts({ page_size: 100 });
+                const productList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                setProducts(Array.isArray(productList) ? productList : productList.results || []);
+            } catch (err) {
+                console.error('Failed to fetch products:', err);
+            }
+        };
+        fetchProducts();
+    }, []);
 
     useEffect(() => {
         const fetchReport = async () => {
@@ -782,6 +719,9 @@ const ReportDetails = () => {
     if (loading) return <div className="p-4 text-center text-muted">Loading details...</div>;
     if (!report) return <div className="p-4 text-center text-danger">Report not found</div>;
 
+    const catalogProduct = products.find(p => p.name === report.product_name || String(p.id) === String(report.product));
+    const bottleSize = report.bottle_size || (catalogProduct?.size ? `${catalogProduct.size}ml` : null);
+
     const tabs = [
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
         { id: 'materials', label: 'Materials', count: report.materials?.length || 0 }, // Materials is an array of groups, count might be misleading if just groups, but OK for now.
@@ -839,9 +779,8 @@ const ReportDetails = () => {
                         <div className="card-body">
                             <DetailRow label="Product Name" value={report.product_name} />
                             <DetailRow label="PET Name" value={report.pet_name} />
-                            <DetailRow label="Bottle Size" value={report.bottle_size} />
+                            <DetailRow label="Bottle Size" value={bottleSize} />
                             <DetailRow label="Bottles / Pack" value={report.bottles_per_pack} />
-                            <DetailRow label="Line" value={`Line ${report.line}`} />
                             <DetailRow label="Shift" value={report.shift_name} />
                             <DetailRow label="Packs Per Pallet" value={report.packs_per_pallet} />
                         </div>

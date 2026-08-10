@@ -1,9 +1,35 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Printer, Loader2, Calendar, Search, X } from 'lucide-react';
+import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { inventoryApi } from '../../api/inventory';
 
 const STORAGE_KEY = 'productionReportForm_filters';
+
+// Generic editable input that preserves its own state while syncing with initial value changes
+const EditableField = ({ value, type = 'text', className = '', onChange, step, min, max, readOnly }) => {
+    const [val, setVal] = useState(() =>
+        value === null || value === undefined || value === '' ? '' : String(value)
+    );
+    useEffect(() => {
+        setVal(value === null || value === undefined || value === '' ? '' : String(value));
+    }, [value]);
+    return (
+        <input
+            type={type}
+            step={step}
+            min={min}
+            max={max}
+            readOnly={readOnly}
+            className={`form-control form-control-sm ${className}`}
+            style={{ minWidth: '60px', textAlign: 'right' }}
+            value={val}
+            onChange={(e) => {
+                setVal(e.target.value);
+                if (onChange) onChange(e.target.value);
+            }}
+        />
+    );
+};
 
 const getStoredFilters = () => {
     try {
@@ -20,13 +46,14 @@ const ProductionReportForm = () => {
     const [pets, setPets] = useState([]);
     const [shifts, setShifts] = useState([]);
     const [products, setProducts] = useState([]);
+    const [reportsList, setReportsList] = useState([]);
+    const [productionStartTime, setProductionStartTime] = useState('');
+    const [productionEndTime, setProductionEndTime] = useState('');
+    const [totalProductionTimeHrs, setTotalProductionTimeHrs] = useState('');
     const storedFilters = getStoredFilters();
     const [selectedPet, setSelectedPet] = useState(storedFilters?.selectedPet || '');
     const [selectedShift, setSelectedShift] = useState(storedFilters?.selectedShift || '');
     const [selectedProduct, setSelectedProduct] = useState(storedFilters?.selectedProduct || '');
-    const [productSearch, setProductSearch] = useState('');
-    const [productDropdownOpen, setProductDropdownOpen] = useState(false);
-    const productDropdownRef = useRef(null);
     const [selectedDate, setSelectedDate] = useState(() => {
         if (storedFilters?.selectedDate) return storedFilters.selectedDate;
         const yesterday = new Date();
@@ -88,17 +115,6 @@ const ProductionReportForm = () => {
         fetchProducts();
     }, []);
 
-    // Close product dropdown on outside click
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (productDropdownRef.current && !productDropdownRef.current.contains(e.target)) {
-                setProductDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
     const fetchData = async (date, petId, shiftId, product) => {
         setLoading(true);
         setError(null);
@@ -111,6 +127,27 @@ const ProductionReportForm = () => {
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             console.log('Production Summary Response:', envelope);
             setData(envelope);
+
+            // Also fetch individual reports for production times
+            const reportParams = { page_size: 100, production_date: date };
+            if (petId) reportParams.pet = petId;
+            if (shiftId) reportParams.shift = shiftId;
+            const reportRes = await productionApi.getReports(reportParams);
+            const reportData = reportRes?.data?.data ?? reportRes?.data ?? {};
+            let reportList = [];
+            if (Array.isArray(reportData)) {
+                reportList = reportData;
+            } else if (reportData.results && Array.isArray(reportData.results)) {
+                reportList = reportData.results;
+            } else if (reportData.data && Array.isArray(reportData.data)) {
+                reportList = reportData.data;
+            }
+            // Filter by product if selected
+            if (product) {
+                reportList = reportList.filter(r => r.product_name === product);
+            }
+            reportList = reportList.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            setReportsList(reportList);
         } catch (err) {
             console.error('Failed to fetch production summary:', err);
             setError(err?.message || 'Failed to fetch data');
@@ -122,6 +159,67 @@ const ProductionReportForm = () => {
     useEffect(() => {
         fetchData(selectedDate, selectedPet, selectedShift, selectedProduct);
     }, [selectedDate, selectedPet, selectedShift, selectedProduct]);
+
+    // Auto-fill production times based on fetched data + shift master
+    useEffect(() => {
+        if (!data) return;
+
+        const summary = data?.summary || {};
+        const dailyBreakdown = data?.daily_breakdown || [];
+        const dayData = dailyBreakdown.find(d => d.date === selectedDate) || dailyBreakdown[0] || {};
+        const allPetsUnfiltered = (dayData?.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can'));
+        const allPets = selectedProduct
+            ? allPetsUnfiltered.filter(p => p.product_name === selectedProduct)
+            : allPetsUnfiltered;
+
+        const startTimes = [
+            ...allPets.map(p => p.production_start_time || p.start_time),
+            ...allPetsUnfiltered.map(p => p.production_start_time || p.start_time),
+            ...reportsList.map(r => r.start_time || r.production_start_time || r.user_defined_shift_start_time),
+            dayData.production_start_time,
+            summary.production_start_time,
+        ].filter(Boolean).sort();
+        const endTimes = [
+            ...allPets.map(p => p.production_end_time || p.end_time),
+            ...allPetsUnfiltered.map(p => p.production_end_time || p.end_time),
+            ...reportsList.map(r => r.end_time || r.production_end_time || r.user_defined_shift_end_time),
+            dayData.production_end_time,
+            summary.production_end_time,
+        ].filter(Boolean).sort();
+
+        let start = startTimes[0] || summary.production_start_time || '';
+        let end = endTimes[endTimes.length - 1] || summary.production_end_time || '';
+
+        // Fallback to selected shift master times
+        if (!start || !end) {
+            const shift = shifts.find(s => String(s.id) === String(selectedShift));
+            if (shift) {
+                if (!start) start = shift.start_time?.slice(0, 5) || '';
+                if (!end) end = shift.end_time?.slice(0, 5) || '';
+            }
+        }
+
+        setProductionStartTime(start || '');
+        setProductionEndTime(end || '');
+
+        const hrs = allPets.reduce((sum, p) => sum + (parseFloat(p.total_production_time_hrs) || parseFloat(p.total_production_time_hours) || 0), 0)
+            || allPetsUnfiltered.reduce((sum, p) => sum + (parseFloat(p.total_production_time_hrs) || parseFloat(p.total_production_time_hours) || 0), 0)
+            || reportsList.reduce((sum, r) => sum + (parseFloat(r.total_production_time_hours) || parseFloat(r.total_production_time_hrs) || parseFloat(r.production_hours) || 0), 0)
+            || parseFloat(dayData.total_production_time_hrs) || parseFloat(summary.total_production_time_hrs) || parseFloat(summary.total_production_time_hours) || 0;
+        if (hrs) {
+            setTotalProductionTimeHrs(hrs.toFixed(1));
+        } else if (start && end) {
+            const startDate = new Date(`${selectedDate}T${start}`);
+            let endDate = new Date(`${selectedDate}T${end}`);
+            if (endDate <= startDate) {
+                endDate.setDate(endDate.getDate() + 1); // night shift crosses midnight
+            }
+            const diff = (endDate - startDate) / (1000 * 60 * 60);
+            setTotalProductionTimeHrs(diff > 0 ? diff.toFixed(1) : '');
+        } else {
+            setTotalProductionTimeHrs(summary.total_production_time_hrs || summary.total_production_time_hours || '');
+        }
+    }, [data, reportsList, selectedShift, shifts, selectedDate, selectedProduct]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -214,6 +312,18 @@ const ProductionReportForm = () => {
         });
     };
 
+    // Calculate hours between two HH:MM times (handles night shifts crossing midnight)
+    const calculateHours = (start, end) => {
+        if (!start || !end || !selectedDate) return '';
+        const startDate = new Date(`${selectedDate}T${start}`);
+        let endDate = new Date(`${selectedDate}T${end}`);
+        if (endDate <= startDate) {
+            endDate.setDate(endDate.getDate() + 1);
+        }
+        const diff = (endDate - startDate) / (1000 * 60 * 60);
+        return diff > 0 ? diff.toFixed(1) : '';
+    };
+
     return (
         <div className="page-wrapper">
             <div className="content">
@@ -260,67 +370,19 @@ const ProductionReportForm = () => {
                                 </option>
                             ))}
                         </select>
-                        <div className="position-relative" ref={productDropdownRef} style={{ width: '200px' }}>
-                            <div
-                                className="form-control form-control-sm d-flex align-items-center gap-1 cursor-pointer"
-                                onClick={() => setProductDropdownOpen(!productDropdownOpen)}
-                                style={{ cursor: 'pointer' }}
-                            >
-                                <Search size={14} className="text-muted flex-shrink-0" />
-                                <span className="text-truncate flex-grow-1" style={{ fontSize: '13px' }}>
-                                    {selectedProduct || 'All Products'}
-                                </span>
-                                {selectedProduct && (
-                                    <X
-                                        size={14}
-                                        className="text-muted flex-shrink-0"
-                                        onClick={(e) => { e.stopPropagation(); setSelectedProduct(''); setProductSearch(''); }}
-                                        style={{ cursor: 'pointer' }}
-                                    />
-                                )}
-                            </div>
-                            {productDropdownOpen && (
-                                <div className="position-absolute top-100 start-0 w-100 bg-white border rounded shadow-sm mt-1" style={{ zIndex: 1050, maxHeight: '250px', overflow: 'hidden' }}>
-                                    <div className="p-2 border-bottom">
-                                        <input
-                                            type="text"
-                                            className="form-control form-control-sm"
-                                            placeholder="Search products..."
-                                            value={productSearch}
-                                            onChange={(e) => setProductSearch(e.target.value)}
-                                            autoFocus
-                                        />
-                                    </div>
-                                    <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                                        <div
-                                            className={`px-3 py-2 ${!selectedProduct ? 'bg-primary text-white' : 'hover-bg-light'}`}
-                                            style={{ cursor: 'pointer', fontSize: '13px' }}
-                                            onClick={() => { setSelectedProduct(''); setProductSearch(''); setProductDropdownOpen(false); }}
-                                        >
-                                            All Products
-                                        </div>
-                                        {productNames
-                                            .filter(p => p.toLowerCase().includes(productSearch.toLowerCase()))
-                                            .map((prod) => (
-                                                <div
-                                                    key={prod}
-                                                    className={`px-3 py-2 ${selectedProduct === prod ? 'bg-primary text-white' : ''}`}
-                                                    style={{ cursor: 'pointer', fontSize: '13px' }}
-                                                    onClick={() => { setSelectedProduct(prod); setProductSearch(''); setProductDropdownOpen(false); }}
-                                                    onMouseEnter={(e) => { if (selectedProduct !== prod) e.target.style.backgroundColor = '#f8f9fa'; }}
-                                                    onMouseLeave={(e) => { if (selectedProduct !== prod) e.target.style.backgroundColor = ''; }}
-                                                >
-                                                    {prod}
-                                                </div>
-                                            ))
-                                        }
-                                        {productNames.filter(p => p.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
-                                            <div className="px-3 py-2 text-muted" style={{ fontSize: '13px' }}>No products found</div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedProduct}
+                            onChange={(e) => setSelectedProduct(e.target.value)}
+                            style={{ width: '200px' }}
+                        >
+                            <option value="">All Products</option>
+                            {productNames.map((prod) => (
+                                <option key={prod} value={prod}>
+                                    {prod}
+                                </option>
+                            ))}
+                        </select>
                         <button
                             className="btn btn-primary d-flex align-items-center gap-2"
                             onClick={handlePrint}
@@ -410,10 +472,10 @@ const ProductionReportForm = () => {
                                             return (
                                                 <tr>
                                                     <td className="label-cell">{selectedProduct}</td>
-                                                    <td className="input-cell numeric">{fallback.bottle_size || p?.bottle_size || (p?.size ? `${p.size}ml` : '') || summary.bottle_size || ''}</td>
-                                                    <td className="input-cell numeric">{fallback.line_speed || p?.target_speed_bph || p?.line_speed || summary.line_speed || ''}</td>
-                                                    <td className="input-cell numeric">{fallback.bottles_per_pack || p?.bottles_per_pack || summary.bottles_per_pack || ''}</td>
-                                                    <td className="input-cell numeric">{fallback.packs_per_pallet || p?.packs_per_pallet || summary.packs_per_pallet || ''}</td>
+                                                    <td className="input-cell numeric"><EditableField value={fallback.bottle_size || p?.bottle_size || (p?.size ? `${p.size}ml` : '') || summary.bottle_size || ''} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={fallback.line_speed || p?.target_speed_bph || p?.line_speed || summary.line_speed || ''} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={fallback.bottles_per_pack || p?.bottles_per_pack || summary.bottles_per_pack || ''} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={fallback.packs_per_pallet || p?.packs_per_pallet || summary.packs_per_pallet || ''} /></td>
                                                 </tr>
                                             );
                                         }
@@ -428,10 +490,10 @@ const ProductionReportForm = () => {
                                             return (
                                                 <tr key={idx}>
                                                     <td className="label-cell">{petEntry.product_name}</td>
-                                                    <td className="input-cell numeric">{bottleSize}</td>
-                                                    <td className="input-cell numeric">{lineSpeed}</td>
-                                                    <td className="input-cell numeric">{bottlesPerPack}</td>
-                                                    <td className="input-cell numeric">{packsPerPallet}</td>
+                                                    <td className="input-cell numeric"><EditableField value={bottleSize} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={lineSpeed} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={bottlesPerPack} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={packsPerPallet} /></td>
                                                 </tr>
                                             );
                                         });
@@ -441,7 +503,12 @@ const ProductionReportForm = () => {
                             )}
 
                             {/* Production Info Table */}
-                            <table className="form-table">
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={6}>Production Information</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Date</td>
@@ -453,35 +520,65 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Production Start Time</td>
-                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_start_time).filter(Boolean).sort(); return times[0] || ''; })()}</td>
+                                        <td className="input-cell">
+                                            <input
+                                                type="time"
+                                                className="form-control form-control-sm"
+                                                value={productionStartTime}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setProductionStartTime(val);
+                                                    setTotalProductionTimeHrs(calculateHours(val, productionEndTime));
+                                                }}
+                                            />
+                                        </td>
                                         <td className="label-cell">Production End Time</td>
-                                        <td className="input-cell numeric">{!selectedPet ? 'NOT APPLICABLE' : (() => { const times = allPets.map(p => p.production_end_time).filter(Boolean).sort(); return times[times.length - 1] || ''; })()}</td>
+                                        <td className="input-cell">
+                                            <input
+                                                type="time"
+                                                className="form-control form-control-sm"
+                                                value={productionEndTime}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setProductionEndTime(val);
+                                                    setTotalProductionTimeHrs(calculateHours(productionStartTime, val));
+                                                }}
+                                            />
+                                        </td>
                                         <td className="label-cell">Total Production Time (Hrs)</td>
-                                        <td className="input-cell numeric">{(() => { const hrs = allPets.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()}</td>
+                                        <td className="input-cell">
+                                            <input
+                                                type="number"
+                                                step="0.1"
+                                                className="form-control form-control-sm"
+                                                value={totalProductionTimeHrs}
+                                                onChange={(e) => setTotalProductionTimeHrs(e.target.value)}
+                                            />
+                                        </td>
                                     </tr>
                                     <tr>
-                                        <td className="label-cell">Total Pallets</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
-                                        <td className="label-cell">Single Packs</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
+                                        <td className="label-cell">Total Bottles</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles || allPets.reduce((sum, p) => sum + (p.total_bottles || 0), 0)} /></td>
                                         <td className="label-cell">Total Packs</td>
-                                        <td className="input-cell numeric">{summary.total_reports || dayData.report_count || ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_packs || allPets.reduce((sum, p) => sum + (p.total_packs || 0), 0)} /></td>
+                                        <td className="label-cell">Packs/Pallet</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.packs_per_pallet || allPets.find(p => p.packs_per_pallet)?.packs_per_pallet || reportsList.find(r => r.packs_per_pallet)?.packs_per_pallet || (selectedProduct && products.find(pr => pr.name === selectedProduct)?.packs_per_pallet) || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
-                                        <td className="input-cell numeric">{(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()}</td>
-                                        <td className="label-cell"></td>
-                                        <td className="input-cell numeric"></td>
-                                        <td className="label-cell"></td>
-                                        <td className="input-cell numeric"></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()} /></td>
+                                        <td className="label-cell">Bottles/Pack</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.bottles_per_pack || allPets.find(p => p.bottles_per_pack)?.bottles_per_pack || reportsList.find(r => r.bottles_per_pack)?.bottles_per_pack || (selectedProduct && products.find(pr => pr.name === selectedProduct)?.bottles_per_pack) || ''} /></td>
+                                        <td className="label-cell">Total Bottles (R.W)</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0)} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))} /></td>
                                         <td className="label-cell">Planned Downtime (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.planned_downtime_mins)}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.planned_downtime_mins} /></td>
                                         <td className="label-cell">Mechanical Downtime (min)</td>
-                                        <td className="input-cell numeric">{fmt(summary.mechanical_downtime_mins)}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.mechanical_downtime_mins} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -496,21 +593,21 @@ const ProductionReportForm = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell">OEE</td>
-                                        <td className="input-cell numeric">{summary.oee ? `${summary.oee}%` : ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.oee || ''} /></td>
                                         <td className="label-cell">Availability</td>
-                                        <td className="input-cell numeric">{summary.avg_availability ? `${summary.avg_availability}%` : ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_availability || ''} /></td>
                                         <td className="label-cell">Performance (Efficiency)</td>
-                                        <td className="input-cell numeric">{summary.avg_performance ? `${summary.avg_performance}%` : ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_performance || ''} /></td>
                                         <td className="label-cell">Quality</td>
-                                        <td className="input-cell numeric">{summary.avg_quality ? `${summary.avg_quality}%` : ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_quality || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Syrup Yield</td>
-                                        <td className="input-cell numeric">{syrupMeters.syrup_yield_percent != null ? `${syrupMeters.syrup_yield_percent}%` : (summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : '')}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={syrupMeters.syrup_yield_percent != null ? syrupMeters.syrup_yield_percent : (summary.avg_syrup_yield || '')} /></td>
                                         <td className="label-cell">CO2 Yield</td>
-                                        <td className="input-cell numeric">{summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_co2_yield || ''} /></td>
                                         <td className="label-cell">Target Met</td>
-                                        <td className="input-cell numeric">{summary.target_met_count || ''}</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.target_met_count || ''} /></td>
                                         <td className="label-cell"></td>
                                         <td className="input-cell numeric"></td>
                                     </tr>
@@ -535,12 +632,12 @@ const ProductionReportForm = () => {
                                     {lineRows.length > 0 ? lineRows.map((line, idx) => (
                                         <tr key={idx}>
                                             <td className="label-cell">{line.pet_name}</td>
-                                            <td className="input-cell">{line.product_name}</td>
-                                            <td className="input-cell numeric">{fmt(line.total_bottles)}</td>
-                                            <td className="input-cell numeric">{fmt(line.total_packs)}</td>
-                                            <td className="input-cell numeric">{fmt(line.planned_downtime_mins)}</td>
-                                            <td className="input-cell numeric">{fmt(line.mechanical_downtime_mins)}</td>
-                                            <td className="input-cell numeric">{fmt(line.total_downtime_mins)}</td>
+                                            <td className="input-cell"><EditableField value={line.product_name} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.total_bottles} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.total_packs} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.planned_downtime_mins} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.mechanical_downtime_mins} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.total_downtime_mins} /></td>
                                         </tr>
                                     )) : (
                                         <tr>
@@ -552,11 +649,11 @@ const ProductionReportForm = () => {
                                         <tr className="fw-bold">
                                             <td className="label-cell">TOTAL</td>
                                             <td className="input-cell"></td>
-                                            <td className="input-cell numeric">{fmt(summary.total_bottles)}</td>
-                                            <td className="input-cell numeric">{fmt(summary.total_packs)}</td>
-                                            <td className="input-cell numeric">{fmt(lineRows.reduce((s, l) => s + l.planned_downtime_mins, 0))}</td>
-                                            <td className="input-cell numeric">{fmt(lineRows.reduce((s, l) => s + l.mechanical_downtime_mins, 0))}</td>
-                                            <td className="input-cell numeric">{fmt(lineRows.reduce((s, l) => s + l.total_downtime_mins, 0))}</td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={summary.total_packs} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={lineRows.reduce((s, l) => s + l.planned_downtime_mins, 0)} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={lineRows.reduce((s, l) => s + l.mechanical_downtime_mins, 0)} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={lineRows.reduce((s, l) => s + l.total_downtime_mins, 0)} /></td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -599,25 +696,25 @@ const ProductionReportForm = () => {
                                                 return (
                                                     <tr key={prodName}>
                                                         <td className="label-cell">{prodName}</td>
-                                                        <td className="input-cell numeric">{fmt(prodBottles)}</td>
-                                                        <td className="input-cell numeric">{fmt(prodPacks)}</td>
-                                                        <td className="input-cell numeric">{prodEfficiency && Number(prodEfficiency) > 0 ? `${prodEfficiency}%` : ''}</td>
-                                                        <td className="input-cell numeric">{prodProdHrs ? prodProdHrs.toFixed(1) : ''}</td>
-                                                        <td className="input-cell numeric">{fmt(prodPlanned)}</td>
-                                                        <td className="input-cell numeric">{fmt(prodMechanical)}</td>
-                                                        <td className="input-cell numeric">{fmt(prodPlanned + prodMechanical)}</td>
+                                                        <td className="input-cell numeric"><EditableField type="number" value={prodBottles} /></td>
+                                                        <td className="input-cell numeric"><EditableField type="number" value={prodPacks} /></td>
+                                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={prodEfficiency && Number(prodEfficiency) > 0 ? prodEfficiency : ''} /></td>
+                                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={prodProdHrs ? prodProdHrs.toFixed(1) : ''} /></td>
+                                                        <td className="input-cell numeric"><EditableField type="number" value={prodPlanned} /></td>
+                                                        <td className="input-cell numeric"><EditableField type="number" value={prodMechanical} /></td>
+                                                        <td className="input-cell numeric"><EditableField type="number" value={prodPlanned + prodMechanical} /></td>
                                                     </tr>
                                                 );
                                             })}
                                             <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
                                                 <td className="label-cell">TOTAL</td>
-                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0))}</td>
-                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.total_packs || 0), 0))}</td>
-                                                <td className="input-cell numeric">{(() => { const avg = allPetsUnfiltered.length > 0 ? (allPetsUnfiltered.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / allPetsUnfiltered.length).toFixed(1) : ''; return avg && Number(avg) > 0 ? `${avg}%` : ''; })()}</td>
-                                                <td className="input-cell numeric">{(() => { const hrs = allPetsUnfiltered.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()}</td>
-                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0), 0))}</td>
-                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.mechanical_downtime_mins || 0), 0))}</td>
-                                                <td className="input-cell numeric">{fmt(allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0) + (p.mechanical_downtime_mins || 0), 0))}</td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0)} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.total_packs || 0), 0)} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" step="0.1" value={(() => { const avg = allPetsUnfiltered.length > 0 ? (allPetsUnfiltered.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / allPetsUnfiltered.length).toFixed(1) : ''; return avg && Number(avg) > 0 ? avg : ''; })()} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" step="0.1" value={(() => { const hrs = allPetsUnfiltered.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0), 0)} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.mechanical_downtime_mins || 0), 0)} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0) + (p.mechanical_downtime_mins || 0), 0)} /></td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -653,10 +750,10 @@ const ProductionReportForm = () => {
                                         return (
                                             <tr key={type}>
                                                 <td className="label-cell" colSpan={2}>{label}</td>
-                                                <td className="unit-cell">{mat.unit || defaultUnit}</td>
-                                                <td className="input-cell numeric">{fmt(mat.total_used)}</td>
-                                                <td className="input-cell numeric">{fmt(mat.total_losses)}</td>
-                                                <td className="input-cell numeric">{lossPercent ? `${lossPercent}%` : ''}</td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || defaultUnit} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent ? `${lossPercent}%` : ''} /></td>
                                             </tr>
                                         );
                                     })}
@@ -680,19 +777,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading (Kg):</span>
-                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (co2Meters.start_reading_kg != null ? fmt(co2Meters.start_reading_kg, 1) : '')}</span>
+                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (co2Meters.start_reading_kg != null ? co2Meters.start_reading_kg : '')} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading:</span>
-                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.start_reading != null ? fmt(syrupMeters.start_reading, 1) : '')}</span>
+                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.start_reading != null ? syrupMeters.start_reading : '')} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Filler Reading:</span>
-                                                <span className="meter-value numeric">{productionMeters.filler_reading != null ? fmt(productionMeters.filler_reading) : ''}</span>
+                                                <EditableField value={productionMeters.filler_reading != null ? productionMeters.filler_reading : ''} />
                                             </div>
                                         </td>
                                     </tr>
@@ -700,19 +797,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading (Kg):</span>
-                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (co2Meters.end_reading_kg != null ? fmt(co2Meters.end_reading_kg, 1) : '')}</span>
+                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (co2Meters.end_reading_kg != null ? co2Meters.end_reading_kg : '')} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading:</span>
-                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.end_reading != null ? fmt(syrupMeters.end_reading, 1) : '')}</span>
+                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.end_reading != null ? syrupMeters.end_reading : '')} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Shrink Reading:</span>
-                                                <span className="meter-value numeric">{productionMeters.shrink_reading != null ? fmt(productionMeters.shrink_reading) : ''}</span>
+                                                <EditableField value={productionMeters.shrink_reading != null ? productionMeters.shrink_reading : ''} />
                                             </div>
                                         </td>
                                     </tr>
@@ -720,14 +817,14 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Total CO2 Consumed (kg):</span>
-                                                <span className="meter-value numeric">{co2Meters.total_co2_consumed_kg != null ? fmt(co2Meters.total_co2_consumed_kg, 1) : ''}</span>
+                                                <EditableField value={co2Meters.total_co2_consumed_kg != null ? co2Meters.total_co2_consumed_kg : ''} />
                                             </div>
                                         </td>
                                         <td></td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Filler Rejects (M/C):</span>
-                                                <span className="meter-value numeric">{productionMeters.filler_rejects_mc != null ? fmt(productionMeters.filler_rejects_mc) : ''}</span>
+                                                <EditableField value={productionMeters.filler_rejects_mc != null ? productionMeters.filler_rejects_mc : ''} />
                                             </div>
                                         </td>
                                     </tr>
@@ -735,19 +832,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Std. CO2 Consumption (kg):</span>
-                                                <span className="meter-value numeric">{co2Meters.std_co2_consumption_kg != null ? fmt(co2Meters.std_co2_consumption_kg, 1) : ''}</span>
+                                                <EditableField value={co2Meters.std_co2_consumption_kg != null ? co2Meters.std_co2_consumption_kg : ''} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Unit (L, m3, kg):</span>
-                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.unit || '')}</span>
+                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.unit || '')} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Blower Rejects (Manual Count):</span>
-                                                <span className="meter-value numeric">{productionMeters.blower_rejects_manual != null ? fmt(productionMeters.blower_rejects_manual) : ''}</span>
+                                                <EditableField value={productionMeters.blower_rejects_manual != null ? productionMeters.blower_rejects_manual : ''} />
                                             </div>
                                         </td>
                                     </tr>
@@ -755,19 +852,19 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 Yield (%):</span>
-                                                <span className="meter-value numeric">{co2Meters.co2_yield_percent != null ? `${co2Meters.co2_yield_percent}%` : (summary.avg_co2_yield ? `${summary.avg_co2_yield}%` : '')}</span>
+                                                <EditableField value={co2Meters.co2_yield_percent != null ? co2Meters.co2_yield_percent : (summary.avg_co2_yield || '')} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Density (kg/L):</span>
-                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : '')}</span>
+                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : '')} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Shrink Reading / T. Packs (%):</span>
-                                                <span className="meter-value numeric">{productionMeters.shrink_reading_packs_percent != null ? `${productionMeters.shrink_reading_packs_percent}%` : ''}</span>
+                                                <EditableField value={productionMeters.shrink_reading_packs_percent != null ? productionMeters.shrink_reading_packs_percent : ''} />
                                             </div>
                                         </td>
                                     </tr>
@@ -776,7 +873,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Total Syrup Used (L):</span>
-                                                <span className="meter-value numeric">{syrupMeters.total_syrup_used_l != null ? fmt(syrupMeters.total_syrup_used_l, 1) : ''}</span>
+                                                <EditableField value={syrupMeters.total_syrup_used_l != null ? syrupMeters.total_syrup_used_l : ''} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -786,7 +883,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Dilution Ratio:</span>
-                                                <span className="meter-value numeric">{!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : '')}</span>
+                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : '')} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -796,7 +893,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Std. Syrup Consumption (L):</span>
-                                                <span className="meter-value numeric">{syrupMeters.std_syrup_consumption_l != null ? fmt(syrupMeters.std_syrup_consumption_l, 1) : ''}</span>
+                                                <EditableField value={syrupMeters.std_syrup_consumption_l != null ? syrupMeters.std_syrup_consumption_l : ''} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -806,7 +903,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Yield (%):</span>
-                                                <span className="meter-value numeric">{syrupMeters.syrup_yield_percent != null ? `${syrupMeters.syrup_yield_percent}%` : (summary.avg_syrup_yield ? `${summary.avg_syrup_yield}%` : '')}</span>
+                                                <EditableField value={syrupMeters.syrup_yield_percent != null ? syrupMeters.syrup_yield_percent : (summary.avg_syrup_yield || '')} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -829,16 +926,16 @@ const ProductionReportForm = () => {
                                         {data.downtime_breakdown.categories.map((cat) => (
                                             <tr key={cat.category_id}>
                                                 <td className="label-cell">{cat.category_name}</td>
-                                                <td className="input-cell numeric">{fmt(cat.total_duration_mins)}</td>
-                                                <td className="input-cell numeric">{cat.percentage_of_total ? `${cat.percentage_of_total}%` : ''}</td>
-                                                <td className="input-cell numeric">{cat.incident_count || ''}</td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={cat.total_duration_mins || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={cat.percentage_of_total ? `${cat.percentage_of_total}%` : ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={cat.incident_count || ''} /></td>
                                             </tr>
                                         ))}
                                         <tr className="fw-bold">
                                             <td className="label-cell">TOTAL</td>
-                                            <td className="input-cell numeric">{fmt(data.downtime_breakdown.total_downtime_mins || data.downtime_breakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0))}</td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={data.downtime_breakdown.total_downtime_mins || data.downtime_breakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0)} /></td>
                                             <td className="input-cell numeric">100%</td>
-                                            <td className="input-cell numeric">{data.downtime_breakdown.total_incidents || data.downtime_breakdown.categories.reduce((s, c) => s + (c.incident_count || 0), 0) || ''}</td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={data.downtime_breakdown.total_incidents || data.downtime_breakdown.categories.reduce((s, c) => s + (c.incident_count || 0), 0) || ''} /></td>
                                         </tr>
                                     </tbody>
                                 </table>

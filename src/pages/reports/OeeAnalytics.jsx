@@ -88,8 +88,8 @@ const OeeAnalytics = () => {
         if (filters.log_date || filters.start_date || filters.end_date) setTimeRange('custom');
     }, [filters.log_date, filters.start_date, filters.end_date]);
 
-    const summaryData = rawData?.summary || {};
-    const dailyBreakdown = rawData?.daily_breakdown || [];
+    const summaryData = useMemo(() => rawData?.summary || {}, [rawData]);
+    const dailyBreakdown = useMemo(() => rawData?.daily_breakdown || [], [rawData]);
 
     const dateRangeLabel = useMemo(() => {
         const f = rawData?.filters;

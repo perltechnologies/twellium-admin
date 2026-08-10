@@ -7,6 +7,7 @@ import { useFilters } from '../../context/FilterContext';
 
 const PET_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 const TARGET_YIELD = 98;
+const defaultPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
 
 const yieldColor = (v) => {
     if (!v || v === 0) return '#94a3b8';
@@ -92,8 +93,6 @@ const SyrupReport = () => {
 
     const avgSyrupYield = rawData?.summary?.avg_syrup_yield || 0;
 
-    // All 6 pets always shown
-    const defaultPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
     const normalizePet = (name) => {
         const num = (name || '').toLowerCase().match(/pet\s*(\d+)/);
         return num ? `Pet ${num[1]}` : name;
