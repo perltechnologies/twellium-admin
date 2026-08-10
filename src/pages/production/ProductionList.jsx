@@ -330,15 +330,16 @@ const ProductionList = () => {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [filters, globalFilters.start_date, globalFilters.end_date, globalFilters.log_date, pets]);
+    }, [filters, globalFilters.start_date, globalFilters.end_date, globalFilters.log_date]);
 
     useEffect(() => {
-        // Debounce search
+        // Debounce search — only fetch when filters explicitly change
         const timeoutId = setTimeout(() => {
             fetchReports();
         }, 500);
         return () => clearTimeout(timeoutId);
-    }, [filters, globalFilters.start_date, globalFilters.end_date, globalFilters.log_date, fetchReports]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filters, globalFilters.start_date, globalFilters.end_date]);
 
     // Fetch broad dataset for charts from production_summary (Bottles by PET)
     const fetchChartData = useCallback(async () => {

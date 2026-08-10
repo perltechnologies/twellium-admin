@@ -30,4 +30,16 @@ export const inventoryApi = {
     // Activity Logs
     getActivityLogs: (params) => api.get('/inventory/activity-logs/', { params }),
     getActivityLog: (id) => api.get(`/inventory/activity-logs/${id}/`),
+
+    // Post Production Analytics
+    getBulkBarcodes: (params) => api.get('/inventory/handling-units/bulk-barcodes/', { params }),
+    getBatchTraceability: (params) => api.get('/inventory/analytics/batch-traceability/', { params }),
+    getProductAnalysis: (params) => api.get('/inventory/analytics/product-analysis/', { params }),
+    getPetPerformance: (params) => api.get('/inventory/analytics/pet-performance/', { params }),
+    getLiveMetrics: (params) => api.get('/inventory/analytics/live-metrics/', { params }),
+    getPacksTrend: (params) => api.get('/inventory/analytics/packs-trend/', { params }),
+    getPalletsTrend: (params) => api.get('/inventory/analytics/pallets-trend/', { params }),
+    getWarehouseStageTrend: (params) => api.get('/inventory/analytics/warehouse-stage-trend/', { params }),
+    getCustomerDispatchTrend: (params) => api.get('/inventory/analytics/customer-dispatch-trend/', { params }),
+    getVehicleDispatchDetails: (params) => api.get('/logistics/vehicle-dispatch-details/', { params }),
 };

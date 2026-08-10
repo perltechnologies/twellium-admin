@@ -160,9 +160,13 @@ const ProductionReportForm = () => {
         fetchData(selectedDate, selectedPet, selectedShift, selectedProduct);
     }, [selectedDate, selectedPet, selectedShift, selectedProduct]);
 
-    // Auto-fill production times based on fetched data + shift master
+    // Auto-fill production times ONLY when data is freshly fetched (not on every re-render)
+    const lastFetchKey = useRef('');
     useEffect(() => {
         if (!data) return;
+        const fetchKey = `${selectedDate}_${selectedPet}_${selectedShift}_${selectedProduct}_${reportsList.length}`;
+        if (fetchKey === lastFetchKey.current) return;
+        lastFetchKey.current = fetchKey;
 
         const summary = data?.summary || {};
         const dailyBreakdown = data?.daily_breakdown || [];
@@ -212,7 +216,7 @@ const ProductionReportForm = () => {
             const startDate = new Date(`${selectedDate}T${start}`);
             let endDate = new Date(`${selectedDate}T${end}`);
             if (endDate <= startDate) {
-                endDate.setDate(endDate.getDate() + 1); // night shift crosses midnight
+                endDate.setDate(endDate.getDate() + 1);
             }
             const diff = (endDate - startDate) / (1000 * 60 * 60);
             setTotalProductionTimeHrs(diff > 0 ? diff.toFixed(1) : '');

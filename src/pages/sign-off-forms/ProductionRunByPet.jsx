@@ -215,13 +215,16 @@ const ProductionRunByPet = () => {
     const allPetEntriesUnfiltered = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
     const productNames = [...new Set(allPetEntriesUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
 
-    // Enforce single-product selection: auto-select the first available product
+    // Auto-select first product only on initial load (not on every data change)
+    const initialProductSet = useRef(false);
     useEffect(() => {
+        if (initialProductSet.current) return;
         if (productNames.length > 0 && (!selectedProduct || !productNames.includes(selectedProduct))) {
             setSelectedProduct(productNames[0]);
+            initialProductSet.current = true;
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [productNames.length, productNames[0], selectedProduct]);
+    }, [productNames.length]);
 
     // Filter by selected product
     const allPetEntries = selectedProduct
