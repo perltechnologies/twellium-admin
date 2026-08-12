@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useReactToPrint } from 'react-to-print';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { Printer, Package, CheckCircle2 } from 'lucide-react';
+import BarcodeLabel from '../../components/inventory/BarcodeLabel';
 
 const Production = () => {
     const [formData, setFormData] = useState({
@@ -18,6 +20,11 @@ const Production = () => {
     const [loading, setLoading] = useState(false);
     const [generatedLabel, setGeneratedLabel] = useState(null);
     const [error, setError] = useState(null);
+    const printRef = useRef(null);
+    const handlePrint = useReactToPrint({
+        content: () => printRef.current,
+        documentTitle: `Label_${generatedLabel?.label?.barcode || generatedLabel?.barcode || 'unit'}`,
+    });
 
 
     useEffect(() => {
@@ -40,7 +47,7 @@ const Production = () => {
 
                 console.log("Extracted Product List:", productList);
 
-                setProducts(productList.map(p => ({ label: p.name, value: p.id })));
+                setProducts(productList.map(p => ({ label: p.name, value: p.id })).sort((a, b) => a.label.localeCompare(b.label)));
             } catch (err) {
                 console.error("Failed to fetch products", err);
             }
@@ -53,20 +60,26 @@ const Production = () => {
         const fetchPets = async () => {
             try {
                 const response = await productionApi.getPets({ page: 1, page_size: 100 });
-                console.log("Fetching Pets Response:", response);
+                const petList = response?.data?.data?.data ?? response?.data?.data ?? response?.data ?? [];
+                const allPets = Array.isArray(petList) ? petList : petList.results || [];
 
-                let petList = [];
-                if (Array.isArray(response.data)) {
-                    petList = response.data;
-                } else if (response.data && Array.isArray(response.data.results)) {
-                    petList = response.data.results;
-                } else if (response.data && Array.isArray(response.data.data)) {
-                    petList = response.data.data;
-                }
+                const formattedPets = allPets
+                    .filter(p => !(p.pet_name || p.name || '').toLowerCase().includes('can'))
+                    .map((p, index) => {
+                        const rawLabel = p.pet_name || p.name || '';
+                        const numberMatch = rawLabel.match(/\d+/);
+                        const petNumber = numberMatch ? parseInt(numberMatch[0], 10) : index + 1;
 
-                console.log("Extracted Pet List:", petList);
+                        return {
+                            value: p.id,
+                            label: petNumber ? `Pet ${petNumber}` : (rawLabel || `Pet ${index + 1}`),
+                            sortValue: petNumber
+                        };
+                    })
+                    .sort((a, b) => a.sortValue - b.sortValue)
+                    .map(({ label, value }) => ({ label, value }));
 
-                setPets(petList.map(p => ({ label: p.pet_name || p.name, value: p.id })));
+                setPets(formattedPets);
             } catch (err) {
                 console.error("Failed to fetch pets", err);
             }
@@ -118,10 +131,6 @@ const Production = () => {
         } finally {
             setLoading(false);
         }
-    };
-
-    const handlePrint = () => {
-        alert(`Printing Label: ${generatedLabel?.label?.barcode}`);
     };
 
     const handleReset = () => {
@@ -221,13 +230,18 @@ const Production = () => {
                         <div className="card-body d-flex flex-column justify-content-center">
                             {generatedLabel ? (
                                 <div className="text-center">
-                                    <div className="d-flex justify-content-center mb-3">
-                                        <div className="rounded-circle bg-soft-success text-success d-flex align-items-center justify-content-center" style={{ width: 64, height: 64 }}>
-                                            <CheckCircle2 size={30} />
-                                        </div>
-                                    </div>
-                                    <h3 className="mb-1">{generatedLabel.label?.barcode || 'N/A'}</h3>
-                                    <p className="text-muted text-uppercase small mb-4">{generatedLabel.label?.stage || 'PRODUCTION'}</p>
+                                    {/* Printable Barcode Label */}
+                                    <BarcodeLabel
+                                        ref={printRef}
+                                        data={{
+                                            barcode: generatedLabel.label?.barcode || generatedLabel.barcode,
+                                            product_name: getProductName(),
+                                            pet_name: getPetName(),
+                                            quantity: formData.quantity,
+                                            pet_sequence: generatedLabel.label?.pet_sequence || generatedLabel.pet_sequence,
+                                            timestamp: generatedLabel.label?.created_at || generatedLabel.created_at || new Date(),
+                                        }}
+                                    />
 
                                     <div className="card bg-light border-0 mb-4">
                                         <div className="card-body py-3">
