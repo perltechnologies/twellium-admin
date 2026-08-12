@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Printer, Loader2, Calendar } from 'lucide-react';
+import { Printer, Loader2, Calendar, Plus, X } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { workersApi } from '../../api/workers';
 import { inventoryApi } from '../../api/inventory';
@@ -14,6 +14,7 @@ const EditableField = ({ value, type = 'text', className = '', onChange, step, m
     useEffect(() => {
         setVal(value === null || value === undefined || value === '' ? '' : String(value));
     }, [value]);
+    const alignment = type === 'number' ? 'right' : 'left';
     return (
         <input
             type={type}
@@ -21,8 +22,17 @@ const EditableField = ({ value, type = 'text', className = '', onChange, step, m
             min={min}
             max={max}
             readOnly={readOnly}
-            className={`form-control form-control-sm ${className}`}
-            style={{ minWidth: '60px', textAlign: 'right' }}
+            className={`form-control form-control-sm border-0 rounded-0 shadow-none ${className}`}
+            style={{
+                minWidth: '48px',
+                height: '1.6rem',
+                padding: '0.1rem 0.25rem',
+                textAlign: alignment,
+                backgroundColor: 'transparent',
+                borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                color: '#212529',
+                fontSize: '0.85rem'
+            }}
             value={val}
             onChange={(e) => {
                 setVal(e.target.value);
@@ -130,6 +140,8 @@ const ProductionRunByPet = () => {
     // Fetch products for fallback lookup
     const [products, setProducts] = useState([]);
     const [reportsList, setReportsList] = useState([]);
+    // Track which shrink rows are visible: 'printed', 'plain'
+    const [shrinkRows, setShrinkRows] = useState([]);
     useEffect(() => {
         const fetchProducts = async () => {
             try {
@@ -230,6 +242,38 @@ const ProductionRunByPet = () => {
     const allPetEntries = selectedProduct
         ? allPetEntriesUnfiltered.filter(p => p.product_name === selectedProduct)
         : allPetEntriesUnfiltered;
+
+    // Determine production dates: which dates within the range had actual production for the selected product
+    const productionDates = (() => {
+        const dates = new Set();
+        // From daily breakdown — each day has a date and pets array
+        dailyBreakdown.forEach(day => {
+            const dayDate = day.date || day.production_date;
+            if (!dayDate) return;
+            const dayPets = day.pets || [];
+            const matchingPets = selectedProduct
+                ? dayPets.filter(p => p.product_name === selectedProduct)
+                : dayPets;
+            if (matchingPets.length > 0) {
+                dates.add(dayDate);
+            }
+        });
+        // From reports list as fallback
+        reportsList.forEach(r => {
+            const rDate = r.production_date || (r.datetime_start_time ? r.datetime_start_time.split('T')[0] : null);
+            if (rDate) dates.add(rDate);
+        });
+        return [...dates].sort();
+    })();
+
+    // Format production dates for display
+    const formatProductionDates = () => {
+        if (productionDates.length === 0) return '';
+        return productionDates.map(d => {
+            const dt = new Date(d);
+            return dt.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }).join(', ');
+    };
 
     // Derived values from per-pet data
     const totalProductionHrs = allPetEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0)
@@ -410,7 +454,7 @@ const ProductionRunByPet = () => {
                                 <div className="header-left">
                                     <img src="/logo.jpeg" alt="Twellium" className="print-logo" />
                                     <h5 className="company-name">TWELLIUM INDUSTRIAL COMPANY LTD.</h5>
-                                    <span style={{ fontSize: '11px' }}>Title: Production Report</span>
+                                    <span style={{ fontSize: '11px' }}>Title: Product Sign Off Report</span>
                                 </div>
                                 <div className="header-center">
                                     <h4 className="report-title">{selectedPetName || 'ALL LINES'}</h4>
@@ -440,8 +484,17 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
                                         <td className="input-cell numeric" style={{ width: '10%' }}><EditableField value={summary.line_speed || allPetEntries.find(p => p.line_speed)?.line_speed || ''} /></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
-                                        <td className="input-cell numeric" style={{ width: '12%' }}><EditableField type="number" value={displayTotalBottles || ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '12%' }}><EditableField type="number" value="" /></td>
                                     </tr>
+                                    {/* Production Date(s) — dates within range when product was actually produced */}
+                                    {selectedProduct && productionDates.length > 0 && (
+                                    <tr>
+                                        <td className="label-cell">Prod. Date(s)</td>
+                                        <td className="input-cell" colSpan={5} style={{ fontSize: '0.8rem' }}>
+                                            <EditableField value={formatProductionDates()} />
+                                        </td>
+                                    </tr>
+                                    )}
                                     <tr>
                                         <td className="label-cell">Shift</td>
                                         <td className="input-cell"><EditableField value={selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'} /></td>
@@ -705,8 +758,6 @@ const ProductionRunByPet = () => {
                                         { type: 'PREFORMS', label: 'Preforms Consumption', defaultUnit: 'Pcs' },
                                         { type: 'CLOSURES', label: 'Closure Consumption', defaultUnit: 'Pcs' },
                                         { type: 'LABELS', label: 'Label Consumption', defaultUnit: 'Kg' },
-                                        { type: 'SHRINK', label: 'Shrink PRINTED', defaultUnit: 'Pcs' },
-                                        { type: 'STRETCH_FILM', label: 'Shrink Plain', defaultUnit: 'Kg' },
                                     ].map(({ type, label, defaultUnit }) => {
                                         const mat = getMaterial(type);
                                         const lossPercent = mat.total_used
@@ -725,6 +776,89 @@ const ProductionRunByPet = () => {
                                             </tr>
                                         );
                                     })}
+                                    {/* Dynamic Shrink rows */}
+                                    {shrinkRows.includes('printed') && (() => {
+                                        const mat = getMaterial('SHRINK');
+                                        const lossPercent = mat.total_used
+                                            ? ((mat.total_losses / mat.total_used) * 100).toFixed(1)
+                                            : '';
+                                        return (
+                                            <tr>
+                                                <td className="label-cell">
+                                                    Shrink PRINTED
+                                                    <button
+                                                        className="btn btn-link btn-sm p-0 ms-2 no-print text-danger"
+                                                        onClick={() => setShrinkRows(prev => prev.filter(r => r !== 'printed'))}
+                                                        title="Remove Shrink Printed row"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || 'Pcs'} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.expected_usage || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.received || mat.total_received || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.returned || mat.total_returned || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent ? `${lossPercent}%` : ''} /></td>
+                                            </tr>
+                                        );
+                                    })()}
+                                    {shrinkRows.includes('plain') && (() => {
+                                        const mat = getMaterial('STRETCH_FILM');
+                                        const lossPercent = mat.total_used
+                                            ? ((mat.total_losses / mat.total_used) * 100).toFixed(1)
+                                            : '';
+                                        return (
+                                            <tr>
+                                                <td className="label-cell">
+                                                    Shrink Plain
+                                                    <button
+                                                        className="btn btn-link btn-sm p-0 ms-2 no-print text-danger"
+                                                        onClick={() => setShrinkRows(prev => prev.filter(r => r !== 'plain'))}
+                                                        title="Remove Shrink Plain row"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || 'Kg'} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.expected_usage || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.received || mat.total_received || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.returned || mat.total_returned || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent ? `${lossPercent}%` : ''} /></td>
+                                            </tr>
+                                        );
+                                    })()}
+                                    {/* Add Shrink button row */}
+                                    {(shrinkRows.length < 2) && (
+                                    <tr className="no-print">
+                                        <td colSpan={8} style={{ padding: '4px 8px' }}>
+                                            <div className="d-flex align-items-center gap-2">
+                                                <Plus size={14} className="text-primary" />
+                                                {!shrinkRows.includes('printed') && (
+                                                    <button
+                                                        className="btn btn-outline-primary btn-sm py-0 px-2"
+                                                        style={{ fontSize: '0.75rem' }}
+                                                        onClick={() => setShrinkRows(prev => [...prev, 'printed'])}
+                                                    >
+                                                        + Shrink Printed
+                                                    </button>
+                                                )}
+                                                {!shrinkRows.includes('plain') && (
+                                                    <button
+                                                        className="btn btn-outline-primary btn-sm py-0 px-2"
+                                                        style={{ fontSize: '0.75rem' }}
+                                                        onClick={() => setShrinkRows(prev => [...prev, 'plain'])}
+                                                    >
+                                                        + Shrink Plain
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    )}
                                 </tbody>
                             </table>
 
@@ -795,16 +929,134 @@ const ProductionRunByPet = () => {
                                                 <EditableField value={co2Meters.co2_g_per_liter != null ? co2Meters.co2_g_per_liter : (co2Meters.co2_grams_per_liter != null ? co2Meters.co2_grams_per_liter : (co2Meters.total_co2_consumed_kg && summary.total_beverage_liters ? ((co2Meters.total_co2_consumed_kg * 1000) / summary.total_beverage_liters).toFixed(2) : ''))} />
                                             </div>
                                         </td>
+                                        <td colSpan={2}></td>
+                                    </tr>
+                                    <tr>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/Btl:</span>
                                                 <EditableField value={co2Meters.co2_g_per_bottle != null ? co2Meters.co2_g_per_bottle : (co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : (co2Meters.total_co2_consumed_kg && displayTotalBottles ? ((co2Meters.total_co2_consumed_kg * 1000) / displayTotalBottles).toFixed(2) : ''))} />
                                             </div>
                                         </td>
-                                        <td></td>
+                                        <td colSpan={2}></td>
                                     </tr>
                                 </tbody>
                             </table>
+
+                            {/* Downtime Section */}
+                            {(() => {
+                                // Aggregate downtime from reports' stoppage_logs
+                                const downtimeByCategory = {};
+                                let totalDowntimeMins = 0;
+                                let plannedDowntimeMins = 0;
+                                let mechanicalDowntimeMins = 0;
+
+                                reportsList.forEach(report => {
+                                    (report.stoppage_logs || []).forEach(log => {
+                                        const minutes = parseFloat(log.downtime_minutes) || 0;
+                                        if (log.incidents && log.incidents.length > 0) {
+                                            log.incidents.forEach(inc => {
+                                                const catName = inc.downtime_category_name || 'Uncategorized';
+                                                const subCatName = inc.sub_downtime_category_name || '';
+                                                let durationMinutes = 0;
+                                                if (inc.incident_duration) {
+                                                    if (typeof inc.incident_duration === 'string' && inc.incident_duration.includes(':')) {
+                                                        const parts = inc.incident_duration.split(':');
+                                                        const hours = parseInt(parts[0]) || 0;
+                                                        const mins = parseInt(parts[1]) || 0;
+                                                        const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
+                                                        durationMinutes = (hours * 60) + mins + (secs / 60);
+                                                    } else {
+                                                        durationMinutes = parseFloat(inc.incident_duration) || 0;
+                                                    }
+                                                }
+                                                const key = subCatName ? `${catName} / ${subCatName}` : catName;
+                                                if (!downtimeByCategory[key]) downtimeByCategory[key] = 0;
+                                                downtimeByCategory[key] += durationMinutes;
+                                                totalDowntimeMins += durationMinutes;
+
+                                                // Track planned vs mechanical
+                                                if (catName.toLowerCase().includes('planned')) {
+                                                    plannedDowntimeMins += durationMinutes;
+                                                } else if (catName.toLowerCase().includes('mechanical')) {
+                                                    mechanicalDowntimeMins += durationMinutes;
+                                                }
+                                            });
+                                        } else if (minutes > 0) {
+                                            if (!downtimeByCategory['Unspecified']) downtimeByCategory['Unspecified'] = 0;
+                                            downtimeByCategory['Unspecified'] += minutes;
+                                            totalDowntimeMins += minutes;
+                                        }
+                                    });
+                                });
+
+                                // Fallback to summary if no stoppage logs
+                                if (totalDowntimeMins === 0 && (summary.total_downtime_mins || summary.planned_downtime_mins || summary.mechanical_downtime_mins)) {
+                                    if (summary.planned_downtime_mins) {
+                                        downtimeByCategory['Planned Downtime'] = summary.planned_downtime_mins;
+                                        plannedDowntimeMins = summary.planned_downtime_mins;
+                                        totalDowntimeMins += summary.planned_downtime_mins;
+                                    }
+                                    if (summary.mechanical_downtime_mins) {
+                                        downtimeByCategory['Mechanical Downtime'] = summary.mechanical_downtime_mins;
+                                        mechanicalDowntimeMins = summary.mechanical_downtime_mins;
+                                        totalDowntimeMins += summary.mechanical_downtime_mins;
+                                    }
+                                    if (summary.total_downtime_mins && totalDowntimeMins === 0) {
+                                        downtimeByCategory['Total Downtime'] = summary.total_downtime_mins;
+                                        totalDowntimeMins = summary.total_downtime_mins;
+                                    }
+                                }
+
+                                const sortedCategories = Object.entries(downtimeByCategory).sort((a, b) => b[1] - a[1]);
+
+                                return (
+                                    <table className="form-table section-table">
+                                        <thead>
+                                            <tr className="section-header-row">
+                                                <th colSpan={3}>Downtime</th>
+                                            </tr>
+                                            <tr className="sub-header-row">
+                                                <th style={{ width: '50%' }}>Category</th>
+                                                <th style={{ width: '25%' }}>Duration (min)</th>
+                                                <th style={{ width: '25%' }}>% of Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sortedCategories.length > 0 ? sortedCategories.map(([cat, mins], idx) => (
+                                                <tr key={idx}>
+                                                    <td className="label-cell">{cat}</td>
+                                                    <td className="input-cell numeric"><EditableField value={fmt(mins, 1)} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={totalDowntimeMins > 0 ? `${((mins / totalDowntimeMins) * 100).toFixed(1)}%` : ''} /></td>
+                                                </tr>
+                                            )) : (
+                                                <tr>
+                                                    <td colSpan={3} className="text-muted text-center" style={{ fontSize: '0.8rem', padding: '8px' }}>No downtime recorded</td>
+                                                </tr>
+                                            )}
+                                            {sortedCategories.length > 0 && (
+                                            <>
+                                            <tr style={{ fontWeight: '600', borderTop: '1px solid #999', backgroundColor: '#f8f9fa' }}>
+                                                <td className="label-cell">Total Planned Downtime</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(plannedDowntimeMins, 1)} /></td>
+                                                <td className="input-cell numeric"><EditableField value={totalDowntimeMins > 0 ? `${((plannedDowntimeMins / totalDowntimeMins) * 100).toFixed(1)}%` : ''} /></td>
+                                            </tr>
+                                            <tr style={{ fontWeight: '600', backgroundColor: '#f8f9fa' }}>
+                                                <td className="label-cell">Total Mechanical Downtime</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(mechanicalDowntimeMins, 1)} /></td>
+                                                <td className="input-cell numeric"><EditableField value={totalDowntimeMins > 0 ? `${((mechanicalDowntimeMins / totalDowntimeMins) * 100).toFixed(1)}%` : ''} /></td>
+                                            </tr>
+                                            <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
+                                                <td className="label-cell">TOTAL</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(totalDowntimeMins, 1)} /></td>
+                                                <td className="input-cell numeric">100%</td>
+                                            </tr>
+                                            </>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                );
+                            })()}
 
                             {/* Line Detail — Per-Product Breakdown (shown when a PET is selected and has multiple products) */}
                             {selectedPet && productNames.length > 1 && !selectedProduct && (

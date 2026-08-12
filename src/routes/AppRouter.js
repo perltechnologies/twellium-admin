@@ -24,6 +24,14 @@ const ModeSelection = React.lazy(() => import('../pages/ModeSelection'));
 // Post Production Pages
 const PostProductionLayout = React.lazy(() => import('../components/layout/PostProductionLayout'));
 const PostProduction = React.lazy(() => import('../pages/post-production/Production'));
+const BulkBarcodePrinting = React.lazy(() => import('../pages/post-production/BulkBarcodePrinting'));
+const BatchTraceability = React.lazy(() => import('../pages/post-production/BatchTraceability'));
+const ProductAnalysis = React.lazy(() => import('../pages/post-production/ProductAnalysis'));
+const PetPerformance = React.lazy(() => import('../pages/post-production/PetPerformance'));
+const LiveManagementDashboard = React.lazy(() => import('../pages/post-production/LiveManagementDashboard'));
+const TrendAnalysis = React.lazy(() => import('../pages/post-production/TrendAnalysis'));
+const VehicleDispatchDetails = React.lazy(() => import('../pages/post-production/VehicleDispatchDetails'));
+const PlantOverview = React.lazy(() => import('../pages/post-production/PlantOverview'));
 const PostProductionDashboard = React.lazy(() => import('../pages/inventory/PostProductionDashboard'));
 const InventoryOverview = React.lazy(() => import('../pages/inventory/InventoryOverview'));
 const ProductionMode = React.lazy(() => import('../pages/inventory/ProductionMode'));
@@ -121,6 +129,16 @@ export const AppRouter = () => {
                             <Route path="pallets/details/:identifier" element={<PalletDetails />} />
                             <Route path="reprint" element={<ReprintLabels />} />
                             <Route path="batch-scan" element={<BatchScan />} />
+                            <Route path="analytics">
+                                <Route path="plant-overview" element={<PlantOverview />} />
+                                <Route path="bulk-barcodes" element={<BulkBarcodePrinting />} />
+                                <Route path="batch-traceability" element={<BatchTraceability />} />
+                                <Route path="product-analysis" element={<ProductAnalysis />} />
+                                <Route path="pet-performance" element={<PetPerformance />} />
+                                <Route path="live-dashboard" element={<LiveManagementDashboard />} />
+                                <Route path="trends" element={<TrendAnalysis />} />
+                                <Route path="vehicle-dispatch" element={<VehicleDispatchDetails />} />
+                            </Route>
                             <Route path="logistics">
                                 <Route index element={<Navigate to="dispatch" replace />} />
                                 <Route path="dispatch" element={<LoadingDispatch />} />
@@ -405,7 +423,6 @@ export const AppRouter = () => {
                                     <Route path="concentrations" element={<SyrupConcentrations />} />
                                     <Route path="bottles-per-pack" element={<BottlesPerPack />} />
                                     <Route path="line-speeds" element={<LineSpeeds />} />
-                                    />
                                 </Route>
                             </Route>
 
@@ -438,7 +455,7 @@ export const AppRouter = () => {
                             {/* Sign Off Forms */}
                             <Route path="sign-off-forms">
                                 <Route path="production-report" element={<ProductionReportForm />} />
-                                <Route path="production-run-by-pet" element={<ProductionRunByPet />} />
+                                <Route path="product-report" element={<ProductionRunByPet />} />
                                 <Route path="batch-report" element={<BatchReport />} />
                             </Route>
                         </Route>
