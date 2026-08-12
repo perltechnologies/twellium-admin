@@ -13,6 +13,7 @@ const EditableField = ({ value, type = 'text', className = '', onChange, step, m
     useEffect(() => {
         setVal(value === null || value === undefined || value === '' ? '' : String(value));
     }, [value]);
+    const alignment = type === 'number' ? 'right' : 'left';
     return (
         <input
             type={type}
@@ -20,8 +21,17 @@ const EditableField = ({ value, type = 'text', className = '', onChange, step, m
             min={min}
             max={max}
             readOnly={readOnly}
-            className={`form-control form-control-sm ${className}`}
-            style={{ minWidth: '60px', textAlign: 'right' }}
+            className={`form-control form-control-sm border-0 rounded-0 shadow-none ${className}`}
+            style={{
+                minWidth: '48px',
+                height: '1.6rem',
+                padding: '0.1rem 0.25rem',
+                textAlign: alignment,
+                backgroundColor: 'transparent',
+                borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                color: '#212529',
+                fontSize: '0.85rem'
+            }}
             value={val}
             onChange={(e) => {
                 setVal(e.target.value);
@@ -527,7 +537,17 @@ const ProductionReportForm = () => {
                                         <td className="input-cell">
                                             <input
                                                 type="time"
-                                                className="form-control form-control-sm"
+                                                className="form-control form-control-sm border-0 rounded-0 shadow-none"
+                                                style={{
+                                                    minWidth: '68px',
+                                                    height: '1.6rem',
+                                                    padding: '0.1rem 0.25rem',
+                                                    textAlign: 'center',
+                                                    backgroundColor: 'transparent',
+                                                    borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                                                    color: '#212529',
+                                                    fontSize: '0.85rem'
+                                                }}
                                                 value={productionStartTime}
                                                 onChange={(e) => {
                                                     const val = e.target.value;
@@ -540,7 +560,17 @@ const ProductionReportForm = () => {
                                         <td className="input-cell">
                                             <input
                                                 type="time"
-                                                className="form-control form-control-sm"
+                                                className="form-control form-control-sm border-0 rounded-0 shadow-none"
+                                                style={{
+                                                    minWidth: '68px',
+                                                    height: '1.6rem',
+                                                    padding: '0.1rem 0.25rem',
+                                                    textAlign: 'center',
+                                                    backgroundColor: 'transparent',
+                                                    borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                                                    color: '#212529',
+                                                    fontSize: '0.85rem'
+                                                }}
                                                 value={productionEndTime}
                                                 onChange={(e) => {
                                                     const val = e.target.value;
@@ -554,25 +584,35 @@ const ProductionReportForm = () => {
                                             <input
                                                 type="number"
                                                 step="0.1"
-                                                className="form-control form-control-sm"
+                                                className="form-control form-control-sm border-0 rounded-0 shadow-none"
+                                                style={{
+                                                    minWidth: '60px',
+                                                    height: '1.6rem',
+                                                    padding: '0.1rem 0.25rem',
+                                                    textAlign: 'right',
+                                                    backgroundColor: 'transparent',
+                                                    borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                                                    color: '#212529',
+                                                    fontSize: '0.85rem'
+                                                }}
                                                 value={totalProductionTimeHrs}
                                                 onChange={(e) => setTotalProductionTimeHrs(e.target.value)}
                                             />
                                         </td>
                                     </tr>
                                     <tr>
-                                        <td className="label-cell">Total Bottles</td>
+                                        <td className="label-cell">Total Pallets</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles || allPets.reduce((sum, p) => sum + (p.total_bottles || 0), 0)} /></td>
-                                        <td className="label-cell">Total Packs</td>
+                                        <td className="label-cell">Single Packs</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={summary.total_packs || allPets.reduce((sum, p) => sum + (p.total_packs || 0), 0)} /></td>
-                                        <td className="label-cell">Packs/Pallet</td>
+                                        <td className="label-cell">Total Packs</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={summary.packs_per_pallet || allPets.find(p => p.packs_per_pallet)?.packs_per_pallet || reportsList.find(r => r.packs_per_pallet)?.packs_per_pallet || (selectedProduct && products.find(pr => pr.name === selectedProduct)?.packs_per_pallet) || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()} /></td>
-                                        <td className="label-cell">Bottles/Pack</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.bottles_per_pack || allPets.find(p => p.bottles_per_pack)?.bottles_per_pack || reportsList.find(r => r.bottles_per_pack)?.bottles_per_pack || (selectedProduct && products.find(pr => pr.name === selectedProduct)?.bottles_per_pack) || ''} /></td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
                                         <td className="label-cell">Total Bottles (R.W)</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0)} /></td>
                                     </tr>
