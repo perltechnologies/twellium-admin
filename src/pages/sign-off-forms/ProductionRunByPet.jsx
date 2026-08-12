@@ -491,7 +491,21 @@ const ProductionRunByPet = () => {
                                     <tr>
                                         <td className="label-cell">Prod. Date(s)</td>
                                         <td className="input-cell" colSpan={5} style={{ fontSize: '0.8rem' }}>
-                                            <EditableField value={formatProductionDates()} />
+                                            <textarea
+                                                className="form-control form-control-sm border-0 rounded-0 shadow-none"
+                                                style={{
+                                                    minHeight: '2.4rem',
+                                                    padding: '0.2rem 0.25rem',
+                                                    backgroundColor: 'transparent',
+                                                    borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                                                    color: '#212529',
+                                                    fontSize: '0.8rem',
+                                                    resize: 'vertical',
+                                                    lineHeight: '1.4'
+                                                }}
+                                                rows={Math.ceil(productionDates.length / 4) || 1}
+                                                defaultValue={formatProductionDates()}
+                                            />
                                         </td>
                                     </tr>
                                     )}
@@ -1014,45 +1028,26 @@ const ProductionRunByPet = () => {
                                     <table className="form-table section-table">
                                         <thead>
                                             <tr className="section-header-row">
-                                                <th colSpan={3}>Downtime</th>
+                                                <th colSpan={2}>Downtime</th>
                                             </tr>
                                             <tr className="sub-header-row">
-                                                <th style={{ width: '50%' }}>Category</th>
-                                                <th style={{ width: '25%' }}>Duration (min)</th>
-                                                <th style={{ width: '25%' }}>% of Total</th>
+                                                <th style={{ width: '65%' }}>Category</th>
+                                                <th style={{ width: '35%' }}>Duration (min)</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {sortedCategories.length > 0 ? sortedCategories.map(([cat, mins], idx) => (
-                                                <tr key={idx}>
-                                                    <td className="label-cell">{cat}</td>
-                                                    <td className="input-cell numeric"><EditableField value={fmt(mins, 1)} /></td>
-                                                    <td className="input-cell numeric"><EditableField value={totalDowntimeMins > 0 ? `${((mins / totalDowntimeMins) * 100).toFixed(1)}%` : ''} /></td>
-                                                </tr>
-                                            )) : (
-                                                <tr>
-                                                    <td colSpan={3} className="text-muted text-center" style={{ fontSize: '0.8rem', padding: '8px' }}>No downtime recorded</td>
-                                                </tr>
-                                            )}
-                                            {sortedCategories.length > 0 && (
-                                            <>
-                                            <tr style={{ fontWeight: '600', borderTop: '1px solid #999', backgroundColor: '#f8f9fa' }}>
+                                            <tr>
                                                 <td className="label-cell">Total Planned Downtime</td>
                                                 <td className="input-cell numeric"><EditableField value={fmt(plannedDowntimeMins, 1)} /></td>
-                                                <td className="input-cell numeric"><EditableField value={totalDowntimeMins > 0 ? `${((plannedDowntimeMins / totalDowntimeMins) * 100).toFixed(1)}%` : ''} /></td>
                                             </tr>
-                                            <tr style={{ fontWeight: '600', backgroundColor: '#f8f9fa' }}>
+                                            <tr>
                                                 <td className="label-cell">Total Mechanical Downtime</td>
                                                 <td className="input-cell numeric"><EditableField value={fmt(mechanicalDowntimeMins, 1)} /></td>
-                                                <td className="input-cell numeric"><EditableField value={totalDowntimeMins > 0 ? `${((mechanicalDowntimeMins / totalDowntimeMins) * 100).toFixed(1)}%` : ''} /></td>
                                             </tr>
                                             <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
                                                 <td className="label-cell">TOTAL</td>
                                                 <td className="input-cell numeric"><EditableField value={fmt(totalDowntimeMins, 1)} /></td>
-                                                <td className="input-cell numeric">100%</td>
                                             </tr>
-                                            </>
-                                            )}
                                         </tbody>
                                     </table>
                                 );
