@@ -2,7 +2,7 @@ import React from 'react';
 import Barcode from 'react-barcode';
 import { format } from 'date-fns';
 
-const BarcodeLabel = ({ data, forwardRef }) => {
+const BarcodeLabel = React.forwardRef(({ data }, ref) => {
     if (!data) return null;
 
     const {
@@ -16,7 +16,7 @@ const BarcodeLabel = ({ data, forwardRef }) => {
     } = data;
 
     return (
-        <div ref={forwardRef} className="bg-white p-6 border border-slate-200 rounded-lg shadow-sm print:shadow-none print:border-none print-compact w-[380px] mx-auto overflow-hidden text-slate-900">
+        <div ref={ref} className="bg-white p-6 border border-slate-200 rounded-lg shadow-sm print:shadow-none print:border-none print-compact w-[380px] mx-auto overflow-hidden text-slate-900">
             {/* Print Styles */}
             <style dangerouslySetInnerHTML={{
                 __html: `
@@ -76,6 +76,6 @@ const BarcodeLabel = ({ data, forwardRef }) => {
             </div>
         </div>
     );
-};
+});
 
 export default BarcodeLabel;
