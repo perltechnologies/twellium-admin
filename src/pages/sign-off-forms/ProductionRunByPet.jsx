@@ -517,10 +517,6 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Syrup (Lts)</td>
                                         <td className="input-cell numeric"><EditableField value={totalSyrupLiters ? fmt(totalSyrupLiters, 1) : (summary.total_syrup_liters ? fmt(summary.total_syrup_liters, 1) : '')} /></td>
                                     </tr>
-                                    <tr>
-                                        <td className="label-cell">Flavor</td>
-                                        <td className="input-cell" colSpan={5}><EditableField value={selectedProduct || productNames.join(', ') || ''} /></td>
-                                    </tr>
                                 </tbody>
                             </table>
 
@@ -577,32 +573,14 @@ const ProductionRunByPet = () => {
                             </table>
                             )}
 
-                            {/* Row 21-23: Package & Production Totals */}
+                            {/* Row 21-23: Production Totals */}
                             <table className="form-table">
                                 <tbody>
                                     <tr>
-                                        <td className="label-cell" style={{ width: '15%' }}>Package</td>
-                                        <td className="input-cell" style={{ width: '15%' }}><EditableField value={summary.bottle_size || summary.package_type || allPetEntries.find(p => p.bottle_size)?.bottle_size || ''} /></td>
-                                        <td className="input-cell" style={{ width: '15%' }}></td>
-                                        <td className="input-cell" style={{ width: '15%' }}></td>
-                                        <td className="label-cell" style={{ width: '15%' }}></td>
-                                        <td className="input-cell" style={{ width: '25%' }}></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Physical Box</td>
-                                        <td className="input-cell numeric"><EditableField value={summary.bottles_per_pack || allPetEntries.find(p => p.bottles_per_pack)?.bottles_per_pack || fmt(displayTotalPhysicalBoxes || cartonMat.total_used) || ''} /></td>
-                                        <td className="input-cell"></td>
-                                        <td className="input-cell"></td>
-                                        <td className="label-cell"></td>
-                                        <td className="input-cell"></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Total Btls/Hr</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles_per_hr || totalBtlsPerHr || ''} /></td>
-                                        <td className="label-cell">Efficiency</td>
-                                        <td className="input-cell numeric"><EditableField value={displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''} /></td>
-                                        <td className="label-cell">Bev. (Lts)</td>
-                                        <td className="input-cell numeric"><EditableField value={summary.total_beverage_liters ? fmt(summary.total_beverage_liters, 1) : (totalBeverageLiters ? fmt(totalBeverageLiters, 1) : (totalSyrupLiters ? fmt(totalSyrupLiters, 1) : ''))} /></td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Total Btls/Hr</td>
+                                        <td className="input-cell numeric" style={{ width: '15%' }}><EditableField type="number" value={summary.total_bottles_per_hr || totalBtlsPerHr || ''} /></td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Efficiency</td>
+                                        <td className="input-cell numeric" style={{ width: '15%' }}><EditableField value={displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -718,14 +696,9 @@ const ProductionRunByPet = () => {
                                 );
                             })()}
 
-                            {/* Paid Hours / Time / Workers */}
+                            {/* Time / Workers */}
                             <table className="form-table">
                                 <tbody>
-                                    <tr className="section-header-row">
-                                        <td className="label-cell" style={{ width: '30%' }}><strong>Paid Hours (overtime)</strong></td>
-                                        <td className="label-cell" style={{ width: '15%' }}><strong>Time</strong></td>
-                                        <td className="input-cell" colSpan={2}><EditableField value={summary.paid_hours ? `${summary.paid_hours}h` : (totalPaidHours ? `${totalPaidHours}h${totalOvertimeHours ? ` (OT: ${totalOvertimeHours}h)` : ''}` : '')} /></td>
-                                    </tr>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
                                         <td className="input-cell" colSpan={3}><EditableField value={summary.production_start_time || productionStartTimes[0] || ''} /></td>
@@ -746,10 +719,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Workers Count</td>
                                         <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={workers.length || summary.worker_count || ''} /></td>
                                     </tr>
-                                    <tr>
-                                        <td className="label-cell">Name Of Absent Labours</td>
-                                        <td className="input-cell" colSpan={3}><EditableField value={absentWorkerNames.length > 0 ? absentWorkerNames.join(', ') : (summary.absent_worker_names?.length > 0 ? summary.absent_worker_names.join(', ') : '')} /></td>
-                                    </tr>
+
                                 </tbody>
                             </table>
 
