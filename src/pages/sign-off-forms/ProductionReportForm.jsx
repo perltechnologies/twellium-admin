@@ -254,10 +254,61 @@ const ProductionReportForm = () => {
     const productNames = products.length > 0
         ? products.map(p => p.name).filter(Boolean).sort()
         : [...new Set(allPetsUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
-    const materials = data?.material_consumptions?.materials || [];
+    const materials = (() => {
+        if (!selectedProduct) return data?.material_consumptions?.materials || [];
+        // Aggregate materials from filtered pet entries
+        const matMap = {};
+        allPets.forEach(pet => {
+            (pet.material_consumptions || []).forEach(mat => {
+                if (!matMap[mat.material_type]) {
+                    matMap[mat.material_type] = { material_type: mat.material_type, material_type_display: mat.material_type_display, unit: mat.unit, total_used: 0, total_losses: 0, yield_percentage: 0 };
+                }
+                matMap[mat.material_type].total_used += (mat.total_used || 0);
+                matMap[mat.material_type].total_losses += (mat.total_losses || 0);
+            });
+        });
+        // Compute yield percentage
+        Object.values(matMap).forEach(m => {
+            m.yield_percentage = m.total_used > 0 ? ((m.total_used - m.total_losses) / m.total_used * 100) : 0;
+        });
+        return Object.values(matMap);
+    })();
 
-    // Meters reading data
-    const metersReading = data?.meters_reading || {};
+    // Meters reading data - use per-pet data when product filter is active
+    const metersReading = (() => {
+        if (!selectedProduct) return data?.meters_reading || {};
+        // Aggregate from filtered pets
+        const co2Entries = allPets.map(p => p.meters_reading?.co2).filter(c => c && Object.keys(c).length > 0);
+        const syrupEntries = allPets.map(p => p.meters_reading?.syrup).filter(s => s && Object.keys(s).length > 0);
+        const prodEntries = allPets.map(p => p.meters_reading?.production).filter(pr => pr && Object.keys(pr).length > 0);
+        return {
+            co2: co2Entries.length > 0 ? {
+                start_reading_kg: co2Entries[0]?.start_reading_kg,
+                end_reading_kg: co2Entries[co2Entries.length - 1]?.end_reading_kg,
+                difference_in_balance_kg: co2Entries.reduce((s, c) => s + (c.difference_in_balance_kg || 0), 0),
+                total_co2_consumed_kg: co2Entries.reduce((s, c) => s + (c.total_co2_consumed_kg || 0), 0),
+                std_co2_consumption_kg: co2Entries.reduce((s, c) => s + (c.std_co2_consumption_kg || 0), 0),
+                co2_yield_percent: co2Entries.reduce((s, c) => s + (c.co2_yield_percent || 0), 0) / co2Entries.length,
+            } : {},
+            syrup: syrupEntries.length > 0 ? {
+                start_reading: syrupEntries[0]?.start_reading,
+                end_reading: syrupEntries[syrupEntries.length - 1]?.end_reading,
+                unit: syrupEntries[0]?.unit,
+                syrup_density_kg_per_l: syrupEntries[0]?.syrup_density_kg_per_l,
+                total_syrup_used_l: syrupEntries.reduce((s, sy) => s + (sy.total_syrup_used_l || 0), 0),
+                syrup_dilution_ratio: syrupEntries[0]?.syrup_dilution_ratio,
+                std_syrup_consumption_l: syrupEntries.reduce((s, sy) => s + (sy.std_syrup_consumption_l || 0), 0),
+                syrup_yield_percent: syrupEntries.reduce((s, sy) => s + (sy.syrup_yield_percent || 0), 0) / syrupEntries.length,
+            } : {},
+            production: prodEntries.length > 0 ? {
+                filler_reading: prodEntries.reduce((s, pr) => s + (pr.filler_reading || 0), 0),
+                shrink_reading: prodEntries.reduce((s, pr) => s + (pr.shrink_reading || 0), 0),
+                filler_rejects_mc: prodEntries.reduce((s, pr) => s + (pr.filler_rejects_mc || 0), 0),
+                blower_rejects_manual: prodEntries.reduce((s, pr) => s + (pr.blower_rejects_manual || 0), 0),
+                shrink_reading_packs_percent: prodEntries[prodEntries.length - 1]?.shrink_reading_packs_percent,
+            } : {},
+        };
+    })();
     const co2Meters = metersReading.co2 || {};
     const syrupMeters = metersReading.syrup || {};
     const productionMeters = metersReading.production || {};
@@ -271,12 +322,6 @@ const ProductionReportForm = () => {
                 if (!downtimeByPet[key]) downtimeByPet[key] = 0;
                 downtimeByPet[key] += (pa.duration_mins || 0);
             });
-        });
-        // Also check if pets_affected is directly on category
-        (cat.pets_affected || []).forEach(pa => {
-            const key = pa.pet_id || pa.pet_name;
-            if (!downtimeByPet[key]) downtimeByPet[key] = 0;
-            downtimeByPet[key] += (pa.duration_mins || 0);
         });
     });
 
@@ -602,11 +647,11 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Pallets</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles || allPets.reduce((sum, p) => sum + (p.total_bottles || 0), 0)} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_output || 0), 0) : (summary.total_output || allPets.reduce((sum, p) => sum + (p.total_output || 0), 0))} /></td>
                                         <td className="label-cell">Single Packs</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_packs || allPets.reduce((sum, p) => sum + (p.total_packs || 0), 0)} /></td>
-                                        <td className="label-cell">Total Packs</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.packs_per_pallet || allPets.find(p => p.packs_per_pallet)?.packs_per_pallet || reportsList.find(r => r.packs_per_pallet)?.packs_per_pallet || (selectedProduct && products.find(pr => pr.name === selectedProduct)?.packs_per_pallet) || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_packs || 0), 0) : (summary.total_packs || allPets.reduce((sum, p) => sum + (p.total_packs || 0), 0))} /></td>
+                                        <td className="label-cell">Total Bottles</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_bottles || 0), 0) : (summary.total_bottles || allPets.reduce((sum, p) => sum + (p.total_bottles || 0), 0))} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
@@ -614,15 +659,15 @@ const ProductionReportForm = () => {
                                         <td className="label-cell"></td>
                                         <td className="input-cell numeric"></td>
                                         <td className="label-cell">Total Bottles (R.W)</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0)} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0) : (summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0))} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_downtime_mins || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_downtime_minutes || 0), 0) : (summary.total_downtime_minutes || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)))} /></td>
                                         <td className="label-cell">Planned Downtime (min)</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.planned_downtime_mins} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.planned_downtime_mins || 0), 0) : summary.planned_downtime_mins} /></td>
                                         <td className="label-cell">Mechanical Downtime (min)</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.mechanical_downtime_mins} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.mechanical_downtime_mins || 0), 0) : summary.mechanical_downtime_mins} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -637,19 +682,19 @@ const ProductionReportForm = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell">OEE</td>
-                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.oee || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={selectedProduct && allPets.length > 0 ? (allPets.reduce((s, p) => s + (p.oee || 0), 0) / allPets.length).toFixed(2) : (summary.oee || '')} /></td>
                                         <td className="label-cell">Availability</td>
-                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_availability || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={selectedProduct && allPets.length > 0 ? (allPets.reduce((s, p) => s + (p.availability || 0), 0) / allPets.length).toFixed(2) : (summary.avg_availability || '')} /></td>
                                         <td className="label-cell">Performance (Efficiency)</td>
-                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_performance || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={selectedProduct && allPets.length > 0 ? (allPets.reduce((s, p) => s + (p.performance || 0), 0) / allPets.length).toFixed(2) : (summary.avg_performance || '')} /></td>
                                         <td className="label-cell">Quality</td>
-                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_quality || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={selectedProduct && allPets.length > 0 ? (allPets.reduce((s, p) => s + (p.quality || 0), 0) / allPets.length).toFixed(2) : (summary.avg_quality || '')} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Syrup Yield</td>
-                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={syrupMeters.syrup_yield_percent != null ? syrupMeters.syrup_yield_percent : (summary.avg_syrup_yield || '')} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={selectedProduct && allPets.length > 0 ? (allPets.filter(p => p.syrup_yield != null).length > 0 ? (allPets.filter(p => p.syrup_yield != null).reduce((s, p) => s + p.syrup_yield, 0) / allPets.filter(p => p.syrup_yield != null).length).toFixed(2) : '') : (syrupMeters.syrup_yield_percent != null ? syrupMeters.syrup_yield_percent : (summary.avg_syrup_yield || ''))} /></td>
                                         <td className="label-cell">CO2 Yield</td>
-                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_co2_yield || ''} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={selectedProduct && allPets.length > 0 ? (allPets.filter(p => p.co2_yield != null).length > 0 ? (allPets.filter(p => p.co2_yield != null).reduce((s, p) => s + p.co2_yield, 0) / allPets.filter(p => p.co2_yield != null).length).toFixed(2) : '') : (summary.avg_co2_yield || '')} /></td>
                                         <td className="label-cell">Target Met</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={summary.target_met_count || ''} /></td>
                                         <td className="label-cell"></td>
@@ -821,13 +866,13 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading (Kg):</span>
-                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (co2Meters.start_reading_kg != null ? co2Meters.start_reading_kg : '')} />
+                                                <EditableField value={co2Meters.start_reading_kg != null ? co2Meters.start_reading_kg : ''} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading:</span>
-                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.start_reading != null ? syrupMeters.start_reading : '')} />
+                                                <EditableField value={syrupMeters.start_reading != null ? syrupMeters.start_reading : ''} />
                                             </div>
                                         </td>
                                         <td>
@@ -841,13 +886,13 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading (Kg):</span>
-                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (co2Meters.end_reading_kg != null ? co2Meters.end_reading_kg : '')} />
+                                                <EditableField value={co2Meters.end_reading_kg != null ? co2Meters.end_reading_kg : ''} />
                                             </div>
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading:</span>
-                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.end_reading != null ? syrupMeters.end_reading : '')} />
+                                                <EditableField value={syrupMeters.end_reading != null ? syrupMeters.end_reading : ''} />
                                             </div>
                                         </td>
                                         <td>
@@ -882,7 +927,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Unit (L, m3, kg):</span>
-                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.unit || '')} />
+                                                <EditableField value={syrupMeters.unit || ''} />
                                             </div>
                                         </td>
                                         <td>
@@ -902,7 +947,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Density (kg/L):</span>
-                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : '')} />
+                                                <EditableField value={syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : ''} />
                                             </div>
                                         </td>
                                         <td>
@@ -927,7 +972,7 @@ const ProductionReportForm = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Dilution Ratio:</span>
-                                                <EditableField value={!selectedPet ? 'NOT APPLICABLE' : (syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : '')} />
+                                                <EditableField value={syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : ''} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -977,7 +1022,7 @@ const ProductionReportForm = () => {
                                         ))}
                                         <tr className="fw-bold">
                                             <td className="label-cell">TOTAL</td>
-                                            <td className="input-cell numeric"><EditableField type="number" value={data.downtime_breakdown.total_downtime_mins || data.downtime_breakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0)} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={data.downtime_breakdown.total_downtime_minutes || data.downtime_breakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0)} /></td>
                                             <td className="input-cell numeric">100%</td>
                                             <td className="input-cell numeric"><EditableField type="number" value={data.downtime_breakdown.total_incidents || data.downtime_breakdown.categories.reduce((s, c) => s + (c.incident_count || 0), 0) || ''} /></td>
                                         </tr>

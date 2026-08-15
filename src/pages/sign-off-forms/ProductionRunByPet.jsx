@@ -216,7 +216,6 @@ const ProductionRunByPet = () => {
     // Extract data
     const summary = data?.summary || {};
     const dailyBreakdown = data?.daily_breakdown || [];
-    const materials = data?.material_consumptions?.materials || [];
     const metersReading = data?.meters_reading || {};
     const co2Meters = metersReading.co2 || {};
     const productionMeters = metersReading.production || {};
@@ -242,6 +241,25 @@ const ProductionRunByPet = () => {
     const allPetEntries = selectedProduct
         ? allPetEntriesUnfiltered.filter(p => p.product_name === selectedProduct)
         : allPetEntriesUnfiltered;
+
+    // Materials: aggregate from filtered pet entries when product is selected, otherwise use top-level
+    const materials = (() => {
+        if (!selectedProduct) return data?.material_consumptions?.materials || [];
+        const matMap = {};
+        allPetEntries.forEach(pet => {
+            (pet.material_consumptions || []).forEach(mat => {
+                if (!matMap[mat.material_type]) {
+                    matMap[mat.material_type] = { material_type: mat.material_type, material_type_display: mat.material_type_display, unit: mat.unit, total_used: 0, total_losses: 0, yield_percentage: 0 };
+                }
+                matMap[mat.material_type].total_used += (mat.total_used || 0);
+                matMap[mat.material_type].total_losses += (mat.total_losses || 0);
+            });
+        });
+        Object.values(matMap).forEach(m => {
+            m.yield_percentage = m.total_used > 0 ? ((m.total_used - m.total_losses) / m.total_used * 100) : 0;
+        });
+        return Object.values(matMap);
+    })();
 
     // Determine production dates: which dates within the range had actual production for the selected product
     const productionDates = (() => {
@@ -295,8 +313,8 @@ const ProductionRunByPet = () => {
         ...reportsList.flatMap(r => r.absent_worker_names || r.absent_workers || [])
     ])];
     const batchNumbers = [...new Set([
-        ...allPetEntries.flatMap(p => (p.batches || []).map(b => b.batch_number)),
-        ...reportsList.flatMap(r => (r.batches || []).map(b => b.batch_number))
+        ...allPetEntries.flatMap(p => p.batch_numbers || (p.batches || []).map(b => b.batch_number)),
+        ...reportsList.flatMap(r => r.batch_numbers || (r.batches || []).map(b => b.batch_number))
     ].filter(Boolean))];
     const totalSyrupLiters = allPetEntries.reduce((sum, p) => sum + (p.meters_reading?.syrup?.total_syrup_used_l || 0), 0)
         || reportsList.reduce((sum, r) => sum + (r.total_syrup_used_l || r.syrup_liters || 0), 0)
@@ -326,7 +344,7 @@ const ProductionRunByPet = () => {
     const displayAvgSyrupYield = selectedProduct ? filteredAvgSyrupYield : (summary.avg_syrup_yield || filteredAvgSyrupYield);
 
     // Calculate Total Btls/Hr: total_bottles / total_production_hours
-    const totalDowntimeHrs = (summary.total_downtime_mins || 0) / 60;
+    const totalDowntimeHrs = (summary.total_downtime_minutes || 0) / 60;
     const approxProductionHrs = totalProductionHrs || ((summary.total_reports || 0) * 8 - totalDowntimeHrs);
     const totalBtlsPerHr = approxProductionHrs > 0 ? Math.round(displayTotalBottles / approxProductionHrs) : 0;
 
@@ -482,7 +500,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell" style={{ width: '8%' }}>Date</td>
                                         <td className="input-cell numeric" style={{ width: '25%' }}><EditableField value={formatDateRange()} /></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
-                                        <td className="input-cell numeric" style={{ width: '10%' }}><EditableField value={summary.line_speed || allPetEntries.find(p => p.line_speed)?.line_speed || ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '10%' }}><EditableField value={allPetEntries.find(p => p.line_speed)?.line_speed || summary.line_speed || ''} /></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
                                         <td className="input-cell numeric" style={{ width: '12%' }}><EditableField type="number" value="" /></td>
                                     </tr>
@@ -701,23 +719,23 @@ const ProductionRunByPet = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
-                                        <td className="input-cell" colSpan={3}><EditableField value={summary.production_start_time || productionStartTimes[0] || ''} /></td>
+                                        <td className="input-cell" colSpan={3}><EditableField value={productionStartTimes[0] || summary.production_start_time || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shut Down Production</td>
-                                        <td className="input-cell" colSpan={3}><EditableField value={summary.production_end_time || productionEndTimes[productionEndTimes.length - 1] || ''} /></td>
+                                        <td className="input-cell" colSpan={3}><EditableField value={productionEndTimes[productionEndTimes.length - 1] || summary.production_end_time || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Production Hrs</td>
-                                        <td className="input-cell" colSpan={3}><EditableField type="number" step="0.1" value={summary.total_production_time_hrs || (totalProductionHrs ? totalProductionHrs.toFixed(1) : '')} /></td>
+                                        <td className="input-cell" colSpan={3}><EditableField type="number" step="0.1" value={totalProductionHrs ? totalProductionHrs.toFixed(1) : (summary.total_production_time_hrs || '')} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
-                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={(summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0) || ''} /></td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={selectedProduct ? allPetEntries.reduce((sum, p) => sum + (p.total_downtime_minutes || 0), 0) || '' : ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0)) || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
-                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={workers.length || summary.worker_count || ''} /></td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={selectedProduct ? allPetEntries.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0) || '' : (workers.length || summary.worker_count || '')} /></td>
                                     </tr>
 
                                 </tbody>
@@ -929,70 +947,44 @@ const ProductionRunByPet = () => {
 
                             {/* Downtime Section */}
                             {(() => {
-                                // Aggregate downtime from reports' stoppage_logs
-                                const downtimeByCategory = {};
+                                // Use per-pet downtime_breakdown when product filter is active
                                 let totalDowntimeMins = 0;
                                 let plannedDowntimeMins = 0;
                                 let mechanicalDowntimeMins = 0;
 
-                                reportsList.forEach(report => {
-                                    (report.stoppage_logs || []).forEach(log => {
-                                        const minutes = parseFloat(log.downtime_minutes) || 0;
-                                        if (log.incidents && log.incidents.length > 0) {
-                                            log.incidents.forEach(inc => {
-                                                const catName = inc.downtime_category_name || 'Uncategorized';
-                                                const subCatName = inc.sub_downtime_category_name || '';
-                                                let durationMinutes = 0;
-                                                if (inc.incident_duration) {
-                                                    if (typeof inc.incident_duration === 'string' && inc.incident_duration.includes(':')) {
-                                                        const parts = inc.incident_duration.split(':');
-                                                        const hours = parseInt(parts[0]) || 0;
-                                                        const mins = parseInt(parts[1]) || 0;
-                                                        const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
-                                                        durationMinutes = (hours * 60) + mins + (secs / 60);
-                                                    } else {
-                                                        durationMinutes = parseFloat(inc.incident_duration) || 0;
-                                                    }
-                                                }
-                                                const key = subCatName ? `${catName} / ${subCatName}` : catName;
-                                                if (!downtimeByCategory[key]) downtimeByCategory[key] = 0;
-                                                downtimeByCategory[key] += durationMinutes;
-                                                totalDowntimeMins += durationMinutes;
-
-                                                // Track planned vs mechanical
-                                                if (catName.toLowerCase().includes('planned')) {
-                                                    plannedDowntimeMins += durationMinutes;
-                                                } else if (catName.toLowerCase().includes('mechanical')) {
-                                                    mechanicalDowntimeMins += durationMinutes;
+                                if (selectedProduct && allPetEntries.length > 0) {
+                                    // Aggregate from filtered pet entries' downtime_breakdown
+                                    allPetEntries.forEach(pet => {
+                                        const petDowntime = pet.downtime_breakdown;
+                                        if (petDowntime?.categories) {
+                                            petDowntime.categories.forEach(cat => {
+                                                if (cat.category_name?.toLowerCase().includes('planned')) {
+                                                    plannedDowntimeMins += (cat.total_duration_mins || 0);
+                                                } else if (cat.category_name?.toLowerCase().includes('mechanical')) {
+                                                    mechanicalDowntimeMins += (cat.total_duration_mins || 0);
                                                 }
                                             });
-                                        } else if (minutes > 0) {
-                                            if (!downtimeByCategory['Unspecified']) downtimeByCategory['Unspecified'] = 0;
-                                            downtimeByCategory['Unspecified'] += minutes;
-                                            totalDowntimeMins += minutes;
                                         }
+                                        totalDowntimeMins += (pet.total_downtime_minutes || 0);
                                     });
-                                });
-
-                                // Fallback to summary if no stoppage logs
-                                if (totalDowntimeMins === 0 && (summary.total_downtime_mins || summary.planned_downtime_mins || summary.mechanical_downtime_mins)) {
-                                    if (summary.planned_downtime_mins) {
-                                        downtimeByCategory['Planned Downtime'] = summary.planned_downtime_mins;
-                                        plannedDowntimeMins = summary.planned_downtime_mins;
-                                        totalDowntimeMins += summary.planned_downtime_mins;
-                                    }
-                                    if (summary.mechanical_downtime_mins) {
-                                        downtimeByCategory['Mechanical Downtime'] = summary.mechanical_downtime_mins;
-                                        mechanicalDowntimeMins = summary.mechanical_downtime_mins;
-                                        totalDowntimeMins += summary.mechanical_downtime_mins;
-                                    }
-                                    if (summary.total_downtime_mins && totalDowntimeMins === 0) {
-                                        downtimeByCategory['Total Downtime'] = summary.total_downtime_mins;
-                                        totalDowntimeMins = summary.total_downtime_mins;
+                                } else {
+                                    // Use top-level downtime_breakdown or summary
+                                    const dtBreakdown = data?.downtime_breakdown;
+                                    if (dtBreakdown?.categories?.length > 0) {
+                                        dtBreakdown.categories.forEach(cat => {
+                                            if (cat.category_name?.toLowerCase().includes('planned')) {
+                                                plannedDowntimeMins += (cat.total_duration_mins || 0);
+                                            } else if (cat.category_name?.toLowerCase().includes('mechanical')) {
+                                                mechanicalDowntimeMins += (cat.total_duration_mins || 0);
+                                            }
+                                        });
+                                        totalDowntimeMins = dtBreakdown.total_downtime_minutes || (plannedDowntimeMins + mechanicalDowntimeMins);
+                                    } else {
+                                        plannedDowntimeMins = summary.planned_downtime_mins || 0;
+                                        mechanicalDowntimeMins = summary.mechanical_downtime_mins || 0;
+                                        totalDowntimeMins = summary.total_downtime_minutes || (plannedDowntimeMins + mechanicalDowntimeMins);
                                     }
                                 }
-
-                                const sortedCategories = Object.entries(downtimeByCategory).sort((a, b) => b[1] - a[1]);
 
                                 return (
                                     <table className="form-table section-table">
