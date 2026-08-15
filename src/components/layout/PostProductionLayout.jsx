@@ -45,6 +45,7 @@ const postProductionNav = [
             { name: 'Activity Logs', icon: 'ti-clipboard-list', path: '/post-production/activity-logs' },
             { name: 'Reprint Labels', icon: 'ti-printer', path: '/post-production/reprint' },
             { name: 'Batch Scan', icon: 'ti-scan', path: '/post-production/batch-scan' },
+            { name: 'Transfer Form', icon: 'ti-transfer-out', path: '/post-production/batch-print-transfer' },
             { name: 'Unit Lookup', icon: 'ti-search', path: '/post-production/lookup' },
             { name: 'Manage Stages', icon: 'ti-settings', path: '/post-production/manage-stages' },
         ],

@@ -494,7 +494,6 @@ const ProductionReportForm = () => {
                                 <span><strong>Date:</strong> {selectedDate}</span>
                                 <span><strong>Line:</strong> {selectedPet ? (pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '') : 'All Lines'}</span>
                                 <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || 'All Shifts') : 'All Shifts'}</span>
-                                <span><strong>Product:</strong> {selectedProduct || 'All Products'}</span>
                             </div>
 
                             {/* Product Details - shown when a product or specific PET is selected */}
