@@ -490,7 +490,6 @@ const ProductionRunByPet = () => {
                                 <span><strong>Date:</strong> {formatDateRange()}</span>
                                 <span><strong>Line:</strong> {selectedPetName || 'All Lines'}</span>
                                 <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || 'All Shifts') : 'All Shifts'}</span>
-                                <span><strong>Product:</strong> {selectedProduct || 'All Products'}</span>
                             </div>
 
                             {/* Row 4-6: Date, Shift, Flavor */}
@@ -603,26 +602,19 @@ const ProductionRunByPet = () => {
                                 </tbody>
                             </table>
 
-                            {/* Row 25-26: Production / Yield / Final Production */}
+                            {/* Production */}
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th className="section-label" style={{ width: '15%' }}>Production</th>
-                                        <th style={{ width: '15%' }}>Yield %</th>
-                                        <th style={{ width: '20%' }}>Final Production</th>
-                                        <th style={{ width: '15%' }}>T. Shrink</th>
-                                        <th style={{ width: '15%' }}>Total Carton</th>
-                                        <th style={{ width: '20%' }}>Total Packs</th>
+                                        <th colSpan={4}>Production</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalBottles || ''} /></td>
-                                        <td className="input-cell numeric"><EditableField value={displayAvgSyrupYield ? `${displayAvgSyrupYield}%` : ''} /></td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalBottlesProduced || ''} /></td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_shrink_packs || shrinkMat.total_used || ''} /></td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_carton_packs || cartonMat.total_used || ''} /></td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalPacks || ''} /></td>
+                                        <td className="label-cell" style={{ width: '10%' }}>Yield</td>
+                                        <td className="input-cell numeric" style={{ width: '40%' }}><EditableField value={displayAvgSyrupYield ? `${displayAvgSyrupYield}%` : ''} /></td>
+                                        <td className="label-cell" style={{ width: '12%' }}>Total Pack</td>
+                                        <td className="input-cell numeric" style={{ width: '38%' }}><EditableField type="number" value={displayTotalPacks || ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
