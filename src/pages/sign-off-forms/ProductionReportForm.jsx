@@ -189,14 +189,14 @@ const ProductionReportForm = () => {
         const startTimes = [
             ...allPets.map(p => p.production_start_time || p.start_time),
             ...allPetsUnfiltered.map(p => p.production_start_time || p.start_time),
-            ...reportsList.map(r => r.start_time || r.production_start_time || r.user_defined_shift_start_time),
+            ...reportsList.map(r => r.start_time || r.production_start_time || r.user_defined_shift_start_time || r.actual_start_time || r.shift_start_time),
             dayData.production_start_time,
             summary.production_start_time,
         ].filter(Boolean).sort();
         const endTimes = [
             ...allPets.map(p => p.production_end_time || p.end_time),
             ...allPetsUnfiltered.map(p => p.production_end_time || p.end_time),
-            ...reportsList.map(r => r.end_time || r.production_end_time || r.user_defined_shift_end_time),
+            ...reportsList.map(r => r.end_time || r.production_end_time || r.user_defined_shift_end_time || r.actual_end_time || r.shift_end_time),
             dayData.production_end_time,
             summary.production_end_time,
         ].filter(Boolean).sort();
@@ -210,6 +210,17 @@ const ProductionReportForm = () => {
             if (shift) {
                 if (!start) start = shift.start_time?.slice(0, 5) || '';
                 if (!end) end = shift.end_time?.slice(0, 5) || '';
+            }
+        }
+
+        // REQ-7: Additional fallback — compute end from start + total hours if available
+        if (start && !end) {
+            const totalHrs = allPets.reduce((sum, p) => sum + (parseFloat(p.total_production_time_hrs) || 0), 0)
+                || parseFloat(summary.total_production_time_hrs) || 0;
+            if (totalHrs > 0) {
+                const startDate = new Date(`${selectedDate}T${start}`);
+                const endDate = new Date(startDate.getTime() + totalHrs * 60 * 60 * 1000);
+                end = endDate.toTimeString().slice(0, 5);
             }
         }
 
@@ -382,6 +393,95 @@ const ProductionReportForm = () => {
         const diff = (endDate - startDate) / (1000 * 60 * 60);
         return diff > 0 ? diff.toFixed(1) : '';
     };
+
+    // Calculate Pallets, Single Packs, and Total Packs
+    const displayTotalPacks = selectedProduct
+        ? allPets.reduce((sum, p) => sum + (Number(p.total_packs) || 0), 0)
+        : (summary.total_packs != null ? summary.total_packs : allPets.reduce((sum, p) => sum + (Number(p.total_packs) || 0), 0));
+
+    const { displayTotalPallets, displaySinglePacks } = (() => {
+        const entries = allPets.length > 0 ? allPets : reportsList;
+
+        if (entries.length > 0) {
+            let totalPalletsCount = 0;
+            let singlePacksCount = 0;
+            let hasValidCalculation = false;
+
+            entries.forEach(entry => {
+                const pCatalog = products.find(pr => pr.name === entry.product_name) || {};
+                const fallback = allPetsUnfiltered.find(pe => pe.product_name === entry.product_name && (pe.packs_per_pallet || pe.single_packs)) || {};
+                const ppp = Number(entry.packs_per_pallet || fallback.packs_per_pallet || pCatalog.packs_per_pallet || summary.packs_per_pallet) || 0;
+                const entryPacks = Number(entry.total_packs) || 0;
+
+                if (entry.single_packs != null && entry.single_packs !== '') {
+                    hasValidCalculation = true;
+                    const single = Number(entry.single_packs) || 0;
+                    singlePacksCount += single;
+                    let entryPallets = entry.total_pallets != null ? Number(entry.total_pallets) : 0;
+                    // REQ-1 FIX: Detect if total_pallets is actually packs (suspiciously close to total_packs)
+                    if (entryPallets > 0 && ppp > 0 && entryPallets > entryPacks * 0.5) {
+                        // total_pallets value is too high — likely contains packs value, recalculate
+                        entryPallets = Math.floor((entryPacks - single) / ppp);
+                    } else if (entryPallets === 0 && ppp > 0) {
+                        entryPallets = Math.floor((entryPacks - single) / ppp);
+                    }
+                    totalPalletsCount += entryPallets;
+                } else if (entry.total_pallets != null && entry.total_pallets !== '') {
+                    hasValidCalculation = true;
+                    let entryPallets = Number(entry.total_pallets) || 0;
+                    // REQ-1 FIX: Detect if total_pallets is actually packs (value >= total_packs or suspiciously high)
+                    if (ppp > 0 && entryPallets > 0 && (entryPallets >= entryPacks * 0.5 || entryPallets > ppp * 500)) {
+                        // API returned packs in the pallets field — recalculate actual pallets
+                        entryPallets = Math.floor(entryPacks / ppp);
+                        singlePacksCount += (entryPacks % ppp);
+                    } else {
+                        totalPalletsCount += entryPallets;
+                        if (ppp > 0) {
+                            singlePacksCount += Math.max(0, entryPacks - (entryPallets * ppp));
+                        }
+                        return; // skip the addition below since we added above
+                    }
+                    totalPalletsCount += entryPallets;
+                } else if (entry.total_output != null && Number(entry.total_output) > 0 && Number(entry.total_output) < entryPacks) {
+                    hasValidCalculation = true;
+                    const entryPallets = Number(entry.total_output);
+                    totalPalletsCount += entryPallets;
+                    if (ppp > 0) {
+                        singlePacksCount += Math.max(0, entryPacks - (entryPallets * ppp));
+                    }
+                } else if (ppp > 0 && entryPacks > 0) {
+                    hasValidCalculation = true;
+                    totalPalletsCount += Math.floor(entryPacks / ppp);
+                    singlePacksCount += (entryPacks % ppp);
+                }
+            });
+
+            if (hasValidCalculation) {
+                return {
+                    displayTotalPallets: totalPalletsCount,
+                    displaySinglePacks: singlePacksCount,
+                };
+            }
+        }
+
+        const summaryPacks = Number(summary.total_packs) || (Number(displayTotalPacks) || 0);
+        const summaryPPP = Number(summary.packs_per_pallet) || 0;
+        let summaryPallets = Number(summary.total_pallets) || 0;
+        // REQ-1 FIX: If API total_pallets is suspiciously close to total_packs, it's returning packs not pallets
+        if (summaryPallets > 0 && summaryPPP > 0 && (summaryPallets >= summaryPacks * 0.5 || summaryPallets > summaryPPP * 500)) {
+            summaryPallets = Math.floor(summaryPacks / summaryPPP);
+        } else if (summaryPallets === 0 && summaryPPP > 0 && summaryPacks > 0) {
+            summaryPallets = Math.floor(summaryPacks / summaryPPP);
+        } else if (summaryPallets === 0) {
+            summaryPallets = summary.total_output && Number(summary.total_output) < summaryPacks ? Number(summary.total_output) : 0;
+        }
+        const summarySingle = summary.single_packs != null ? Number(summary.single_packs) : (summaryPPP > 0 && summaryPallets > 0 ? Math.max(0, summaryPacks - (summaryPallets * summaryPPP)) : (summaryPPP > 0 ? summaryPacks % summaryPPP : ''));
+
+        return {
+            displayTotalPallets: summaryPallets || (selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_output || 0), 0) : (summary.total_output || '')),
+            displaySinglePacks: summarySingle !== '' ? summarySingle : '',
+        };
+    })();
 
     return (
         <div className="page-wrapper">
@@ -646,11 +746,11 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Pallets</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_output || 0), 0) : (summary.total_output || allPets.reduce((sum, p) => sum + (p.total_output || 0), 0))} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalPallets} /></td>
                                         <td className="label-cell">Single Packs</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_packs || 0), 0) : (summary.total_packs || allPets.reduce((sum, p) => sum + (p.total_packs || 0), 0))} /></td>
-                                        <td className="label-cell">Total Bottles</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_bottles || 0), 0) : (summary.total_bottles || allPets.reduce((sum, p) => sum + (p.total_bottles || 0), 0))} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={displaySinglePacks} /></td>
+                                        <td className="label-cell">Total Packs</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={displayTotalPacks} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
@@ -658,7 +758,15 @@ const ProductionReportForm = () => {
                                         <td className="label-cell"></td>
                                         <td className="input-cell numeric"></td>
                                         <td className="label-cell">Total Bottles (R.W)</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={selectedProduct ? allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0) : (summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0))} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={(() => {
+                                            // REQ-3: Total Bottles (R.W) = Filler Reading (actual bottles through filler counter)
+                                            const fillerReading = Number(productionMeters.filler_reading) || 0;
+                                            if (fillerReading > 0) return fillerReading;
+                                            // Fallback to total_bottles_produced from pet entries or summary
+                                            return selectedProduct
+                                                ? allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0)
+                                                : (summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0));
+                                        })()} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Downtime (min)</td>
@@ -861,18 +969,91 @@ const ProductionReportForm = () => {
                                         <th style={{ width: '33%' }}>Syrup</th>
                                         <th style={{ width: '34%' }}>Production Reading</th>
                                     </tr>
+                                    {/* REQ-2: CO2 and Syrup meters are per-line instruments — not applicable when viewing All Lines */}
+                                    {!selectedPet ? (
+                                    <tr>
+                                        <td style={{ verticalAlign: 'top', padding: '12px 8px' }}>
+                                            <div style={{ textAlign: 'center', color: '#6c757d', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                                <strong>Not Applicable</strong><br />
+                                                <span>CO2 meters are per-line specific.<br />Select a specific line to view.</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ verticalAlign: 'top', padding: '12px 8px' }}>
+                                            <div style={{ textAlign: 'center', color: '#6c757d', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                                <strong>Not Applicable</strong><br />
+                                                <span>Syrup meters are per-line specific.<br />Select a specific line to view.</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ verticalAlign: 'top' }}>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Filler Reading:</span>
+                                                <EditableField value={productionMeters.filler_reading != null ? productionMeters.filler_reading : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Shrink Reading:</span>
+                                                <EditableField value={productionMeters.shrink_reading != null ? productionMeters.shrink_reading : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Filler Rejects (M/C):</span>
+                                                <EditableField value={productionMeters.filler_rejects_mc != null ? productionMeters.filler_rejects_mc : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Blower Rejects (Manual Count):</span>
+                                                <EditableField value={productionMeters.blower_rejects_manual != null ? productionMeters.blower_rejects_manual : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Shrink Reading / T. Packs (%):</span>
+                                                <EditableField value={(() => {
+                                                    // REQ-6: Shrink % = shrink_reading / filler_reading × 100
+                                                    if (productionMeters.shrink_reading_packs_percent != null && productionMeters.shrink_reading_packs_percent > 0) {
+                                                        // If API already provides a valid percent and it looks like a yield (>50%), use it
+                                                        if (productionMeters.shrink_reading_packs_percent > 50) return productionMeters.shrink_reading_packs_percent;
+                                                    }
+                                                    const shrinkVal = Number(productionMeters.shrink_reading) || 0;
+                                                    const fillerVal = Number(productionMeters.filler_reading) || 0;
+                                                    if (shrinkVal > 0 && fillerVal > 0) {
+                                                        return ((shrinkVal / fillerVal) * 100).toFixed(1);
+                                                    }
+                                                    return productionMeters.shrink_reading_packs_percent || '';
+                                                })()} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    ) : (
+                                    <>
+                                    {/* Per-line view: show CO2/Syrup with N/A detection for specific sections */}
+                                    {(() => {
+                                        // Determine if CO2 data is applicable (has valid start or end readings)
+                                        const co2HasData = (Number(co2Meters.start_reading_kg) > 0 || Number(co2Meters.end_reading_kg) > 0);
+                                        // Determine if Syrup data is applicable (has valid start or end readings)
+                                        const syrupHasData = (Number(syrupMeters.start_reading) > 0 || Number(syrupMeters.end_reading) > 0);
+
+                                        return (
+                                    <>
                                     <tr>
                                         <td>
+                                            {co2HasData ? (
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading (Kg):</span>
                                                 <EditableField value={co2Meters.start_reading_kg != null ? co2Meters.start_reading_kg : ''} />
                                             </div>
+                                            ) : (
+                                            <div style={{ textAlign: 'center', color: '#6c757d', fontStyle: 'italic', fontSize: '0.8rem', padding: '8px 4px' }}>
+                                                <strong>Not Applicable</strong>
+                                            </div>
+                                            )}
                                         </td>
                                         <td>
+                                            {syrupHasData ? (
                                             <div className="meter-field">
                                                 <span className="meter-label">Start up Reading:</span>
                                                 <EditableField value={syrupMeters.start_reading != null ? syrupMeters.start_reading : ''} />
                                             </div>
+                                            ) : (
+                                            <div style={{ textAlign: 'center', color: '#6c757d', fontStyle: 'italic', fontSize: '0.8rem', padding: '8px 4px' }}>
+                                                <strong>Not Applicable</strong>
+                                            </div>
+                                            )}
                                         </td>
                                         <td>
                                             <div className="meter-field">
@@ -883,16 +1064,20 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td>
+                                            {co2HasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading (Kg):</span>
                                                 <EditableField value={co2Meters.end_reading_kg != null ? co2Meters.end_reading_kg : ''} />
                                             </div>
+                                            )}
                                         </td>
                                         <td>
+                                            {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">End up Reading:</span>
                                                 <EditableField value={syrupMeters.end_reading != null ? syrupMeters.end_reading : ''} />
                                             </div>
+                                            )}
                                         </td>
                                         <td>
                                             <div className="meter-field">
@@ -903,10 +1088,22 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td>
+                                            {co2HasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Total CO2 Consumed (kg):</span>
-                                                <EditableField value={co2Meters.total_co2_consumed_kg != null ? co2Meters.total_co2_consumed_kg : ''} />
+                                                <EditableField value={(() => {
+                                                    if (co2Meters.total_co2_consumed_kg != null && co2Meters.total_co2_consumed_kg > 0) {
+                                                        return co2Meters.total_co2_consumed_kg;
+                                                    }
+                                                    const start = Number(co2Meters.start_reading_kg) || 0;
+                                                    const end = Number(co2Meters.end_reading_kg) || 0;
+                                                    if (start > 0 && end > 0 && end > start) {
+                                                        return (end - start).toFixed(1);
+                                                    }
+                                                    return co2Meters.total_co2_consumed_kg || '';
+                                                })()} />
                                             </div>
+                                            )}
                                         </td>
                                         <td></td>
                                         <td>
@@ -918,16 +1115,30 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td>
+                                            {co2HasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Std. CO2 Consumption (kg):</span>
-                                                <EditableField value={co2Meters.std_co2_consumption_kg != null ? co2Meters.std_co2_consumption_kg : ''} />
+                                                <EditableField value={(() => {
+                                                    if (co2Meters.std_co2_consumption_kg != null && co2Meters.std_co2_consumption_kg > 0) {
+                                                        return co2Meters.std_co2_consumption_kg;
+                                                    }
+                                                    const fillerReading = Number(productionMeters.filler_reading) || 0;
+                                                    const co2PerBottle = Number(co2Meters.co2_grams_per_bottle || co2Meters.std_co2_per_bottle_g) || 0;
+                                                    if (fillerReading > 0 && co2PerBottle > 0) {
+                                                        return ((fillerReading * co2PerBottle) / 1000).toFixed(1);
+                                                    }
+                                                    return co2Meters.std_co2_consumption_kg || '';
+                                                })()} />
                                             </div>
+                                            )}
                                         </td>
                                         <td>
+                                            {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Unit (L, m3, kg):</span>
                                                 <EditableField value={syrupMeters.unit || ''} />
                                             </div>
+                                            )}
                                         </td>
                                         <td>
                                             <div className="meter-field">
@@ -938,64 +1149,154 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td>
+                                            {co2HasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 Yield (%):</span>
-                                                <EditableField value={co2Meters.co2_yield_percent != null ? co2Meters.co2_yield_percent : (summary.avg_co2_yield || '')} />
+                                                <EditableField value={(() => {
+                                                    if (co2Meters.co2_yield_percent != null && co2Meters.co2_yield_percent > 0) {
+                                                        return co2Meters.co2_yield_percent;
+                                                    }
+                                                    const actual = Number(co2Meters.total_co2_consumed_kg) || (() => {
+                                                        const s = Number(co2Meters.start_reading_kg) || 0;
+                                                        const e = Number(co2Meters.end_reading_kg) || 0;
+                                                        return (s > 0 && e > 0 && e > s) ? (e - s) : 0;
+                                                    })();
+                                                    const std = Number(co2Meters.std_co2_consumption_kg) || 0;
+                                                    if (actual > 0 && std > 0) {
+                                                        return ((std / actual) * 100).toFixed(1);
+                                                    }
+                                                    return summary.avg_co2_yield || '';
+                                                })()} />
                                             </div>
+                                            )}
                                         </td>
                                         <td>
+                                            {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Density (kg/L):</span>
                                                 <EditableField value={syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : ''} />
                                             </div>
+                                            )}
                                         </td>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Shrink Reading / T. Packs (%):</span>
-                                                <EditableField value={productionMeters.shrink_reading_packs_percent != null ? productionMeters.shrink_reading_packs_percent : ''} />
+                                                <EditableField value={(() => {
+                                                    if (productionMeters.shrink_reading_packs_percent != null && productionMeters.shrink_reading_packs_percent > 50) {
+                                                        return productionMeters.shrink_reading_packs_percent;
+                                                    }
+                                                    const shrinkVal = Number(productionMeters.shrink_reading) || 0;
+                                                    const fillerVal = Number(productionMeters.filler_reading) || 0;
+                                                    if (shrinkVal > 0 && fillerVal > 0) {
+                                                        return ((shrinkVal / fillerVal) * 100).toFixed(1);
+                                                    }
+                                                    return productionMeters.shrink_reading_packs_percent || '';
+                                                })()} />
                                             </div>
                                         </td>
                                     </tr>
                                     <tr>
                                         <td></td>
                                         <td>
+                                            {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Total Syrup Used (L):</span>
-                                                <EditableField value={syrupMeters.total_syrup_used_l != null ? syrupMeters.total_syrup_used_l : ''} />
+                                                <EditableField value={(() => {
+                                                    if (syrupMeters.total_syrup_used_l != null && syrupMeters.total_syrup_used_l > 0) {
+                                                        return syrupMeters.total_syrup_used_l;
+                                                    }
+                                                    const startVal = Number(syrupMeters.start_reading) || 0;
+                                                    const endVal = Number(syrupMeters.end_reading) || 0;
+                                                    if (startVal > 0 && endVal > 0 && endVal > startVal) {
+                                                        return (endVal - startVal).toFixed(1);
+                                                    }
+                                                    return syrupMeters.total_syrup_used_l || '';
+                                                })()} />
                                             </div>
+                                            )}
                                         </td>
                                         <td></td>
                                     </tr>
                                     <tr>
                                         <td></td>
                                         <td>
+                                            {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Dilution Ratio:</span>
                                                 <EditableField value={syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : ''} />
                                             </div>
+                                            )}
                                         </td>
                                         <td></td>
                                     </tr>
                                     <tr>
                                         <td></td>
                                         <td>
+                                            {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Std. Syrup Consumption (L):</span>
-                                                <EditableField value={syrupMeters.std_syrup_consumption_l != null ? syrupMeters.std_syrup_consumption_l : ''} />
+                                                <EditableField value={(() => {
+                                                    if (syrupMeters.std_syrup_consumption_l != null && syrupMeters.std_syrup_consumption_l > 0) {
+                                                        return syrupMeters.std_syrup_consumption_l;
+                                                    }
+                                                    const fillerReading = Number(productionMeters.filler_reading) || 0;
+                                                    const dilutionRatio = Number(syrupMeters.syrup_dilution_ratio) || 0;
+                                                    const petEntry = allPets[0] || allPetsUnfiltered[0] || {};
+                                                    const productCatalog = products.find(pr => pr.name === (selectedProduct || petEntry.product_name)) || {};
+                                                    const bottleSizeStr = petEntry.bottle_size || productCatalog.bottle_size || productCatalog.size || '';
+                                                    const bottleSizeL = parseFloat(String(bottleSizeStr).replace(/[^0-9.]/g, '')) / (String(bottleSizeStr).toLowerCase().includes('l') && !String(bottleSizeStr).toLowerCase().includes('ml') ? 1 : 1000) || 0;
+                                                    if (fillerReading > 0 && dilutionRatio > 0 && bottleSizeL > 0) {
+                                                        return ((fillerReading * bottleSizeL) / dilutionRatio).toFixed(1);
+                                                    }
+                                                    return syrupMeters.std_syrup_consumption_l || '';
+                                                })()} />
                                             </div>
+                                            )}
                                         </td>
                                         <td></td>
                                     </tr>
                                     <tr>
                                         <td></td>
                                         <td>
+                                            {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Yield (%):</span>
-                                                <EditableField value={syrupMeters.syrup_yield_percent != null ? syrupMeters.syrup_yield_percent : (summary.avg_syrup_yield || '')} />
+                                                <EditableField value={(() => {
+                                                    if (syrupMeters.syrup_yield_percent != null && syrupMeters.syrup_yield_percent > 0) {
+                                                        return syrupMeters.syrup_yield_percent;
+                                                    }
+                                                    const actualSyrup = Number(syrupMeters.total_syrup_used_l) || (() => {
+                                                        const s = Number(syrupMeters.start_reading) || 0;
+                                                        const e = Number(syrupMeters.end_reading) || 0;
+                                                        return (s > 0 && e > 0 && e > s) ? (e - s) : 0;
+                                                    })();
+                                                    let stdSyrup = Number(syrupMeters.std_syrup_consumption_l) || 0;
+                                                    if (stdSyrup === 0) {
+                                                        const fillerReading = Number(productionMeters.filler_reading) || 0;
+                                                        const dilutionRatio = Number(syrupMeters.syrup_dilution_ratio) || 0;
+                                                        const petEntry = allPets[0] || allPetsUnfiltered[0] || {};
+                                                        const productCatalog = products.find(pr => pr.name === (selectedProduct || petEntry.product_name)) || {};
+                                                        const bottleSizeStr = petEntry.bottle_size || productCatalog.bottle_size || productCatalog.size || '';
+                                                        const bottleSizeL = parseFloat(String(bottleSizeStr).replace(/[^0-9.]/g, '')) / (String(bottleSizeStr).toLowerCase().includes('l') && !String(bottleSizeStr).toLowerCase().includes('ml') ? 1 : 1000) || 0;
+                                                        if (fillerReading > 0 && dilutionRatio > 0 && bottleSizeL > 0) {
+                                                            stdSyrup = (fillerReading * bottleSizeL) / dilutionRatio;
+                                                        }
+                                                    }
+                                                    if (actualSyrup > 0 && stdSyrup > 0) {
+                                                        return ((stdSyrup / actualSyrup) * 100).toFixed(2);
+                                                    }
+                                                    return summary.avg_syrup_yield || '';
+                                                })()} />
                                             </div>
+                                            )}
                                         </td>
                                         <td></td>
                                     </tr>
+                                    </>
+                                        );
+                                    })()}
+                                    </>
+                                    )}
                                 </tbody>
                             </table>
 

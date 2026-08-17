@@ -530,9 +530,7 @@ const ProductionRunByPet = () => {
                                         <td className="label-cell">Shift</td>
                                         <td className="input-cell"><EditableField value={selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'} /></td>
                                         <td className="label-cell">Total Batches</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={batchNumbers.length || ''} /></td>
-                                        <td className="label-cell">Syrup (Lts)</td>
-                                        <td className="input-cell numeric"><EditableField value={totalSyrupLiters ? fmt(totalSyrupLiters, 1) : (summary.total_syrup_liters ? fmt(summary.total_syrup_liters, 1) : '')} /></td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={batchNumbers.length || ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -542,15 +540,14 @@ const ProductionRunByPet = () => {
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={6}>Product Details</th>
+                                        <th colSpan={5}>Product Details</th>
                                     </tr>
                                     <tr className="sub-header-row">
-                                        <th style={{ width: '25%' }}>Product</th>
-                                        <th style={{ width: '15%' }}>Bottle Size</th>
-                                        <th style={{ width: '15%' }}>Line Speed (BPH)</th>
-                                        <th style={{ width: '15%' }}>Bottles/Pack</th>
-                                        <th style={{ width: '15%' }}>Packs/Pallet</th>
-                                        <th style={{ width: '15%' }}>Single Packs</th>
+                                        <th style={{ width: '28%' }}>Product</th>
+                                        <th style={{ width: '18%' }}>Bottle Size</th>
+                                        <th style={{ width: '18%' }}>Line Speed (BPH)</th>
+                                        <th style={{ width: '18%' }}>Bottles/Pack</th>
+                                        <th style={{ width: '18%' }}>Packs/Pallet</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -573,7 +570,6 @@ const ProductionRunByPet = () => {
                                             const lineSpeed = petEntry.line_speed || fallback.line_speed || productCatalog.target_speed_bph || productCatalog.line_speed || summary.line_speed || '';
                                             const bottlesPerPack = petEntry.bottles_per_pack || fallback.bottles_per_pack || productCatalog.bottles_per_pack || summary.bottles_per_pack || '';
                                             const packsPerPallet = petEntry.packs_per_pallet || fallback.packs_per_pallet || productCatalog.packs_per_pallet || summary.packs_per_pallet || '';
-                                            const singlePacks = petEntry.single_packs || fallback.single_packs || productCatalog.single_packs || summary.single_packs || '';
                                             return (
                                                 <tr key={idx}>
                                                     <td className="label-cell">{petEntry.product_name}</td>
@@ -581,7 +577,6 @@ const ProductionRunByPet = () => {
                                                     <td className="input-cell numeric"><EditableField value={lineSpeed} /></td>
                                                     <td className="input-cell numeric"><EditableField value={bottlesPerPack} /></td>
                                                     <td className="input-cell numeric"><EditableField value={packsPerPallet} /></td>
-                                                    <td className="input-cell numeric"><EditableField value={singlePacks} /></td>
                                                 </tr>
                                             );
                                         });
