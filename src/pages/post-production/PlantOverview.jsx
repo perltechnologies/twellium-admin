@@ -112,6 +112,8 @@ const PlantOverview = () => {
                     total_bottles: 0, total_packs: 0,
                     total_downtime_minutes: 0, planned_downtime_mins: 0, mechanical_downtime_mins: 0,
                     syrup_yield: null, co2_yield: null,
+                    syrup_total_actual: 0, syrup_total_std: 0,
+                    co2_total_actual: 0, co2_total_std: 0,
                     count: 0,
                 };
             }
@@ -128,9 +130,34 @@ const PlantOverview = () => {
             line.mechanical_downtime_mins += (pet.mechanical_downtime_mins || 0);
             if (pet.syrup_yield !== null && pet.syrup_yield !== undefined) {
                 line.syrup_yield = (line.syrup_yield || 0) + pet.syrup_yield;
+                // Cumulative weighting by volume
+                const actualSyrup = pet.meters_reading?.syrup?.total_syrup_used_l
+                    || pet.total_syrup_used_l || pet.syrup_used_liters || 0;
+                const stdSyrup = pet.meters_reading?.syrup?.std_syrup_consumption_l
+                    || pet.std_syrup_consumption_l || 0;
+                if (actualSyrup > 0 && stdSyrup > 0) {
+                    line.syrup_total_actual += actualSyrup;
+                    line.syrup_total_std += stdSyrup;
+                } else {
+                    const weight = actualSyrup > 0 ? actualSyrup : (pet.total_bottles_produced || pet.total_bottles || pet.total_packs || 1);
+                    line.syrup_total_actual += weight;
+                    line.syrup_total_std += weight * (pet.syrup_yield / 100);
+                }
             }
             if (pet.co2_yield !== null && pet.co2_yield !== undefined) {
                 line.co2_yield = (line.co2_yield || 0) + pet.co2_yield;
+                const actualCo2 = pet.meters_reading?.co2?.total_co2_consumed_kg
+                    || pet.total_co2_consumed_kg || 0;
+                const stdCo2 = pet.meters_reading?.co2?.std_co2_consumption_kg
+                    || pet.std_co2_consumption_kg || 0;
+                if (actualCo2 > 0 && stdCo2 > 0) {
+                    line.co2_total_actual += actualCo2;
+                    line.co2_total_std += stdCo2;
+                } else {
+                    const weight = actualCo2 > 0 ? actualCo2 : (pet.total_bottles_produced || pet.total_bottles || pet.total_packs || 1);
+                    line.co2_total_actual += weight;
+                    line.co2_total_std += weight * (pet.co2_yield / 100);
+                }
             }
             line.count += 1;
         });
@@ -141,8 +168,8 @@ const PlantOverview = () => {
             availability: line.count > 0 ? line.availability / line.count : 0,
             performance: line.count > 0 ? line.performance / line.count : 0,
             quality: line.count > 0 ? line.quality / line.count : 0,
-            syrup_yield: line.syrup_yield !== null && line.count > 0 ? line.syrup_yield / line.count : null,
-            co2_yield: line.co2_yield !== null && line.count > 0 ? line.co2_yield / line.count : null,
+            syrup_yield: line.syrup_total_actual > 0 ? (line.syrup_total_std / line.syrup_total_actual) * 100 : null,
+            co2_yield: line.co2_total_actual > 0 ? (line.co2_total_std / line.co2_total_actual) * 100 : null,
             product_name: [...new Set(line.products)].join(', '),
             status: line.mechanical_downtime_mins > line.planned_downtime_mins ? 'MECHANICAL_FAULT' : 'RUNNING',
         })).sort((a, b) => {

@@ -91,7 +91,51 @@ const SyrupReport = () => {
         return f.start_date === f.end_date ? f.start_date : `${f.start_date} to ${f.end_date}`;
     }, [rawData]);
 
-    const avgSyrupYield = rawData?.summary?.avg_syrup_yield || 0;
+    const avgSyrupYield = useMemo(() => {
+        // Cumulative average: Total Std Syrup / Total Actual Syrup × 100
+        // This weights each entry by actual syrup volume rather than simple averaging percentages
+        let totalStdSyrup = 0;
+        let totalActualSyrup = 0;
+
+        (rawData?.daily_breakdown || []).forEach(day => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                const sy = p.syrup_yield;
+                if (sy === null || sy === undefined || sy <= 0) return;
+
+                // Get actual syrup used from meters or direct field
+                const actualSyrup = p.meters_reading?.syrup?.total_syrup_used_l
+                    || p.total_syrup_used_l
+                    || p.syrup_used_liters
+                    || 0;
+                // Get std syrup consumption
+                const stdSyrup = p.meters_reading?.syrup?.std_syrup_consumption_l
+                    || p.std_syrup_consumption_l
+                    || 0;
+
+                if (actualSyrup > 0 && stdSyrup > 0) {
+                    totalActualSyrup += actualSyrup;
+                    totalStdSyrup += stdSyrup;
+                } else if (actualSyrup > 0 && sy > 0) {
+                    // Derive std from yield: std = actual × (yield/100)
+                    totalActualSyrup += actualSyrup;
+                    totalStdSyrup += actualSyrup * (sy / 100);
+                } else {
+                    // Fallback: weight by total_bottles_produced as proxy for production volume
+                    const bottles = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
+                    if (bottles > 0) {
+                        totalActualSyrup += bottles;
+                        totalStdSyrup += bottles * (sy / 100);
+                    }
+                }
+            });
+        });
+
+        if (totalActualSyrup > 0 && totalStdSyrup > 0) {
+            return (totalStdSyrup / totalActualSyrup) * 100;
+        }
+        // Final fallback: use API summary value
+        return rawData?.summary?.avg_syrup_yield || 0;
+    }, [rawData]);
 
     const normalizePet = (name) => {
         const num = (name || '').toLowerCase().match(/pet\s*(\d+)/);
@@ -101,17 +145,41 @@ const SyrupReport = () => {
     // Build per-pet syrup yield data (aggregated across all dates/shifts)
     const syrupByPet = useMemo(() => {
         const petMap = {};
-        defaultPets.forEach(p => { petMap[p] = { pet: p, yieldSum: 0, count: 0, values: [] }; });
+        defaultPets.forEach(p => { petMap[p] = { pet: p, totalActual: 0, totalStd: 0, count: 0, values: [] }; });
 
         (rawData?.daily_breakdown || []).forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
-                if (!petMap[name]) petMap[name] = { pet: name, yieldSum: 0, count: 0, values: [] };
+                if (!petMap[name]) petMap[name] = { pet: name, totalActual: 0, totalStd: 0, count: 0, values: [] };
                 const sy = p.syrup_yield;
                 if (sy !== null && sy !== undefined && sy > 0) {
-                    petMap[name].yieldSum += sy;
                     petMap[name].count += 1;
                     petMap[name].values.push({ date: day.date, shift: p.shift, yield: sy, product: p.product_name });
+
+                    // Cumulative weighting: use actual syrup volume or bottles as weight
+                    const actualSyrup = p.meters_reading?.syrup?.total_syrup_used_l
+                        || p.total_syrup_used_l || p.syrup_used_liters || 0;
+                    const stdSyrup = p.meters_reading?.syrup?.std_syrup_consumption_l
+                        || p.std_syrup_consumption_l || 0;
+
+                    if (actualSyrup > 0 && stdSyrup > 0) {
+                        petMap[name].totalActual += actualSyrup;
+                        petMap[name].totalStd += stdSyrup;
+                    } else if (actualSyrup > 0) {
+                        petMap[name].totalActual += actualSyrup;
+                        petMap[name].totalStd += actualSyrup * (sy / 100);
+                    } else {
+                        // Weight by bottles produced as proxy
+                        const bottles = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
+                        if (bottles > 0) {
+                            petMap[name].totalActual += bottles;
+                            petMap[name].totalStd += bottles * (sy / 100);
+                        } else {
+                            // No volume data — use equal weight (1 unit per entry)
+                            petMap[name].totalActual += 1;
+                            petMap[name].totalStd += sy / 100;
+                        }
+                    }
                 }
             });
         });
@@ -119,7 +187,7 @@ const SyrupReport = () => {
         return Object.values(petMap)
             .map(p => ({
                 pet: p.pet,
-                avg_yield: p.count > 0 ? p.yieldSum / p.count : 0,
+                avg_yield: p.totalActual > 0 ? (p.totalStd / p.totalActual) * 100 : 0,
                 count: p.count,
                 values: p.values,
             }))

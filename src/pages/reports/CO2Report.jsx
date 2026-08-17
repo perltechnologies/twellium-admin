@@ -78,7 +78,42 @@ const CO2Report = () => {
         return f.start_date === f.end_date ? f.start_date : `${f.start_date} to ${f.end_date}`;
     }, [rawData]);
 
-    const avgCo2Yield = rawData?.summary?.avg_co2_yield || 0;
+    const avgCo2Yield = useMemo(() => {
+        // Cumulative average: Total Std CO2 / Total Actual CO2 × 100
+        let totalStdCo2 = 0;
+        let totalActualCo2 = 0;
+
+        (rawData?.daily_breakdown || []).forEach(day => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                const cy = p.co2_yield;
+                if (cy === null || cy === undefined || cy <= 0) return;
+
+                const actualCo2 = p.meters_reading?.co2?.total_co2_consumed_kg
+                    || p.total_co2_consumed_kg || 0;
+                const stdCo2 = p.meters_reading?.co2?.std_co2_consumption_kg
+                    || p.std_co2_consumption_kg || 0;
+
+                if (actualCo2 > 0 && stdCo2 > 0) {
+                    totalActualCo2 += actualCo2;
+                    totalStdCo2 += stdCo2;
+                } else if (actualCo2 > 0) {
+                    totalActualCo2 += actualCo2;
+                    totalStdCo2 += actualCo2 * (cy / 100);
+                } else {
+                    const bottles = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
+                    if (bottles > 0) {
+                        totalActualCo2 += bottles;
+                        totalStdCo2 += bottles * (cy / 100);
+                    }
+                }
+            });
+        });
+
+        if (totalActualCo2 > 0 && totalStdCo2 > 0) {
+            return (totalStdCo2 / totalActualCo2) * 100;
+        }
+        return rawData?.summary?.avg_co2_yield || 0;
+    }, [rawData]);
 
     const defaultPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
     const normalizePet = (name) => {
@@ -89,17 +124,30 @@ const CO2Report = () => {
     // Build per-pet CO2 yield data
     const co2ByPet = useMemo(() => {
         const petMap = {};
-        defaultPets.forEach(p => { petMap[p] = { pet: p, yieldSum: 0, count: 0, values: [] }; });
+        defaultPets.forEach(p => { petMap[p] = { pet: p, totalActual: 0, totalStd: 0, count: 0, values: [] }; });
 
         (rawData?.daily_breakdown || []).forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
-                if (!petMap[name]) petMap[name] = { pet: name, yieldSum: 0, count: 0, values: [] };
+                if (!petMap[name]) petMap[name] = { pet: name, totalActual: 0, totalStd: 0, count: 0, values: [] };
                 const cy = p.co2_yield;
                 if (cy !== null && cy !== undefined && cy > 0) {
-                    petMap[name].yieldSum += cy;
                     petMap[name].count += 1;
                     petMap[name].values.push({ date: day.date, shift: p.shift, yield: cy, product: p.product_name });
+
+                    // Cumulative weighting by CO2 volume
+                    const actualCo2 = p.meters_reading?.co2?.total_co2_consumed_kg
+                        || p.total_co2_consumed_kg || 0;
+                    const stdCo2 = p.meters_reading?.co2?.std_co2_consumption_kg
+                        || p.std_co2_consumption_kg || 0;
+                    if (actualCo2 > 0 && stdCo2 > 0) {
+                        petMap[name].totalActual += actualCo2;
+                        petMap[name].totalStd += stdCo2;
+                    } else {
+                        const weight = actualCo2 > 0 ? actualCo2 : (p.total_bottles_produced || p.total_bottles || p.total_packs || 1);
+                        petMap[name].totalActual += weight;
+                        petMap[name].totalStd += weight * (cy / 100);
+                    }
                 }
             });
         });
@@ -107,7 +155,7 @@ const CO2Report = () => {
         return Object.values(petMap)
             .map(p => ({
                 pet: p.pet,
-                avg_yield: p.count > 0 ? p.yieldSum / p.count : 0,
+                avg_yield: p.totalActual > 0 ? (p.totalStd / p.totalActual) * 100 : 0,
                 count: p.count,
             }))
             .sort((a, b) => {
