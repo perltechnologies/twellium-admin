@@ -418,8 +418,8 @@ const ProductionReportForm = () => {
                     const single = Number(entry.single_packs) || 0;
                     singlePacksCount += single;
                     let entryPallets = entry.total_pallets != null ? Number(entry.total_pallets) : 0;
-                    // REQ-1 FIX: Detect if total_pallets is actually packs (suspiciously close to total_packs)
-                    if (entryPallets > 0 && ppp > 0 && entryPallets > entryPacks * 0.5) {
+                    // REQ-1 FIX: Detect if total_pallets is actually packs (suspiciously close to total_packs or unrealistically high)
+                    if (entryPallets > 0 && ppp > 0 && (entryPallets > entryPacks * 0.5 || entryPallets > 1000)) {
                         // total_pallets value is too high — likely contains packs value, recalculate
                         entryPallets = Math.floor((entryPacks - single) / ppp);
                     } else if (entryPallets === 0 && ppp > 0) {
@@ -468,7 +468,7 @@ const ProductionReportForm = () => {
         const summaryPPP = Number(summary.packs_per_pallet) || 0;
         let summaryPallets = Number(summary.total_pallets) || 0;
         // REQ-1 FIX: If API total_pallets is suspiciously close to total_packs, it's returning packs not pallets
-        if (summaryPallets > 0 && summaryPPP > 0 && (summaryPallets >= summaryPacks * 0.5 || summaryPallets > summaryPPP * 500)) {
+        if (summaryPallets > 0 && summaryPPP > 0 && (summaryPallets >= summaryPacks * 0.5 || summaryPallets > 1000)) {
             summaryPallets = Math.floor(summaryPacks / summaryPPP);
         } else if (summaryPallets === 0 && summaryPPP > 0 && summaryPacks > 0) {
             summaryPallets = Math.floor(summaryPacks / summaryPPP);
@@ -754,13 +754,18 @@ const ProductionReportForm = () => {
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
-                                        <td className="input-cell numeric"><EditableField type="number" value={(() => { const count = allPets.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0); return count || summary.workers_count || summary.worker_count || ''; })()} /></td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={(() => {
+                                            // REQ-8: Workers Count — Use total active workers from API if available
+                                            const count = allPets.reduce((sum, p) => sum + (p.workers?.total_active_workers || p.workers?.worker_count || 0), 0);
+                                            return count || summary.total_active_workers || summary.workers_count || summary.worker_count || '';
+                                        })()} /></td>
                                         <td className="label-cell"></td>
                                         <td className="input-cell numeric"></td>
                                         <td className="label-cell">Total Bottles (R.W)</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={(() => {
                                             // REQ-3: Total Bottles (R.W) = Filler Reading (actual bottles through filler counter)
-                                            const fillerReading = Number(productionMeters.filler_reading) || 0;
+                                            // Fallback to combi_reading if filler_reading is missing or 0
+                                            const fillerReading = Number(productionMeters.filler_reading || productionMeters.combi_reading) || 0;
                                             if (fillerReading > 0) return fillerReading;
                                             // Fallback to total_bottles_produced from pet entries or summary
                                             return selectedProduct
