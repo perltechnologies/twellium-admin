@@ -232,7 +232,7 @@ const ProductionReportForm = () => {
             || reportsList.reduce((sum, r) => sum + (parseFloat(r.total_production_time_hours) || parseFloat(r.total_production_time_hrs) || parseFloat(r.production_hours) || 0), 0)
             || parseFloat(dayData.total_production_time_hrs) || parseFloat(summary.total_production_time_hrs) || parseFloat(summary.total_production_time_hours) || 0;
         if (hrs) {
-            setTotalProductionTimeHrs(hrs.toFixed(1));
+            setTotalProductionTimeHrs(hrs.toFixed(2));
         } else if (start && end) {
             const startDate = new Date(`${selectedDate}T${start}`);
             let endDate = new Date(`${selectedDate}T${end}`);
@@ -240,7 +240,7 @@ const ProductionReportForm = () => {
                 endDate.setDate(endDate.getDate() + 1);
             }
             const diff = (endDate - startDate) / (1000 * 60 * 60);
-            setTotalProductionTimeHrs(diff > 0 ? diff.toFixed(1) : '');
+            setTotalProductionTimeHrs(diff > 0 ? diff.toFixed(2) : '');
         } else {
             setTotalProductionTimeHrs(summary.total_production_time_hrs || summary.total_production_time_hours || '');
         }
@@ -391,7 +391,7 @@ const ProductionReportForm = () => {
             endDate.setDate(endDate.getDate() + 1);
         }
         const diff = (endDate - startDate) / (1000 * 60 * 60);
-        return diff > 0 ? diff.toFixed(1) : '';
+        return diff > 0 ? diff.toFixed(2) : '';
     };
 
     // Calculate Pallets, Single Packs, and Total Packs
@@ -890,7 +890,7 @@ const ProductionReportForm = () => {
                                                 const prodPacks = prodEntries.reduce((sum, p) => sum + (p.total_packs || 0), 0);
                                                 const prodProdHrs = prodEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0);
                                                 const prodEfficiency = prodEntries.length > 0
-                                                    ? (prodEntries.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / prodEntries.length).toFixed(1)
+                                                    ? (prodEntries.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / prodEntries.length).toFixed(2)
                                                     : '';
                                                 const prodPlanned = prodEntries.reduce((sum, p) => sum + (p.planned_downtime_mins || 0), 0);
                                                 const prodMechanical = prodEntries.reduce((sum, p) => sum + (p.mechanical_downtime_mins || 0), 0);
@@ -900,7 +900,7 @@ const ProductionReportForm = () => {
                                                         <td className="input-cell numeric"><EditableField type="number" value={prodBottles} /></td>
                                                         <td className="input-cell numeric"><EditableField type="number" value={prodPacks} /></td>
                                                         <td className="input-cell numeric"><EditableField type="number" step="0.1" value={prodEfficiency && Number(prodEfficiency) > 0 ? prodEfficiency : ''} /></td>
-                                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={prodProdHrs ? prodProdHrs.toFixed(1) : ''} /></td>
+                                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={prodProdHrs ? prodProdHrs.toFixed(2) : ''} /></td>
                                                         <td className="input-cell numeric"><EditableField type="number" value={prodPlanned} /></td>
                                                         <td className="input-cell numeric"><EditableField type="number" value={prodMechanical} /></td>
                                                         <td className="input-cell numeric"><EditableField type="number" value={prodPlanned + prodMechanical} /></td>
@@ -911,8 +911,8 @@ const ProductionReportForm = () => {
                                                 <td className="label-cell">TOTAL</td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0)} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.total_packs || 0), 0)} /></td>
-                                                <td className="input-cell numeric"><EditableField type="number" step="0.1" value={(() => { const avg = allPetsUnfiltered.length > 0 ? (allPetsUnfiltered.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / allPetsUnfiltered.length).toFixed(1) : ''; return avg && Number(avg) > 0 ? avg : ''; })()} /></td>
-                                                <td className="input-cell numeric"><EditableField type="number" step="0.1" value={(() => { const hrs = allPetsUnfiltered.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(1) : ''; })()} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" step="0.1" value={(() => { const avg = allPetsUnfiltered.length > 0 ? (allPetsUnfiltered.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / allPetsUnfiltered.length).toFixed(2) : ''; return avg && Number(avg) > 0 ? avg : ''; })()} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" step="0.1" value={(() => { const hrs = allPetsUnfiltered.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0); return hrs ? hrs.toFixed(2) : ''; })()} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0), 0)} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.mechanical_downtime_mins || 0), 0)} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={allPetsUnfiltered.reduce((sum, p) => sum + (p.planned_downtime_mins || 0) + (p.mechanical_downtime_mins || 0), 0)} /></td>
@@ -946,7 +946,7 @@ const ProductionReportForm = () => {
                                     ].map(({ type, label, defaultUnit }) => {
                                         const mat = getMaterial(type);
                                         const lossPercent = mat.total_used
-                                            ? ((mat.total_losses / mat.total_used) * 100).toFixed(1)
+                                            ? ((mat.total_losses / mat.total_used) * 100).toFixed(2)
                                             : '';
                                         return (
                                             <tr key={type}>
@@ -1017,7 +1017,7 @@ const ProductionReportForm = () => {
                                                     const shrinkVal = Number(productionMeters.shrink_reading) || 0;
                                                     const fillerVal = Number(productionMeters.filler_reading) || 0;
                                                     if (shrinkVal > 0 && fillerVal > 0) {
-                                                        return ((shrinkVal / fillerVal) * 100).toFixed(1);
+                                                        return ((shrinkVal / fillerVal) * 100).toFixed(2);
                                                     }
                                                     return productionMeters.shrink_reading_packs_percent || '';
                                                 })()} />
@@ -1103,7 +1103,7 @@ const ProductionReportForm = () => {
                                                     const start = Number(co2Meters.start_reading_kg) || 0;
                                                     const end = Number(co2Meters.end_reading_kg) || 0;
                                                     if (start > 0 && end > 0 && end > start) {
-                                                        return (end - start).toFixed(1);
+                                                        return (end - start).toFixed(2);
                                                     }
                                                     return co2Meters.total_co2_consumed_kg || '';
                                                 })()} />
@@ -1130,7 +1130,7 @@ const ProductionReportForm = () => {
                                                     const fillerReading = Number(productionMeters.filler_reading) || 0;
                                                     const co2PerBottle = Number(co2Meters.co2_grams_per_bottle || co2Meters.std_co2_per_bottle_g) || 0;
                                                     if (fillerReading > 0 && co2PerBottle > 0) {
-                                                        return ((fillerReading * co2PerBottle) / 1000).toFixed(1);
+                                                        return ((fillerReading * co2PerBottle) / 1000).toFixed(2);
                                                     }
                                                     return co2Meters.std_co2_consumption_kg || '';
                                                 })()} />
@@ -1168,7 +1168,7 @@ const ProductionReportForm = () => {
                                                     })();
                                                     const std = Number(co2Meters.std_co2_consumption_kg) || 0;
                                                     if (actual > 0 && std > 0) {
-                                                        return ((std / actual) * 100).toFixed(1);
+                                                        return ((std / actual) * 100).toFixed(2);
                                                     }
                                                     return summary.avg_co2_yield || '';
                                                 })()} />
@@ -1193,7 +1193,7 @@ const ProductionReportForm = () => {
                                                     const shrinkVal = Number(productionMeters.shrink_reading) || 0;
                                                     const fillerVal = Number(productionMeters.filler_reading) || 0;
                                                     if (shrinkVal > 0 && fillerVal > 0) {
-                                                        return ((shrinkVal / fillerVal) * 100).toFixed(1);
+                                                        return ((shrinkVal / fillerVal) * 100).toFixed(2);
                                                     }
                                                     return productionMeters.shrink_reading_packs_percent || '';
                                                 })()} />
@@ -1213,7 +1213,7 @@ const ProductionReportForm = () => {
                                                     const startVal = Number(syrupMeters.start_reading) || 0;
                                                     const endVal = Number(syrupMeters.end_reading) || 0;
                                                     if (startVal > 0 && endVal > 0 && endVal > startVal) {
-                                                        return (endVal - startVal).toFixed(1);
+                                                        return (endVal - startVal).toFixed(2);
                                                     }
                                                     return syrupMeters.total_syrup_used_l || '';
                                                 })()} />
@@ -1251,7 +1251,7 @@ const ProductionReportForm = () => {
                                                     const bottleSizeStr = petEntry.bottle_size || productCatalog.bottle_size || productCatalog.size || '';
                                                     const bottleSizeL = parseFloat(String(bottleSizeStr).replace(/[^0-9.]/g, '')) / (String(bottleSizeStr).toLowerCase().includes('l') && !String(bottleSizeStr).toLowerCase().includes('ml') ? 1 : 1000) || 0;
                                                     if (fillerReading > 0 && dilutionRatio > 0 && bottleSizeL > 0) {
-                                                        return ((fillerReading * bottleSizeL) / dilutionRatio).toFixed(1);
+                                                        return ((fillerReading * bottleSizeL) / dilutionRatio).toFixed(2);
                                                     }
                                                     return syrupMeters.std_syrup_consumption_l || '';
                                                 })()} />
