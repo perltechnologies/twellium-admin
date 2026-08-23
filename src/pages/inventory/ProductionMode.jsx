@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
+import { formatAndSortPets } from '../../utils/petUtils';
 import BarcodeLabel from '../../components/inventory/BarcodeLabel';
 import { toast } from 'react-hot-toast';
 
@@ -41,8 +42,10 @@ const ProductionMode = () => {
                     inventoryApi.getProducts({ page_size: 100 }),
                     productionApi.getPets({ page_size: 100 })
                 ]);
-                setProducts(productsRes.data.data || []);
-                setPets(petsRes.data.data || []);
+                const prodList = productsRes?.data?.data?.data ?? productsRes?.data?.data ?? productsRes?.data?.results ?? [];
+                setProducts(Array.isArray(prodList) ? prodList : prodList.results || []);
+                const allPets = formatAndSortPets(petsRes);
+                setPets(allPets);
             } catch (err) {
                 console.error("Failed to load lookups", err);
                 toast.error("Failed to load form data");

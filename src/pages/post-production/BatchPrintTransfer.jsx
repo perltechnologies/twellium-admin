@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Printer, Loader2, Calendar, Search } from 'lucide-react';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
+import { formatAndSortPets } from '../../utils/petUtils';
 
 const BatchPrintTransfer = () => {
     const printRef = useRef();
@@ -45,14 +46,7 @@ const BatchPrintTransfer = () => {
                 inventoryApi.getProducts({ page_size: 100 }),
             ]);
 
-            const petList = petsRes.data?.data?.data || petsRes.data?.data || petsRes.data?.results || [];
-            const allPets = (Array.isArray(petList) ? petList : petList.results || [])
-                .filter(p => !(p.pet_name || '').toLowerCase().includes('can'))
-                .sort((a, b) => {
-                    const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
-                    const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
-                    return aNum - bNum;
-                });
+            const allPets = formatAndSortPets(petsRes);
             setPets(allPets);
 
             const prodList = productsRes.data?.data?.data || productsRes.data?.data || productsRes.data?.results || [];
@@ -88,6 +82,15 @@ const BatchPrintTransfer = () => {
             setLoading(false);
         }
     };
+
+    // Auto-load data when filters change
+    useEffect(() => {
+        if (pets.length === 0 || products.length === 0) return;
+        const timer = setTimeout(() => {
+            handleSearch();
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [filters.startDate, filters.endDate, filters.productType, filters.petName, filters.shift, pets.length, products.length]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -170,7 +173,7 @@ const BatchPrintTransfer = () => {
                                 >
                                     <option value="">All Lines</option>
                                     {pets.map(p => (
-                                        <option key={p.id} value={p.pet_name}>{p.pet_name}</option>
+                                        <option key={p.id} value={p.pet_name}>{p.label}</option>
                                     ))}
                                 </select>
                             </div>
@@ -187,15 +190,16 @@ const BatchPrintTransfer = () => {
                                     ))}
                                 </select>
                             </div>
-                            <div className="col-md-2">
+                            <div className="col-md-2 d-flex align-items-center gap-2">
                                 <button
-                                    className="btn btn-dark btn-sm w-100 d-flex align-items-center justify-content-center gap-2"
-                                    onClick={handleSearch}
-                                    disabled={loading}
+                                    className="btn btn-success btn-sm d-flex align-items-center gap-2"
+                                    onClick={handlePrint}
+                                    disabled={loading || barcodes.length === 0}
                                 >
-                                    {loading ? <Loader2 size={16} className="spinning" /> : <Search size={16} />}
-                                    Search
+                                    <Printer size={16} />
+                                    Print
                                 </button>
+                                {loading && <Loader2 size={16} className="spinning text-muted" />}
                             </div>
                         </div>
                     </div>
@@ -352,7 +356,7 @@ const BatchPrintTransfer = () => {
                     <div className="text-muted mb-2">
                         <Search size={48} strokeWidth={1} />
                     </div>
-                    <p className="text-muted">Select filters and search to load pallets for the transfer form.</p>
+                    <p className="text-muted">Adjust filters above to load pallets for the transfer form.</p>
                 </div>
             )}
         </div>

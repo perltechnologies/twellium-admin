@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../../api/inventory';
+import { useTheme } from '../../context/ThemeContext';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { Boxes, Package, RefreshCw, Search, Layers, CheckCircle2, AlertTriangle, Truck } from 'lucide-react';
 
 const STAGE_CONFIG = [
   { id: 'PRODUCTION', label: 'Production', icon: 'ti-building-factory', chartColor: '#3b82f6' },
@@ -16,21 +18,20 @@ const STAGE_CONFIG = [
 
 const InventoryOverview = () => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [loading, setLoading] = useState(true);
   const [totalUnits, setTotalUnits] = useState(0);
   const [stageCounts, setStageCounts] = useState({});
   const [products, setProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const fetchData = async () => {
     try {
       setLoading(true);
       const response = await inventoryApi.getStageCounts();
-      const data = response.data.data;
+      const data = response?.data?.data ?? response?.data ?? {};
       setTotalUnits(data.total_units || 0);
       setStageCounts(data.stage_counts || {});
       setProducts(Array.isArray(data.product_breakdown) ? data.product_breakdown : []);
@@ -41,82 +42,142 @@ const InventoryOverview = () => {
     }
   };
 
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const filteredProducts = useMemo(() =>
+    products.filter((product) =>
+      (product.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+    ),
+    [products, searchQuery]
   );
 
   const stageChartData = useMemo(() =>
     STAGE_CONFIG
-      .map(stage => ({ name: stage.label, value: stageCounts[stage.id] || 0, color: stage.chartColor }))
-      .filter(d => d.value > 0)
-  , [stageCounts]);
+      .map(stage => ({ name: stage.label, value: Number(stageCounts[stage.id]) || 0, color: stage.chartColor }))
+      .filter(d => d.value > 0),
+    [stageCounts]
+  );
 
   const productChartData = useMemo(() =>
     [...products]
       .sort((a, b) => (b.total_count || 0) - (a.total_count || 0))
       .slice(0, 10)
-      .map(p => ({ name: p.name?.length > 20 ? p.name.slice(0, 18) + '…' : p.name, total: p.total_count || 0 }))
-  , [products]);
+      .map(p => ({
+        name: (p.name || '').length > 20 ? (p.name || '').slice(0, 18) + '…' : (p.name || 'Unknown'),
+        fullName: p.name,
+        total: p.total_count || 0
+      })),
+    [products]
+  );
 
   if (loading) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '400px', background: '#0f172a' }}>
-        <div className="spinner-border text-primary" role="status" />
+      <div className="text-center py-5">
+        <div className="spinner-border text-primary mb-2" role="status" />
+        <p className="text-muted small">Loading inventory distribution…</p>
       </div>
     );
   }
 
+  const chartGridColor = isDark ? '#334155' : '#f1f5f9';
+  const chartTextColor = isDark ? '#94a3b8' : '#64748b';
+  const tooltipBg = isDark ? '#1e293b' : '#ffffff';
+  const tooltipBorder = isDark ? '#475569' : '#e2e8f0';
+
   return (
-    <div style={{ background: '#0f172a', minHeight: '100vh', padding: '16px', color: '#e2e8f0', margin: '-24px', marginBottom: '-48px' }}>
+    <div className="container-fluid px-0">
       {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h5 className="mb-0 fw-bold" style={{ color: '#f1f5f9', fontSize: '15px', textTransform: 'uppercase', letterSpacing: '1px' }}>
-          Inventory Distribution Overview
-        </h5>
-        <button className="btn btn-sm" style={{ background: '#334155', color: '#e2e8f0', border: '1px solid #475569' }} onClick={fetchData}>
-          <i className="ti ti-refresh me-1"></i>Refresh
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4 pb-2 border-bottom">
+        <div>
+          <h4 className="fw-bold mb-0 text-dark">Inventory Distribution Overview</h4>
+          <p className="text-muted small mb-0">Live stock levels across all post-production and warehouse stages</p>
+        </div>
+        <button className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1 shadow-sm" onClick={fetchData}>
+          <RefreshCw size={14} />
+          <span>Refresh</span>
         </button>
       </div>
 
       {/* Global Summary Bar */}
-      <div style={{ background: '#1e293b', borderRadius: 8, padding: '12px 20px', marginBottom: 16, border: '1px solid #334155' }}>
-        <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
-          <div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Total Units</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: '#f1f5f9' }}>{totalUnits.toLocaleString()}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Active SKUs</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: '#22c55e' }}>{products.length}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>Stages Active</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: '#3b82f6' }}>{stageChartData.length}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>In Production</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: '#f59e0b' }}>{(stageCounts.PRODUCTION || 0).toLocaleString()}</div>
+      <div className="card mb-4 border shadow-none">
+        <div className="card-body p-3">
+          <div className="row g-3 text-center text-sm-start">
+            <div className="col-xl-3 col-sm-6 border-end-sm">
+              <div className="d-flex align-items-center gap-3 justify-content-center justify-content-sm-start">
+                <div className="avatar avatar-md bg-soft-primary rounded-circle d-flex align-items-center justify-content-center">
+                  <Boxes size={20} className="text-primary" />
+                </div>
+                <div>
+                  <span className="text-muted small fw-semibold text-uppercase d-block">Total Inventory</span>
+                  <h3 className="fw-bold mb-0 text-dark">{totalUnits.toLocaleString()}</h3>
+                  <small className="text-muted">Total units tracked</small>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-xl-3 col-sm-6 border-end-xl">
+              <div className="d-flex align-items-center gap-3 justify-content-center justify-content-sm-start">
+                <div className="avatar avatar-md bg-soft-success rounded-circle d-flex align-items-center justify-content-center">
+                  <Package size={20} className="text-success" />
+                </div>
+                <div>
+                  <span className="text-muted small fw-semibold text-uppercase d-block">Active SKUs</span>
+                  <h3 className="fw-bold mb-0 text-dark">{products.length}</h3>
+                  <small className="text-muted">Distinct product lines</small>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-xl-3 col-sm-6 border-end-sm">
+              <div className="d-flex align-items-center gap-3 justify-content-center justify-content-sm-start">
+                <div className="avatar avatar-md bg-soft-info rounded-circle d-flex align-items-center justify-content-center">
+                  <Layers size={20} className="text-info" />
+                </div>
+                <div>
+                  <span className="text-muted small fw-semibold text-uppercase d-block">Active Stages</span>
+                  <h3 className="fw-bold mb-0 text-dark">{stageChartData.length}</h3>
+                  <small className="text-muted">Pipeline locations</small>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-xl-3 col-sm-6">
+              <div className="d-flex align-items-center gap-3 justify-content-center justify-content-sm-start">
+                <div className="avatar avatar-md bg-soft-warning rounded-circle d-flex align-items-center justify-content-center">
+                  <CheckCircle2 size={20} className="text-warning" />
+                </div>
+                <div>
+                  <span className="text-muted small fw-semibold text-uppercase d-block">In Production</span>
+                  <h3 className="fw-bold mb-0 text-dark">{(stageCounts.PRODUCTION || 0).toLocaleString()}</h3>
+                  <small className="text-muted">Staged on line</small>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Stage Cards */}
-      <div className="row g-2 mb-4">
+      {/* Stage Cards Grid */}
+      <div className="row g-3 mb-4">
         {STAGE_CONFIG.map((stage) => (
           <div key={stage.id} className="col-xl-3 col-md-4 col-sm-6">
             <div
-              style={{ background: '#1e293b', borderRadius: 8, padding: '12px 16px', border: '1px solid #334155', cursor: 'pointer', transition: 'border-color 0.2s' }}
+              className="card h-100 border shadow-none hover-shadow transition-all cursor-pointer"
               onClick={() => navigate(`/post-production/pallets/${stage.id}`)}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = stage.chartColor}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = '#334155'}
             >
-              <div className="d-flex align-items-center justify-content-between">
+              <div className="card-body p-3 d-flex align-items-center justify-content-between">
                 <div>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', textTransform: 'uppercase' }}>{stage.label}</div>
-                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#f1f5f9' }}>{(stageCounts[stage.id] || 0).toLocaleString()}</div>
+                  <span className="text-muted small fw-semibold text-uppercase d-block">{stage.label}</span>
+                  <h4 className="fw-bold mb-0 text-dark mt-1">{(stageCounts[stage.id] || 0).toLocaleString()}</h4>
+                  <small className="text-primary mt-1 d-block" style={{ fontSize: '0.75rem' }}>View units →</small>
                 </div>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${stage.chartColor}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <i className={`ti ${stage.icon}`} style={{ fontSize: 16, color: stage.chartColor }}></i>
+                <div
+                  className="rounded-circle d-flex align-items-center justify-content-center"
+                  style={{ width: 42, height: 42, background: `${stage.chartColor}20` }}
+                >
+                  <i className={`ti ${stage.icon}`} style={{ fontSize: 18, color: stage.chartColor }}></i>
                 </div>
               </div>
             </div>
@@ -128,110 +189,132 @@ const InventoryOverview = () => {
       <div className="row g-3 mb-4">
         {/* Stage Distribution Donut */}
         <div className="col-lg-5">
-          <div style={{ background: '#1e293b', borderRadius: 8, padding: '16px', border: '1px solid #334155', height: '100%' }}>
-            <h6 style={{ color: '#f1f5f9', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 12 }}>
-              Stage Distribution
-            </h6>
-            {stageChartData.length > 0 ? (
-              <div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie data={stageChartData} cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={2} dataKey="value">
-                      {stageChartData.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(v) => [v.toLocaleString(), 'Units']}
-                      contentStyle={{ background: '#1e293b', border: '1px solid #475569', borderRadius: 6, color: '#e2e8f0' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="d-flex flex-wrap justify-content-center gap-2 mt-2">
-                  {stageChartData.map((entry, idx) => (
-                    <span key={idx} className="d-flex align-items-center gap-1" style={{ fontSize: '10px', color: '#94a3b8' }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color, display: 'inline-block' }}></span>
-                      {entry.name}: {entry.value.toLocaleString()}
-                    </span>
-                  ))}
+          <div className="card h-100 border shadow-none">
+            <div className="card-header bg-light py-2.5 px-3">
+              <h6 className="fw-bold mb-0 text-dark">Stage Distribution</h6>
+            </div>
+            <div className="card-body p-3">
+              {stageChartData.length > 0 ? (
+                <div>
+                  <div style={{ height: 230 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stageChartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={85}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {stageChartData.map((entry, idx) => (
+                            <Cell key={idx} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(v) => [v.toLocaleString(), 'Units']}
+                          contentStyle={{ background: tooltipBg, borderColor: tooltipBorder, borderRadius: 6, fontSize: '0.8rem' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="d-flex flex-wrap justify-content-center gap-2 mt-2 pt-2 border-top">
+                    {stageChartData.map((entry, idx) => (
+                      <span key={idx} className="d-flex align-items-center gap-1.5 px-2 py-1 rounded bg-light border small">
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color, display: 'inline-block' }}></span>
+                        <span className="text-muted">{entry.name}:</span>
+                        <strong className="text-dark">{entry.value.toLocaleString()}</strong>
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-4" style={{ color: '#64748b' }}>No stage data</div>
-            )}
+              ) : (
+                <div className="text-center py-5 text-muted small">No stage telemetry data available</div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Top Products Bar */}
+        {/* Top Products Bar Chart */}
         <div className="col-lg-7">
-          <div style={{ background: '#1e293b', borderRadius: 8, padding: '16px', border: '1px solid #334155', height: '100%' }}>
-            <h6 style={{ color: '#f1f5f9', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 12 }}>
-              Top Products by Volume
-            </h6>
-            {productChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={productChartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => v.toLocaleString()} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} width={120} />
-                  <Tooltip
-                    formatter={(v) => [v.toLocaleString(), 'Units']}
-                    contentStyle={{ background: '#1e293b', border: '1px solid #475569', borderRadius: 6, color: '#e2e8f0' }}
-                  />
-                  <Bar dataKey="total" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="text-center py-4" style={{ color: '#64748b' }}>No product data</div>
-            )}
+          <div className="card h-100 border shadow-none">
+            <div className="card-header bg-light py-2.5 px-3">
+              <h6 className="fw-bold mb-0 text-dark">Top Products by Inventory Volume</h6>
+            </div>
+            <div className="card-body p-3">
+              {productChartData.length > 0 ? (
+                <div style={{ height: 260 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={productChartData} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                      <XAxis type="number" tick={{ fill: chartTextColor, fontSize: 11 }} tickFormatter={v => v.toLocaleString()} />
+                      <YAxis type="category" dataKey="name" tick={{ fill: chartTextColor, fontSize: 11 }} width={120} />
+                      <Tooltip
+                        formatter={(v, name, item) => [v.toLocaleString(), item.payload.fullName || name]}
+                        contentStyle={{ background: tooltipBg, borderColor: tooltipBorder, borderRadius: 6, fontSize: '0.8rem' }}
+                      />
+                      <Bar dataKey="total" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Units" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="text-center py-5 text-muted small">No product data available</div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Product Matrix - Stacked Bar */}
-      <div style={{ background: '#1e293b', borderRadius: 8, padding: '16px', border: '1px solid #334155' }}>
-        <div className="d-flex align-items-center justify-content-between mb-3">
-          <h6 style={{ color: '#f1f5f9', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
-            Product Matrix
-          </h6>
-          <input
-            type="text"
-            placeholder="Search products..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: 200, background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', borderRadius: 6, padding: '4px 10px', fontSize: 12 }}
-          />
-        </div>
-        {filteredProducts.length > 0 ? (
-          <ResponsiveContainer width="100%" height={Math.max(filteredProducts.length * 38 + 60, 300)}>
-            <BarChart
-              data={filteredProducts.map(p => {
-                const row = { name: p.name?.length > 25 ? p.name.slice(0, 23) + '…' : p.name };
-                STAGE_CONFIG.forEach(stage => { row[stage.label] = p.stages?.[stage.id] || 0; });
-                return row;
-              })}
-              layout="vertical"
-              margin={{ top: 10, right: 20, left: 10, bottom: 5 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => v.toLocaleString()} />
-              <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} width={140} />
-              <Tooltip
-                formatter={(v, name) => [v.toLocaleString(), name]}
-                contentStyle={{ background: '#1e293b', border: '1px solid #475569', borderRadius: 6, color: '#e2e8f0', fontSize: 12 }}
-              />
-              <Legend wrapperStyle={{ fontSize: 10, color: '#94a3b8' }} />
-              {STAGE_CONFIG.map(stage => (
-                <Bar key={stage.id} dataKey={stage.label} stackId="a" fill={stage.chartColor} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="text-center py-4" style={{ color: '#64748b' }}>
-            <i className="ti ti-package-off" style={{ fontSize: 32, display: 'block', marginBottom: 8 }}></i>
-            No products found
+      <div className="card border shadow-none">
+        <div className="card-header bg-light py-2.5 px-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <h6 className="fw-bold mb-0 text-dark">Product SKU Stage Matrix</h6>
+          <div className="input-group input-group-sm" style={{ width: '220px' }}>
+            <span className="input-group-text"><Search size={14} /></span>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Filter products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-        )}
+        </div>
+        <div className="card-body p-3">
+          {filteredProducts.length > 0 ? (
+            <div style={{ minHeight: Math.max(filteredProducts.length * 36 + 60, 260) }}>
+              <ResponsiveContainer width="100%" height={Math.max(filteredProducts.length * 36 + 60, 260)}>
+                <BarChart
+                  data={filteredProducts.map(p => {
+                    const row = { name: (p.name || '').length > 25 ? (p.name || '').slice(0, 23) + '…' : (p.name || 'SKU'), fullName: p.name };
+                    STAGE_CONFIG.forEach(stage => { row[stage.label] = p.stages?.[stage.id] || 0; });
+                    return row;
+                  })}
+                  layout="vertical"
+                  margin={{ top: 10, right: 20, left: 10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+                  <XAxis type="number" tick={{ fill: chartTextColor, fontSize: 11 }} tickFormatter={v => v.toLocaleString()} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: chartTextColor, fontSize: 10 }} width={140} />
+                  <Tooltip
+                    formatter={(v, name) => [v.toLocaleString(), name]}
+                    contentStyle={{ background: tooltipBg, borderColor: tooltipBorder, borderRadius: 6, fontSize: '0.8rem' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  {STAGE_CONFIG.map(stage => (
+                    <Bar key={stage.id} dataKey={stage.label} stackId="a" fill={stage.chartColor} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="text-center py-5 text-muted small">
+              <Package size={36} strokeWidth={1} className="mb-2 opacity-50" />
+              <p className="mb-0">No matching products found</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

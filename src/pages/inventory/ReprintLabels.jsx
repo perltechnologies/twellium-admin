@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { inventoryApi } from '../../api/inventory';
+import { Pagination } from '../../components/ui/Pagination';
 import { toast } from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
 import BarcodeLabel from '../../components/inventory/BarcodeLabel';
@@ -16,6 +17,10 @@ const ReprintLabels = () => {
     const [loading, setLoading] = useState(false);
     const [selectedUnit, setSelectedUnit] = useState(null);
 
+    // Pagination state
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+
     const labelRef = useRef(null);
 
     const handlePrint = useReactToPrint({
@@ -31,9 +36,11 @@ const ReprintLabels = () => {
                 stage: filters.stage,
                 date: filters.date
             });
-            const units = response.data?.data?.data || [];
-            setFoundUnits(units);
-            if (units.length === 0) {
+            const units = response.data?.data?.data || response.data?.data || [];
+            const list = Array.isArray(units) ? units : (units.results || []);
+            setFoundUnits(list);
+            setPage(1);
+            if (list.length === 0) {
                 toast('No labels found for the selected criteria');
             }
         } catch (error) {
@@ -42,6 +49,11 @@ const ReprintLabels = () => {
             setLoading(false);
         }
     };
+
+    const paginatedUnits = useMemo(() => {
+        const start = (page - 1) * pageSize;
+        return foundUnits.slice(start, start + pageSize);
+    }, [foundUnits, page, pageSize]);
 
     const handlePrintLabel = (unit) => {
         setSelectedUnit(unit);
@@ -71,12 +83,6 @@ const ReprintLabels = () => {
             <div className="row mb-4">
                 <div className="col-12">
                     <div className="card">
-                        <div className="card-header">
-                            <h5 className="card-title mb-0">
-                                <i className="ti ti-filter me-2"></i>
-                                Filter Labels
-                            </h5>
-                        </div>
                         <div className="card-body">
                             <form onSubmit={handleSearch}>
                                 <div className="row g-3 align-items-end">
@@ -134,8 +140,8 @@ const ReprintLabels = () => {
                             </div>
                             <div className="card-body p-0">
                                 <div className="table-responsive">
-                                    <table className="table table-striped mb-0">
-                                        <thead>
+                                    <table className="table table-striped table-hover mb-0">
+                                        <thead className="table-light">
                                             <tr>
                                                 <th>Barcode</th>
                                                 <th>Product</th>
@@ -146,8 +152,8 @@ const ReprintLabels = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {foundUnits.map((unit) => (
-                                                <tr key={unit.id}>
+                                            {paginatedUnits.map((unit) => (
+                                                <tr key={unit.id || unit.barcode}>
                                                     <td>
                                                         <code>{unit.barcode}</code>
                                                     </td>
@@ -170,6 +176,18 @@ const ReprintLabels = () => {
                                     </table>
                                 </div>
                             </div>
+                            <Pagination
+                                page={page}
+                                pageSize={pageSize}
+                                totalCount={foundUnits.length}
+                                onPageChange={setPage}
+                                onPageSizeChange={(newSize) => {
+                                    setPageSize(newSize);
+                                    setPage(1);
+                                }}
+                                pageSizeOptions={[5, 10, 20, 50]}
+                                itemLabel="labels"
+                            />
                         </div>
                     </div>
                 </div>
@@ -177,17 +195,19 @@ const ReprintLabels = () => {
 
             {/* Hidden Print Area */}
             <div style={{ display: 'none' }}>
-                <div ref={labelRef}>
-                    {selectedUnit && (
-                        <BarcodeLabel
-                            barcode={selectedUnit.barcode}
-                            product={selectedUnit.product_name}
-                            line={selectedUnit.pet_name}
-                            quantity={selectedUnit.quantity}
-                            sequence={selectedUnit.pet_sequence}
-                        />
-                    )}
-                </div>
+                {selectedUnit && (
+                    <BarcodeLabel
+                        ref={labelRef}
+                        data={{
+                            barcode: selectedUnit.barcode,
+                            product_name: selectedUnit.product_name,
+                            pet_name: selectedUnit.pet_name,
+                            quantity: selectedUnit.quantity,
+                            pet_sequence: selectedUnit.pet_sequence,
+                            timestamp: selectedUnit.created_at || new Date(),
+                        }}
+                    />
+                )}
             </div>
         </div>
     );

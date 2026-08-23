@@ -12,63 +12,111 @@ const BarcodeLabel = React.forwardRef(({ data }, ref) => {
         quantity,
         pet_sequence,
         timestamp = new Date(),
-        type = 'LABEL'
     } = data;
 
+    const barcodeValue = String(barcode || '000000000000').trim();
+    const prefixChar = barcodeValue.length > 0 ? barcodeValue.charAt(0).toUpperCase() : 'S';
+
     return (
-        <div ref={ref} className="bg-white p-6 border border-slate-200 rounded-lg shadow-sm print:shadow-none print:border-none print-compact w-[380px] mx-auto overflow-hidden text-slate-900">
-            {/* Print Styles */}
+        <div
+            ref={ref}
+            className="barcode-label-light-mode p-4 border rounded-lg mx-auto overflow-hidden text-center"
+            style={{
+                backgroundColor: '#ffffff',
+                color: '#000000',
+                borderColor: '#cbd5e1',
+                width: '380px',
+                maxWidth: '100%',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)'
+            }}
+        >
+            {/* Print & Display Styles */}
             <style dangerouslySetInnerHTML={{
                 __html: `
                 @media print {
                     @page { margin: 0; size: auto; }
-                    body { -webkit-print-color-adjust: exact; padding: 0 !important; margin: 0 !important; color: black !important; }
+                    body { -webkit-print-color-adjust: exact; padding: 0 !important; margin: 0 !important; color: #000000 !important; background: #ffffff !important; }
                     .no-print { display: none !important; }
-                    .print-compact { padding: 4px !important; margin: 0 !important; width: 100% !important; border: none !important; }
+                    .print-compact { padding: 4px !important; margin: 0 !important; width: 100% !important; border: none !important; background: #ffffff !important; color: #000000 !important; }
+                }
+                .barcode-label-light-mode {
+                    background-color: #ffffff !important;
+                    color: #000000 !important;
+                }
+                .barcode-label-light-mode h1,
+                .barcode-label-light-mode h2,
+                .barcode-label-light-mode p,
+                .barcode-label-light-mode span,
+                .barcode-label-light-mode div {
+                    color: #000000 !important;
+                }
+                .barcode-label-light-mode canvas {
+                    background-color: #ffffff !important;
+                    display: block !important;
+                    margin: 0 auto !important;
                 }
             `}} />
 
-            <div className="flex flex-col items-center text-center space-y-2">
+            <div className="d-flex flex-column align-items-center text-center w-100" style={{ backgroundColor: '#ffffff' }}>
                 {/* Product Name at the Very Top */}
-                <h2 className="text-3xl font-black uppercase tracking-tight leading-none mb-1">
+                <h2
+                    className="text-uppercase tracking-tight leading-none mb-1 text-center w-100"
+                    style={{ fontSize: '1.35rem', fontWeight: 900, color: '#000000', wordBreak: 'break-word', margin: 0 }}
+                >
                     {product_name || 'N/A'}
                 </h2>
 
-                {/* Header (P/S) */}
-                <h1 className="text-4xl font-black tracking-tighter uppercase mb-2">
-                    {(barcode && typeof barcode === 'string' && barcode.charAt(0)) || 'S'}
+                {/* Header prefix */}
+                <h1
+                    className="tracking-tighter text-uppercase mb-2 text-center w-100"
+                    style={{ fontSize: '2rem', fontWeight: 900, color: '#000000', margin: 0 }}
+                >
+                    {prefixChar}
                 </h1>
 
-                <div className="py-1 scale-110">
+                {/* Barcode Graphic - Canvas renderer guarantees black bars on pure white background */}
+                <div
+                    className="py-1 d-flex justify-content-center align-items-center w-100"
+                    style={{ backgroundColor: '#ffffff', minHeight: '100px' }}
+                >
                     <Barcode
-                        value={barcode || '000000000000'}
-                        width={2.2}
-                        height={85}
-                        fontSize={18}
+                        value={barcodeValue}
+                        renderer="canvas"
+                        width={2.0}
+                        height={75}
+                        fontSize={15}
+                        font="monospace"
                         fontOptions="bold"
-                        background="transparent"
+                        background="#ffffff"
+                        lineColor="#000000"
+                        margin={6}
+                        displayValue={true}
                     />
                 </div>
 
-                <div className="w-full border-t-[3px] border-slate-900 pt-4 space-y-2">
-                    <p className="text-xl font-bold">
+                {/* Details Section */}
+                <div
+                    className="w-100 pt-3 mt-2"
+                    style={{ borderTop: '3px solid #000000', textAlign: 'center', backgroundColor: '#ffffff' }}
+                >
+                    <p className="mb-1" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#000000' }}>
                         {pet_name || 'N/A'}
                     </p>
-                    
-                    <p className="text-xl font-bold">
-                        <span className="text-sm font-black uppercase mr-2">Quantity:</span>
+
+                    <p className="mb-1" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#000000' }}>
+                        <span className="small text-uppercase me-2" style={{ fontSize: '0.82rem', fontWeight: 900 }}>Quantity:</span>
                         {quantity || 0}
                     </p>
 
-                    {pet_sequence !== undefined && (
-                        <p className="text-xl font-bold">
-                            <span className="text-sm font-black uppercase mr-2">Sequence:</span>
+                    {pet_sequence !== undefined && pet_sequence !== null && (
+                        <p className="mb-1" style={{ fontSize: '1.1rem', fontWeight: 800, color: '#000000' }}>
+                            <span className="small text-uppercase me-2" style={{ fontSize: '0.82rem', fontWeight: 900 }}>Sequence:</span>
                             {pet_sequence}
                         </p>
                     )}
-                    
-                    <div className="pt-2">
-                        <p className="text-sm font-mono font-bold border-t border-slate-200 pt-2">
+
+                    <div className="pt-2 mt-2" style={{ borderTop: '1px solid #cbd5e1', backgroundColor: '#ffffff' }}>
+                        <p className="font-monospace mb-0" style={{ fontSize: '0.85rem', fontWeight: 700, color: '#000000' }}>
                             {format(new Date(timestamp), 'yyyy-MM-dd HH:mm:ss')}
                         </p>
                     </div>

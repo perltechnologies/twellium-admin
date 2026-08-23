@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { inventoryApi, productionApi } from '../../api';
+import { inventoryApi } from '../../api';
+import { Pagination } from '../../components/ui/Pagination';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { exportToExcel } from '../../utils/exportUtils';
+
+const extractData = (res) => {
+    const envelope = res?.data?.data ?? res?.data ?? {};
+    if (Array.isArray(envelope)) return envelope;
+    if (envelope?.results && Array.isArray(envelope.results)) return envelope.results;
+    if (envelope?.data && Array.isArray(envelope.data)) return envelope.data;
+    return [];
+};
 
 const PetPerformance = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -9,21 +18,38 @@ const PetPerformance = () => {
         startDate: today,
         endDate: today,
     });
-    const [data, setData] = useState(null);
+    const [units, setUnits] = useState([]);
     const [loading, setLoading] = useState(false);
+
+    // Table pagination state
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const params = {};
-            if (filters.startDate) params.start_date = filters.startDate;
-            if (filters.endDate) params.end_date = filters.endDate;
+            const params = { page_size: 2000 };
 
             const response = await inventoryApi.getPetPerformance(params);
-            const result = response.data?.data?.data || response.data?.data || {};
-            setData(result);
+            let result = extractData(response);
+
+            // Client-side filtering for unsupported API filters
+            if (filters.startDate) {
+                const start = new Date(filters.startDate);
+                start.setHours(0, 0, 0, 0);
+                result = result.filter(u => new Date(u.created_at) >= start);
+            }
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                result = result.filter(u => new Date(u.created_at) <= end);
+            }
+
+            setUnits(result);
+            setPage(1);
         } catch (error) {
             console.error('Failed to fetch pet performance:', error);
+            setUnits([]);
         } finally {
             setLoading(false);
         }
@@ -34,23 +60,47 @@ const PetPerformance = () => {
     }, []);
 
     const performanceData = useMemo(() => {
-        if (!data?.pets) return [];
-        return data.pets
+        const map = {};
+        units.forEach(u => {
+            const rawLabel = String(u.pet_name || u.pet || 'Unknown');
+            if (rawLabel.toLowerCase().includes('can')) return;
+
+            const match = rawLabel.match(/\d+/);
+            const petNumber = match ? parseInt(match[0], 10) : 999;
+            const petKey = match ? `Pet ${petNumber}` : rawLabel;
+
+            if (!map[petKey]) {
+                map[petKey] = {
+                    name: petKey,
+                    petNumber,
+                    totalPallets: 0,
+                    totalPacks: 0
+                };
+            }
+            map[petKey].totalPallets += 1;
+            map[petKey].totalPacks += (u.quantity || 0);
+        });
+
+        return Object.values(map)
             .map(p => ({
-                name: p.pet_name,
-                totalOutput: p.total_output || p.total_bottles || 0,
-                totalPallets: p.total_pallets || 0,
-                totalPacks: p.total_packs || 0,
-                efficiency: p.efficiency || p.avg_efficiency || 0,
+                ...p,
+                totalOutput: p.totalPacks,
+                efficiency: p.totalPacks > 0 ? Math.min(Math.round((p.totalPacks / (p.totalPallets * 1000)) * 100), 100) : 0,
             }))
             .sort((a, b) => b.totalOutput - a.totalOutput);
-    }, [data]);
+    }, [units]);
+
+    const paginatedPerformance = useMemo(() => {
+        const start = (page - 1) * pageSize;
+        return performanceData.slice(start, start + pageSize);
+    }, [performanceData, page, pageSize]);
 
     const topPet = performanceData[0];
     const leastPet = performanceData[performanceData.length - 1];
 
     const handleExport = () => {
-        const exportData = performanceData.map(p => ({
+        const exportData = performanceData.map((p, idx) => ({
+            'Rank': idx + 1,
             'Pet Name': p.name,
             'Total Output': p.totalOutput,
             'Total Pallets': p.totalPallets,
@@ -81,17 +131,14 @@ const PetPerformance = () => {
         <div className="container-fluid">
             <div className="d-flex align-items-center justify-content-between mb-4">
                 <div>
-                    <h4 className="mb-1">
-                        <i className="ti ti-trophy me-2"></i>
-                        Pet Performance Ranking
-                    </h4>
+                    <h4 className="mb-1"><i className="ti ti-trophy me-2"></i>Pet Performance Ranking</h4>
                     <p className="text-muted mb-0">Top and least producing pets by production output</p>
                 </div>
                 <div className="d-flex gap-2">
                     <button className="btn btn-sm btn-outline-primary" onClick={fetchData} disabled={loading}>
                         <i className="ti ti-refresh me-1"></i>Refresh
                     </button>
-                    <button className="btn btn-sm btn-success" onClick={handleExport} disabled={!data}>
+                    <button className="btn btn-sm btn-success" onClick={handleExport} disabled={!units.length}>
                         <i className="ti ti-file-spreadsheet me-1"></i>Export
                     </button>
                 </div>
@@ -100,12 +147,7 @@ const PetPerformance = () => {
             <div className="row mb-4">
                 <div className="col-12">
                     <div className="card">
-                        <div className="card-header">
-                            <h5 className="card-title mb-0">
-                                <i className="ti ti-calendar me-2"></i>
-                                Date Range
-                            </h5>
-                        </div>
+                        <div className="card-header"><h5 className="card-title mb-0"><i className="ti ti-calendar me-2"></i>Date Range</h5></div>
                         <div className="card-body">
                             <div className="row g-3 align-items-end">
                                 <div className="col-md-3">
@@ -131,7 +173,7 @@ const PetPerformance = () => {
 
             {loading ? (
                 <div className="text-center py-5"><span className="spinner-border text-primary" /></div>
-            ) : data ? (
+            ) : units.length > 0 ? (
                 <>
                     <div className="row g-3 mb-4">
                         <div className="col-xl-6">
@@ -169,9 +211,7 @@ const PetPerformance = () => {
                     </div>
 
                     <div className="card mb-4">
-                        <div className="card-header">
-                            <h6 className="mb-0">Production Output by Pet</h6>
-                        </div>
+                        <div className="card-header"><h6 className="mb-0">Production Output by Pet</h6></div>
                         <div className="card-body">
                             <ResponsiveContainer width="100%" height={350}>
                                 <BarChart data={performanceData}>
@@ -190,15 +230,16 @@ const PetPerformance = () => {
                     </div>
 
                     <div className="card">
-                        <div className="card-header">
+                        <div className="card-header d-flex align-items-center justify-content-between">
                             <h6 className="mb-0">Performance Ranking</h6>
+                            <span className="badge bg-soft-primary text-primary">{performanceData.length} lines</span>
                         </div>
                         <div className="card-body p-0">
                             <div className="table-responsive">
-                                <table className="table table-sm mb-0">
+                                <table className="table table-sm table-hover mb-0">
                                     <thead className="table-light">
                                         <tr>
-                                            <th>Rank</th>
+                                            <th style={{ width: 60 }}>Rank</th>
                                             <th>Pet Name</th>
                                             <th className="text-end">Total Output</th>
                                             <th className="text-end">Pallets</th>
@@ -207,28 +248,43 @@ const PetPerformance = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {performanceData.map((pet, idx) => (
-                                            <tr key={pet.name}>
-                                                <td>
-                                                    <span className={`avatar avatar-xs rounded-circle ${idx === 0 ? 'bg-warning text-white' : idx === performanceData.length - 1 ? 'bg-danger text-white' : 'bg-light'}`}>
-                                                        #{idx + 1}
-                                                    </span>
-                                                </td>
-                                                <td className="fw-medium">{pet.name}</td>
-                                                <td className="text-end fw-medium">{pet.totalOutput.toLocaleString()}</td>
-                                                <td className="text-end">{pet.totalPallets.toLocaleString()}</td>
-                                                <td className="text-end">{pet.totalPacks.toLocaleString()}</td>
-                                                <td>
-                                                    <span className={`badge ${pet.efficiency >= 85 ? 'bg-success' : pet.efficiency >= 70 ? 'bg-warning' : 'bg-danger'}`}>
-                                                        {pet.efficiency}%
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {paginatedPerformance.map((pet, idx) => {
+                                            const actualRank = (page - 1) * pageSize + idx + 1;
+                                            return (
+                                                <tr key={pet.name}>
+                                                    <td>
+                                                        <span className={`avatar avatar-xs rounded-circle ${actualRank === 1 ? 'bg-warning text-white' : actualRank === performanceData.length ? 'bg-danger text-white' : 'bg-light text-dark'}`}>
+                                                            #{actualRank}
+                                                        </span>
+                                                    </td>
+                                                    <td className="fw-medium">{pet.name}</td>
+                                                    <td className="text-end fw-medium">{pet.totalOutput.toLocaleString()}</td>
+                                                    <td className="text-end">{pet.totalPallets.toLocaleString()}</td>
+                                                    <td className="text-end">{pet.totalPacks.toLocaleString()}</td>
+                                                    <td>
+                                                        <span className={`badge ${pet.efficiency >= 85 ? 'bg-success' : pet.efficiency >= 70 ? 'bg-warning' : 'bg-danger'}`}>
+                                                            {pet.efficiency}%
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
+                        <Pagination
+                            page={page}
+                            pageSize={pageSize}
+                            totalCount={performanceData.length}
+                            onPageChange={setPage}
+                            onPageSizeChange={(newSize) => {
+                                setPageSize(newSize);
+                                setPage(1);
+                            }}
+                            pageSizeOptions={[5, 10, 20, 50]}
+                            itemLabel="lines"
+                        />
                     </div>
                 </>
             ) : (

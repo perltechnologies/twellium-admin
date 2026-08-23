@@ -1,8 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
+import { formatAndSortPets } from '../../utils/petUtils';
+import { Pagination } from '../../components/ui/Pagination';
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
+
+const extractData = (res) => {
+    const envelope = res?.data?.data ?? res?.data ?? {};
+    if (Array.isArray(envelope)) return envelope;
+    if (envelope?.results && Array.isArray(envelope.results)) return envelope.results;
+    if (envelope?.data && Array.isArray(envelope.data)) return envelope.data;
+    return [];
+};
 
 const BulkBarcodePrinting = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -23,6 +33,10 @@ const BulkBarcodePrinting = () => {
     const [selectedForPrint, setSelectedForPrint] = useState([]);
     const [printing, setPrinting] = useState(false);
 
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
+
     useEffect(() => {
         fetchDropdownData();
     }, []);
@@ -35,14 +49,7 @@ const BulkBarcodePrinting = () => {
                 productionApi.getBatches(),
             ]);
 
-            const petList = petsRes.data?.data?.data || petsRes.data?.data || petsRes.data?.results || [];
-            const allPets = (Array.isArray(petList) ? petList : petList.results || [])
-                .filter(p => !(p.pet_name || '').toLowerCase().includes('can'))
-                .sort((a, b) => {
-                    const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
-                    const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
-                    return aNum - bNum;
-                });
+            const allPets = formatAndSortPets(petsRes);
             setPets(allPets);
 
             const prodList = productsRes.data?.data?.data || productsRes.data?.data || productsRes.data?.results || [];
@@ -58,19 +65,18 @@ const BulkBarcodePrinting = () => {
     const handleSearch = async () => {
         setLoading(true);
         try {
-            const params = {};
-            if (filters.startDate) params.start_date = filters.startDate;
-            if (filters.endDate) params.end_date = filters.endDate;
-            if (filters.startTime) params.start_time = filters.startTime;
-            if (filters.endTime) params.end_time = filters.endTime;
-            if (filters.productType) params.product_type = filters.productType;
-            if (filters.petName) params.pet_name = filters.petName;
-            if (filters.batchNumber) params.batch_number = filters.batchNumber;
+            const params = { page_size: 1000 };
+            if (filters.startDate) params.created_after = filters.startDate;
+            if (filters.endDate) params.created_before = filters.endDate;
+            if (filters.petName) params.pet = filters.petName;
+            if (filters.productType) params.product = filters.productType;
+            if (filters.batchNumber) params.batch = filters.batchNumber;
 
             const response = await inventoryApi.getBulkBarcodes(params);
-            const data = response.data?.data?.data || response.data?.data || response.data?.results || [];
-            setBarcodes(Array.isArray(data) ? data : []);
+            const data = extractData(response);
+            setBarcodes(data);
             setSelectedForPrint([]);
+            setCurrentPage(1);
         } catch (error) {
             console.error('Failed to fetch barcodes:', error);
             setBarcodes([]);
@@ -79,10 +85,16 @@ const BulkBarcodePrinting = () => {
         }
     };
 
+    // Client-side paginated slice
+    const paginatedBarcodes = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return barcodes.slice(start, start + pageSize);
+    }, [barcodes, currentPage, pageSize]);
+
     const toggleSelect = (barcode) => {
         setSelectedForPrint(prev =>
-            prev.some(b => b.id === barcode.id)
-                ? prev.filter(b => b.id !== barcode.id)
+            prev.some(b => b.id === barcode.id || b.barcode === barcode.barcode)
+                ? prev.filter(b => b.id !== barcode.id && b.barcode !== barcode.barcode)
                 : [...prev, barcode]
         );
     };
@@ -90,7 +102,6 @@ const BulkBarcodePrinting = () => {
     const selectAll = () => setSelectedForPrint([...barcodes]);
     const deselectAll = () => setSelectedForPrint([]);
 
-    // Generate barcode as data URL using canvas
     const generateBarcodeDataUrl = (value) => {
         try {
             const canvas = document.createElement('canvas');
@@ -108,7 +119,6 @@ const BulkBarcodePrinting = () => {
         }
     };
 
-    // Generate PDF with all selected barcodes
     const handleGeneratePDF = async () => {
         const items = selectedForPrint.length > 0 ? selectedForPrint : barcodes;
         if (items.length === 0) return;
@@ -119,7 +129,6 @@ const BulkBarcodePrinting = () => {
             const pageWidth = pdf.internal.pageSize.getWidth();
             const pageHeight = pdf.internal.pageSize.getHeight();
 
-            // Label dimensions
             const labelWidth = 80;
             const labelHeight = 55;
             const cols = 2;
@@ -127,7 +136,7 @@ const BulkBarcodePrinting = () => {
             const marginX = (pageWidth - cols * labelWidth) / (cols + 1);
             const marginY = (pageHeight - rows * labelHeight) / (rows + 1);
 
-            let currentPage = 0;
+            let currentPageIdx = 0;
 
             items.forEach((unit, idx) => {
                 const pageIdx = Math.floor(idx / (cols * rows));
@@ -135,53 +144,47 @@ const BulkBarcodePrinting = () => {
                 const col = posInPage % cols;
                 const row = Math.floor(posInPage / cols);
 
-                if (pageIdx > currentPage) {
+                if (pageIdx > currentPageIdx) {
                     pdf.addPage();
-                    currentPage = pageIdx;
+                    currentPageIdx = pageIdx;
                 }
 
                 const x = marginX + col * (labelWidth + marginX);
                 const y = marginY + row * (labelHeight + marginY);
 
-                // Draw label border
                 pdf.setDrawColor(200);
                 pdf.setLineWidth(0.3);
                 pdf.rect(x, y, labelWidth, labelHeight);
 
-                // Product name
                 pdf.setFontSize(9);
                 pdf.setFont(undefined, 'bold');
-                const productName = (unit.product_name || 'N/A').toUpperCase();
+                const productName = (unit.product_name || unit.product || 'N/A').toUpperCase();
                 pdf.text(productName, x + labelWidth / 2, y + 6, { align: 'center', maxWidth: labelWidth - 4 });
 
-                // Barcode image
-                const barcodeImg = generateBarcodeDataUrl(unit.barcode);
+                const barcodeVal = unit.barcode || unit.current_barcode || unit.id || '000000000000';
+                const barcodeImg = generateBarcodeDataUrl(barcodeVal);
                 if (barcodeImg) {
                     pdf.addImage(barcodeImg, 'PNG', x + 10, y + 9, labelWidth - 20, 22);
                 } else {
                     pdf.setFontSize(8);
                     pdf.setFont(undefined, 'normal');
-                    pdf.text(unit.barcode || 'N/A', x + labelWidth / 2, y + 20, { align: 'center' });
+                    pdf.text(barcodeVal, x + labelWidth / 2, y + 20, { align: 'center' });
                 }
 
-                // Pet name & quantity
                 pdf.setFontSize(8);
                 pdf.setFont(undefined, 'bold');
-                pdf.text(`${unit.pet_name || 'N/A'}`, x + 4, y + 36);
+                pdf.text(`${unit.pet_name || unit.pet || 'N/A'}`, x + 4, y + 36);
                 pdf.text(`Qty: ${unit.quantity || 0}`, x + labelWidth - 4, y + 36, { align: 'right' });
 
-                // Sequence & batch
                 pdf.setFontSize(7);
                 pdf.setFont(undefined, 'normal');
-                pdf.text(`Seq: ${unit.pet_sequence || '-'}`, x + 4, y + 41);
-                pdf.text(`Batch: ${unit.batch_number || '-'}`, x + labelWidth - 4, y + 41, { align: 'right' });
+                pdf.text(`Seq: ${unit.pet_sequence || unit.sequence || '-'}`, x + 4, y + 41);
+                pdf.text(`Batch: ${unit.batch_number || unit.batch || '-'}`, x + labelWidth - 4, y + 41, { align: 'right' });
 
-                // Timestamp
                 pdf.setFontSize(6);
                 const timestamp = unit.created_at ? new Date(unit.created_at).toLocaleString() : new Date().toLocaleString();
                 pdf.text(timestamp, x + labelWidth / 2, y + 47, { align: 'center' });
 
-                // Stage
                 pdf.setFontSize(6);
                 pdf.setFont(undefined, 'bold');
                 pdf.text((unit.stage || 'PRODUCTION').toUpperCase(), x + labelWidth / 2, y + 52, { align: 'center' });
@@ -195,15 +198,15 @@ const BulkBarcodePrinting = () => {
         }
     };
 
-    // Print single barcode
     const handlePrintSingle = (unit) => {
-        const barcodeImg = generateBarcodeDataUrl(unit.barcode);
+        const barcodeVal = unit.barcode || unit.current_barcode || unit.id || '000000000000';
+        const barcodeImg = generateBarcodeDataUrl(barcodeVal);
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
         printWindow.document.write(`
             <html>
             <head>
-                <title>Label - ${unit.barcode}</title>
+                <title>Label - ${barcodeVal}</title>
                 <style>
                     @page { margin: 10mm; size: auto; }
                     body { margin: 0; padding: 20px; font-family: Arial, sans-serif; text-align: center; }
@@ -217,15 +220,15 @@ const BulkBarcodePrinting = () => {
             </head>
             <body>
                 <div class="label">
-                    <h2>${unit.product_name || 'N/A'}</h2>
+                    <h2>${unit.product_name || unit.product || 'N/A'}</h2>
                     <div class="barcode-img">
-                        ${barcodeImg ? `<img src="${barcodeImg}" style="max-width:100%;" />` : `<p>${unit.barcode}</p>`}
+                        ${barcodeImg ? `<img src="${barcodeImg}" style="max-width:100%;" />` : `<p>${barcodeVal}</p>`}
                     </div>
                     <div class="details">
-                        <div class="detail-row"><span>Line:</span><strong>${unit.pet_name || 'N/A'}</strong></div>
+                        <div class="detail-row"><span>Line:</span><strong>${unit.pet_name || unit.pet || 'N/A'}</strong></div>
                         <div class="detail-row"><span>Quantity:</span><strong>${unit.quantity || 0}</strong></div>
-                        <div class="detail-row"><span>Sequence:</span><strong>${unit.pet_sequence || '-'}</strong></div>
-                        <div class="detail-row"><span>Batch:</span><strong>${unit.batch_number || '-'}</strong></div>
+                        <div class="detail-row"><span>Sequence:</span><strong>${unit.pet_sequence || unit.sequence || '-'}</strong></div>
+                        <div class="detail-row"><span>Batch:</span><strong>${unit.batch_number || unit.batch || '-'}</strong></div>
                         <div class="detail-row"><span>Stage:</span><strong>${unit.stage || 'PRODUCTION'}</strong></div>
                     </div>
                     <p class="timestamp">${unit.created_at ? new Date(unit.created_at).toLocaleString() : new Date().toLocaleString()}</p>
@@ -285,24 +288,6 @@ const BulkBarcodePrinting = () => {
                                 onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
                             />
                         </div>
-                        <div className="col-lg-1 col-md-3">
-                            <label className="form-label">Start Time</label>
-                            <input
-                                type="time"
-                                className="form-control form-control-sm"
-                                value={filters.startTime}
-                                onChange={(e) => setFilters(prev => ({ ...prev, startTime: e.target.value }))}
-                            />
-                        </div>
-                        <div className="col-lg-1 col-md-3">
-                            <label className="form-label">End Time</label>
-                            <input
-                                type="time"
-                                className="form-control form-control-sm"
-                                value={filters.endTime}
-                                onChange={(e) => setFilters(prev => ({ ...prev, endTime: e.target.value }))}
-                            />
-                        </div>
                         <div className="col-lg-2 col-md-4">
                             <label className="form-label">Product Type</label>
                             <select
@@ -325,7 +310,7 @@ const BulkBarcodePrinting = () => {
                             >
                                 <option value="">All Pets</option>
                                 {pets.map(p => (
-                                    <option key={p.id} value={p.pet_name}>{p.pet_name}</option>
+                                    <option key={p.id} value={p.id}>{p.label}</option>
                                 ))}
                             </select>
                         </div>
@@ -338,23 +323,23 @@ const BulkBarcodePrinting = () => {
                             >
                                 <option value="">All Batches</option>
                                 {batches.map(b => (
-                                    <option key={b.id} value={b.batch_number}>{b.batch_number}</option>
+                                    <option key={b.id} value={b.id}>{b.batch_number}</option>
                                 ))}
                             </select>
                         </div>
-                    </div>
-                    <div className="mt-3">
-                        <button
-                            className="btn btn-primary"
-                            onClick={handleSearch}
-                            disabled={loading}
-                        >
-                            {loading ? (
-                                <><span className="spinner-border spinner-border-sm me-2"></span>Searching...</>
-                            ) : (
-                                <><i className="ti ti-search me-2"></i>Search Barcodes</>
-                            )}
-                        </button>
+                        <div className="col-lg-2 col-md-4">
+                            <button
+                                className="btn btn-primary btn-sm w-100"
+                                onClick={handleSearch}
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <><span className="spinner-border spinner-border-sm me-2"></span>Searching...</>
+                                ) : (
+                                    <><i className="ti ti-search me-2"></i>Search Barcodes</>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -362,12 +347,12 @@ const BulkBarcodePrinting = () => {
             {/* Results */}
             {barcodes.length > 0 && (
                 <div className="card">
-                    <div className="card-header d-flex align-items-center justify-content-between">
+                    <div className="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
                         <div>
                             <h6 className="mb-0">Results</h6>
                             <small className="text-muted">{barcodes.length} barcodes found</small>
                         </div>
-                        <div className="d-flex gap-2 align-items-center">
+                        <div className="d-flex flex-wrap gap-2 align-items-center">
                             {selectedForPrint.length > 0 && (
                                 <span className="badge bg-soft-success text-success">{selectedForPrint.length} selected</span>
                             )}
@@ -388,9 +373,9 @@ const BulkBarcodePrinting = () => {
                         </div>
                     </div>
                     <div className="card-body p-0">
-                        <div className="table-responsive" style={{ maxHeight: 600 }}>
+                        <div className="table-responsive">
                             <table className="table table-sm table-hover mb-0">
-                                <thead className="table-light sticky-top">
+                                <thead className="table-light">
                                     <tr>
                                         <th style={{ width: 40 }}>
                                             <input
@@ -412,43 +397,62 @@ const BulkBarcodePrinting = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {barcodes.map((unit) => (
-                                        <tr key={unit.id}>
-                                            <td>
-                                                <input
-                                                    type="checkbox"
-                                                    className="form-check-input"
-                                                    checked={selectedForPrint.some(b => b.id === unit.id)}
-                                                    onChange={() => toggleSelect(unit)}
-                                                />
-                                            </td>
-                                            <td><code className="fw-bold">{unit.barcode}</code></td>
-                                            <td>{unit.product_name || '-'}</td>
-                                            <td>{unit.pet_name || '-'}</td>
-                                            <td className="text-end">{unit.quantity || 0}</td>
-                                            <td className="text-center">{unit.pet_sequence || '-'}</td>
-                                            <td>{unit.batch_number || '-'}</td>
-                                            <td>
-                                                <span className="badge bg-soft-info text-info">{unit.stage || '-'}</span>
-                                            </td>
-                                            <td className="text-muted" style={{ fontSize: '11px' }}>
-                                                {unit.created_at ? new Date(unit.created_at).toLocaleString() : '-'}
-                                            </td>
-                                            <td className="text-end">
-                                                <button
-                                                    className="btn btn-sm btn-icon btn-outline-primary"
-                                                    onClick={() => handlePrintSingle(unit)}
-                                                    title="Print this label"
-                                                >
-                                                    <i className="ti ti-printer"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {paginatedBarcodes.map((unit) => {
+                                        const barcodeVal = unit.barcode || unit.current_barcode || unit.id || '-';
+                                        const productName = unit.product_name || unit.product?.name || unit.product || '-';
+                                        const petName = unit.pet_name || unit.pet?.pet_name || '-';
+                                        return (
+                                            <tr key={unit.id || barcodeVal}>
+                                                <td>
+                                                    <input
+                                                        type="checkbox"
+                                                        className="form-check-input"
+                                                        checked={selectedForPrint.some(b => b.id === unit.id || b.barcode === barcodeVal)}
+                                                        onChange={() => toggleSelect(unit)}
+                                                    />
+                                                </td>
+                                                <td><code className="fw-bold">{barcodeVal}</code></td>
+                                                <td>{productName}</td>
+                                                <td>{petName}</td>
+                                                <td className="text-end">{unit.quantity || 0}</td>
+                                                <td className="text-center">{unit.pet_sequence || unit.sequence || '-'}</td>
+                                                <td>{unit.batch_number || unit.batch || '-'}</td>
+                                                <td>
+                                                    <span className="badge bg-soft-info text-info">{unit.stage || '-'}</span>
+                                                </td>
+                                                <td className="text-muted" style={{ fontSize: '11px' }}>
+                                                    {unit.created_at ? new Date(unit.created_at).toLocaleString() : '-'}
+                                                </td>
+                                                <td className="text-end">
+                                                    <button
+                                                        className="btn btn-sm btn-icon btn-outline-primary"
+                                                        onClick={() => handlePrintSingle(unit)}
+                                                        title="Print this label"
+                                                    >
+                                                        <i className="ti ti-printer"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
                     </div>
+
+                    {/* Pagination */}
+                    <Pagination
+                        page={currentPage}
+                        pageSize={pageSize}
+                        totalCount={barcodes.length}
+                        onPageChange={setCurrentPage}
+                        onPageSizeChange={(newSize) => {
+                            setPageSize(newSize);
+                            setCurrentPage(1);
+                        }}
+                        pageSizeOptions={[10, 20, 50, 100, 250]}
+                        itemLabel="barcodes"
+                    />
                 </div>
             )}
 

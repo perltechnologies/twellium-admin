@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { inventoryApi, productionApi } from '../../api';
+import { formatAndSortPets } from '../../utils/petUtils';
+import { Pagination } from '../../components/ui/Pagination';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 import { exportToExcel } from '../../utils/exportUtils';
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
+
+const extractData = (res) => {
+    const envelope = res?.data?.data ?? res?.data ?? {};
+    if (Array.isArray(envelope)) return envelope;
+    if (envelope?.results && Array.isArray(envelope.results)) return envelope.results;
+    if (envelope?.data && Array.isArray(envelope.data)) return envelope.data;
+    return [];
+};
 
 const ProductAnalysis = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -11,26 +21,33 @@ const ProductAnalysis = () => {
         startDate: today,
         endDate: today,
         petName: '',
-        reportName: '',
         productFilter: '',
     });
-    const [data, setData] = useState(null);
+    const [units, setUnits] = useState([]);
     const [loading, setLoading] = useState(false);
     const [pets, setPets] = useState([]);
     const [products, setProducts] = useState([]);
 
+    // Table pagination state
+    const [tablePage, setTablePage] = useState(1);
+    const [tablePageSize, setTablePageSize] = useState(10);
+
     useEffect(() => {
         fetchDropdownData();
+        fetchData();
     }, []);
 
     const fetchDropdownData = async () => {
         try {
             const [petsRes, productsRes] = await Promise.all([
                 productionApi.getPets(),
-                inventoryApi.getProducts(),
+                inventoryApi.getProducts({ page_size: 100 }),
             ]);
-            setPets(petsRes.data?.data?.data || petsRes.data?.data || []);
-            setProducts(productsRes.data?.data?.data || productsRes.data?.data || []);
+            const allPets = formatAndSortPets(petsRes);
+            setPets(allPets);
+
+            const prodList = productsRes.data?.data?.data || productsRes.data?.data || productsRes.data?.results || [];
+            setProducts(Array.isArray(prodList) ? prodList : prodList.results || []);
         } catch (error) {
             console.error('Failed to fetch dropdown data:', error);
         }
@@ -39,69 +56,98 @@ const ProductAnalysis = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const params = {};
-            if (filters.startDate) params.start_date = filters.startDate;
-            if (filters.endDate) params.end_date = filters.endDate;
-            if (filters.petName) params.pet_name = filters.petName;
-            if (filters.reportName) params.report_name = filters.reportName;
-            if (filters.productFilter) params.product = filters.productFilter;
+            const params = { page_size: 2000 };
 
             const response = await inventoryApi.getProductAnalysis(params);
-            const result = response.data?.data?.data || response.data?.data || {};
-            setData(result);
+            let result = extractData(response);
+
+            // Client-side filtering for unsupported API filters
+            if (filters.startDate) {
+                const start = new Date(filters.startDate);
+                start.setHours(0, 0, 0, 0);
+                result = result.filter(u => new Date(u.created_at) >= start);
+            }
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                result = result.filter(u => new Date(u.created_at) <= end);
+            }
+            if (filters.petName) {
+                result = result.filter(u => String(u.pet) === String(filters.petName));
+            }
+            if (filters.productFilter) {
+                result = result.filter(u => String(u.product) === String(filters.productFilter));
+            }
+
+            setUnits(result);
+            setTablePage(1);
         } catch (error) {
             console.error('Failed to fetch product analysis:', error);
+            setUnits([]);
         } finally {
             setLoading(false);
         }
     };
 
     const productsPerPallet = useMemo(() => {
-        if (!data?.products_per_pallet) return [];
-        return data.products_per_pallet.map(p => ({
-            name: p.product_name || p.name,
-            pallets: p.total_pallets || 0,
-        }));
-    }, [data]);
+        const map = {};
+        units.forEach(u => {
+            const name = u.product_name || u.product || 'Unknown';
+            if (!map[name]) map[name] = { name, pallets: 0, packs: 0 };
+            map[name].pallets += 1;
+            map[name].packs += (u.quantity || 0);
+        });
+        return Object.values(map).sort((a, b) => b.pallets - a.pallets);
+    }, [units]);
 
-    const bottlesPerBatch = useMemo(() => {
-        if (!data?.bottles_per_batch) return [];
-        return data.bottles_per_batch.map(b => ({
-            name: b.batch_number,
-            bottles: b.total_bottles || 0,
-        }));
-    }, [data]);
+    const paginatedProducts = useMemo(() => {
+        const start = (tablePage - 1) * tablePageSize;
+        return productsPerPallet.slice(start, start + tablePageSize);
+    }, [productsPerPallet, tablePage, tablePageSize]);
+
+    const packsPerBatch = useMemo(() => {
+        const map = {};
+        units.forEach(u => {
+            const batch = u.actual_production_code || u.production_run_name || 'Unknown';
+            if (!map[batch]) map[batch] = { name: batch, packs: 0 };
+            map[batch].packs += (u.quantity || 0);
+        });
+        return Object.values(map).sort((a, b) => b.packs - a.packs);
+    }, [units]);
 
     const palletsPerPet = useMemo(() => {
-        if (!data?.pallets_per_pet) return [];
-        return data.pallets_per_pet.map(p => ({
-            name: p.pet_name,
-            pallets: p.total_pallets || 0,
-        }));
-    }, [data]);
+        const map = {};
+        units.forEach(u => {
+            const pet = u.pet_name || u.pet || 'Unknown';
+            if (!map[pet]) map[pet] = { name: pet, pallets: 0, packs: 0 };
+            map[pet].pallets += 1;
+            map[pet].packs += (u.quantity || 0);
+        });
+        return Object.values(map).sort((a, b) => b.pallets - a.pallets);
+    }, [units]);
 
-    const bottlesPerPet = useMemo(() => {
-        if (!data?.bottles_per_pet) return [];
-        return data.bottles_per_pet.map(p => ({
-            name: p.pet_name,
-            bottles: p.total_bottles || 0,
-        }));
-    }, [data]);
+    const packsPerPet = useMemo(() => {
+        const map = {};
+        units.forEach(u => {
+            const pet = u.pet_name || u.pet || 'Unknown';
+            if (!map[pet]) map[pet] = { name: pet, packs: 0 };
+            map[pet].packs += (u.quantity || 0);
+        });
+        return Object.values(map).sort((a, b) => b.packs - a.packs);
+    }, [units]);
 
-    const totals = useMemo(() => {
-        if (!data) return { products: 0, pallets: 0, bottles: 0, batches: 0 };
-        return {
-            products: data.total_products || 0,
-            pallets: data.total_pallets || 0,
-            bottles: data.total_bottles || 0,
-            batches: data.total_batches || 0,
-        };
-    }, [data]);
+    const totals = useMemo(() => ({
+        products: new Set(units.map(u => u.product_name || u.product || '')).size,
+        pallets: units.length,
+        packs: units.reduce((s, u) => s + (u.quantity || 0), 0),
+        batches: new Set(units.map(u => u.actual_production_code || u.production_run_name || '')).size,
+    }), [units]);
 
     const handleExport = () => {
         const exportData = productsPerPallet.map(p => ({
             'Product': p.name,
             'Pallets': p.pallets,
+            'Packs': p.packs,
         }));
         exportToExcel(exportData, `product_analysis_${filters.startDate}`, 'Product Analysis');
     };
@@ -127,17 +173,14 @@ const ProductAnalysis = () => {
         <div className="container-fluid">
             <div className="d-flex align-items-center justify-content-between mb-4">
                 <div>
-                    <h4 className="mb-1">
-                        <i className="ti ti-chart-bar me-2"></i>
-                        Product Analysis Dashboard
-                    </h4>
+                    <h4 className="mb-1"><i className="ti ti-chart-bar me-2"></i>Product Analysis Dashboard</h4>
                     <p className="text-muted mb-0">Comprehensive analysis of products across multiple dimensions</p>
                 </div>
                 <div className="d-flex gap-2">
                     <button className="btn btn-sm btn-outline-primary" onClick={fetchData} disabled={loading}>
                         <i className="ti ti-refresh me-1"></i>Refresh
                     </button>
-                    <button className="btn btn-sm btn-success" onClick={handleExport} disabled={!data}>
+                    <button className="btn btn-sm btn-success" onClick={handleExport} disabled={!units.length}>
                         <i className="ti ti-file-spreadsheet me-1"></i>Export
                     </button>
                 </div>
@@ -146,12 +189,7 @@ const ProductAnalysis = () => {
             <div className="row mb-4">
                 <div className="col-12">
                     <div className="card">
-                        <div className="card-header">
-                            <h5 className="card-title mb-0">
-                                <i className="ti ti-filter me-2"></i>
-                                Filters
-                            </h5>
-                        </div>
+                        <div className="card-header"><h5 className="card-title mb-0"><i className="ti ti-filter me-2"></i>Filters</h5></div>
                         <div className="card-body">
                             <div className="row g-3 align-items-end">
                                 <div className="col-md-2">
@@ -169,7 +207,7 @@ const ProductAnalysis = () => {
                                     <select className="form-select" value={filters.petName}
                                         onChange={(e) => setFilters({ ...filters, petName: e.target.value })}>
                                         <option value="">All Pets</option>
-                                        {pets.map(p => <option key={p.id} value={p.pet_name}>{p.pet_name}</option>)}
+                                        {pets.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                                     </select>
                                 </div>
                                 <div className="col-md-2">
@@ -193,7 +231,7 @@ const ProductAnalysis = () => {
 
             {loading ? (
                 <div className="text-center py-5"><span className="spinner-border text-primary" /></div>
-            ) : data ? (
+            ) : units.length > 0 ? (
                 <>
                     <div className="row g-3 mb-4">
                         <div className="col-xl-3 col-sm-6">
@@ -215,8 +253,8 @@ const ProductAnalysis = () => {
                         <div className="col-xl-3 col-sm-6">
                             <div className="card border-top border-info border-3 mb-0">
                                 <div className="card-body">
-                                    <p className="text-muted fs-14 mb-1">Total Bottles</p>
-                                    <h2 className="mb-0 fs-16 fw-bold">{totals.bottles.toLocaleString()}</h2>
+                                    <p className="text-muted fs-14 mb-1">Total Packs</p>
+                                    <h2 className="mb-0 fs-16 fw-bold">{totals.packs.toLocaleString()}</h2>
                                 </div>
                             </div>
                         </div>
@@ -233,12 +271,10 @@ const ProductAnalysis = () => {
                     <div className="row mb-4">
                         <div className="col-lg-6">
                             <div className="card h-100">
-                                <div className="card-header">
-                                    <h6 className="mb-0">Products per Pallet</h6>
-                                </div>
+                                <div className="card-header"><h6 className="mb-0">Products per Pallet</h6></div>
                                 <div className="card-body">
                                     <ResponsiveContainer width="100%" height={300}>
-                                        <BarChart data={productsPerPallet}>
+                                        <BarChart data={productsPerPallet.slice(0, 8)}>
                                             <CartesianGrid strokeDasharray="3 3" />
                                             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                                             <YAxis tick={{ fontSize: 12 }} />
@@ -251,17 +287,15 @@ const ProductAnalysis = () => {
                         </div>
                         <div className="col-lg-6">
                             <div className="card h-100">
-                                <div className="card-header">
-                                    <h6 className="mb-0">Bottles per Batch</h6>
-                                </div>
+                                <div className="card-header"><h6 className="mb-0">Packs per Batch</h6></div>
                                 <div className="card-body">
                                     <ResponsiveContainer width="100%" height={300}>
-                                        <BarChart data={bottlesPerBatch}>
+                                        <BarChart data={packsPerBatch.slice(0, 8)}>
                                             <CartesianGrid strokeDasharray="3 3" />
                                             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                                             <YAxis tick={{ fontSize: 12 }} />
                                             <Tooltip content={<CustomTooltip />} />
-                                            <Bar dataKey="bottles" fill="#22c55e" name="Bottles" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="packs" fill="#22c55e" name="Packs" radius={[4, 4, 0, 0]} />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -272,9 +306,7 @@ const ProductAnalysis = () => {
                     <div className="row mb-4">
                         <div className="col-lg-6">
                             <div className="card h-100">
-                                <div className="card-header">
-                                    <h6 className="mb-0">Pallets per Pet</h6>
-                                </div>
+                                <div className="card-header"><h6 className="mb-0">Pallets per Pet</h6></div>
                                 <div className="card-body">
                                     <ResponsiveContainer width="100%" height={300}>
                                         <PieChart>
@@ -290,22 +322,62 @@ const ProductAnalysis = () => {
                         </div>
                         <div className="col-lg-6">
                             <div className="card h-100">
-                                <div className="card-header">
-                                    <h6 className="mb-0">Bottles per Pet</h6>
-                                </div>
+                                <div className="card-header"><h6 className="mb-0">Packs per Pet</h6></div>
                                 <div className="card-body">
                                     <ResponsiveContainer width="100%" height={300}>
                                         <PieChart>
-                                            <Pie data={bottlesPerPet} cx="50%" cy="50%" outerRadius={90} paddingAngle={2} dataKey="bottles"
+                                            <Pie data={packsPerPet} cx="50%" cy="50%" outerRadius={90} paddingAngle={2} dataKey="packs"
                                                 label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
-                                                {bottlesPerPet.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
+                                                {packsPerPet.map((_, idx) => <Cell key={idx} fill={COLORS[idx % COLORS.length]} />)}
                                             </Pie>
-                                            <Tooltip formatter={(v) => [v.toLocaleString(), 'Bottles']} />
+                                            <Tooltip formatter={(v) => [v.toLocaleString(), 'Packs']} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Product Summary Table */}
+                    <div className="card mb-4">
+                        <div className="card-header d-flex align-items-center justify-content-between">
+                            <h6 className="mb-0">Product Production Summary</h6>
+                            <span className="badge bg-soft-primary text-primary">{productsPerPallet.length} products</span>
+                        </div>
+                        <div className="card-body p-0">
+                            <div className="table-responsive">
+                                <table className="table table-striped table-hover mb-0">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th>Product</th>
+                                            <th className="text-end">Total Pallets</th>
+                                            <th className="text-end">Total Packs</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {paginatedProducts.map((p, idx) => (
+                                            <tr key={idx}>
+                                                <td className="fw-semibold">{p.name}</td>
+                                                <td className="text-end">{p.pallets.toLocaleString()}</td>
+                                                <td className="text-end">{p.packs.toLocaleString()}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <Pagination
+                            page={tablePage}
+                            pageSize={tablePageSize}
+                            totalCount={productsPerPallet.length}
+                            onPageChange={setTablePage}
+                            onPageSizeChange={(newSize) => {
+                                setTablePageSize(newSize);
+                                setTablePage(1);
+                            }}
+                            pageSizeOptions={[5, 10, 20, 50]}
+                            itemLabel="products"
+                        />
                     </div>
                 </>
             ) : (

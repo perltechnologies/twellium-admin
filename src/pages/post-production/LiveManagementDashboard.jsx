@@ -1,25 +1,43 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { inventoryApi, productionApi } from '../../api';
+import { formatAndSortPets } from '../../utils/petUtils';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts';
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 
+const extractData = (res) => {
+    const envelope = res?.data?.data ?? res?.data ?? {};
+    if (Array.isArray(envelope)) return envelope;
+    if (envelope?.results && Array.isArray(envelope.results)) return envelope.results;
+    if (envelope?.data && Array.isArray(envelope.data)) return envelope.data;
+    return [];
+};
+
 const LiveManagementDashboard = () => {
-    const [metrics, setMetrics] = useState(null);
+    const [overview, setOverview] = useState(null);
+    const [stageCounts, setStageCounts] = useState(null);
+    const [units, setUnits] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pets, setPets] = useState([]);
-    const [scanHistory, setScanHistory] = useState([]);
-    const [palletCounts, setPalletCounts] = useState([]);
     const [refreshInterval, setRefreshInterval] = useState(30);
     const [autoRefresh, setAutoRefresh] = useState(true);
 
     const fetchMetrics = useCallback(async () => {
         try {
-            const response = await inventoryApi.getLiveMetrics();
-            const result = response.data?.data?.data || response.data?.data || {};
-            setMetrics(result);
-            if (result.scan_history) setScanHistory(result.scan_history);
-            if (result.pallet_counts) setPalletCounts(result.pallet_counts);
+            const [overviewRes, stageRes, unitsRes] = await Promise.all([
+                inventoryApi.getTodayOverview(),
+                inventoryApi.getStageCounts(),
+                inventoryApi.getHandlingUnits({ page_size: 100, ordering: '-created_at' }),
+            ]);
+
+            const overviewData = overviewRes?.data?.data ?? overviewRes?.data ?? {};
+            setOverview(overviewData);
+
+            const stageData = stageRes?.data?.data ?? stageRes?.data ?? {};
+            setStageCounts(stageData);
+
+            const unitsData = extractData(unitsRes);
+            setUnits(unitsData);
         } catch (error) {
             console.error('Failed to fetch live metrics:', error);
         } finally {
@@ -30,7 +48,8 @@ const LiveManagementDashboard = () => {
     const fetchPets = useCallback(async () => {
         try {
             const res = await productionApi.getPets();
-            setPets(res.data?.data?.data || res.data?.data || []);
+            const allPets = formatAndSortPets(res);
+            setPets(allPets);
         } catch (error) {
             console.error('Failed to fetch pets:', error);
         }
@@ -48,33 +67,53 @@ const LiveManagementDashboard = () => {
     }, [autoRefresh, refreshInterval, fetchMetrics]);
 
     const totals = useMemo(() => {
-        if (!metrics) return { scanned: 0, pallets: 0, bottles: 0, packs: 0 };
         return {
-            scanned: metrics.total_scanned || 0,
-            pallets: metrics.total_pallets || 0,
-            bottles: metrics.total_bottles || 0,
-            packs: metrics.total_packs || 0,
+            scanned: overview?.total_units || units.length,
+            pallets: overview?.total_pallets || units.filter(u => u.unit_type === 'PALLET').length,
+            bottles: overview?.total_bottles || units.reduce((s, u) => s + (u.total_bottles || u.bottles || 0), 0),
+            packs: overview?.total_packs || units.reduce((s, u) => s + (u.quantity || 0), 0),
         };
-    }, [metrics]);
+    }, [overview, units]);
 
     const petPerformance = useMemo(() => {
-        if (!metrics?.pet_metrics) return [];
-        return metrics.pet_metrics.map(p => ({
-            name: p.pet_name,
-            scanned: p.scanned || 0,
-            pallets: p.pallets || 0,
-            bottles: p.bottles || 0,
-        }));
-    }, [metrics]);
+        const map = {};
+        units.forEach(u => {
+            const pet = u.pet_name || u.pet?.pet_name || u.pet || 'Unknown';
+            if (!map[pet]) map[pet] = { name: pet, scanned: 0, pallets: 0, bottles: 0 };
+            map[pet].scanned += 1;
+            if (u.unit_type === 'PALLET') map[pet].pallets += 1;
+            map[pet].bottles += (u.total_bottles || u.bottles || 0);
+        });
+        return Object.values(map);
+    }, [units]);
 
     const batchProgress = useMemo(() => {
-        if (!metrics?.batch_progress) return [];
-        return metrics.batch_progress.map(b => ({
-            name: b.batch_number,
-            pallets: b.pallets || 0,
-            bottles: b.bottles || 0,
+        const map = {};
+        units.forEach(u => {
+            const batch = u.batch_number || u.batch || 'Unknown';
+            if (!map[batch]) map[batch] = { name: batch, pallets: 0, bottles: 0 };
+            map[batch].pallets += 1;
+            map[batch].bottles += (u.total_bottles || u.bottles || 0);
+        });
+        return Object.values(map).slice(0, 10);
+    }, [units]);
+
+    const palletCounts = useMemo(() => {
+        const stageData = stageCounts?.stages || stageCounts || [];
+        return Array.isArray(stageData) ? stageData.map(s => ({
+            name: s.stage || s.name || 'Unknown',
+            count: s.count || s.total || 0,
+        })) : [];
+    }, [stageCounts]);
+
+    const recentScans = useMemo(() => {
+        return units.slice(0, 20).map(u => ({
+            barcode: u.barcode || u.current_barcode || u.id || '-',
+            pet_name: u.pet_name || u.pet?.pet_name || u.pet || '-',
+            created_at: u.created_at,
+            time: u.created_at ? new Date(u.created_at).toLocaleTimeString() : '-',
         }));
-    }, [metrics]);
+    }, [units]);
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
@@ -97,10 +136,7 @@ const LiveManagementDashboard = () => {
         <div className="container-fluid">
             <div className="d-flex align-items-center justify-content-between mb-4">
                 <div>
-                    <h4 className="mb-1">
-                        <i className="ti ti-live-photo me-2"></i>
-                        Live Management Dashboard
-                    </h4>
+                    <h4 className="mb-1"><i className="ti ti-live-photo me-2"></i>Live Management Dashboard</h4>
                     <p className="text-muted mb-0">Real-time production metrics and pallet tracking</p>
                 </div>
                 <div className="d-flex gap-2 align-items-center">
@@ -124,9 +160,9 @@ const LiveManagementDashboard = () => {
                 </div>
             </div>
 
-            {loading && !metrics ? (
+            {loading && !overview && units.length === 0 ? (
                 <div className="text-center py-5"><span className="spinner-border text-primary" /></div>
-            ) : metrics ? (
+            ) : (
                 <>
                     <div className="row g-3 mb-4">
                         <div className="col-xl-3 col-sm-6">
@@ -195,36 +231,29 @@ const LiveManagementDashboard = () => {
                         <div className="col-lg-8">
                             <div className="card h-100">
                                 <div className="card-header">
-                                    <h6 className="mb-0">
-                                        <i className="ti ti-chart-line me-1"></i>
-                                        Pallet Count per Pet (Live)
-                                    </h6>
+                                    <h6 className="mb-0"><i className="ti ti-chart-line me-1"></i>Pallet Count per Stage</h6>
                                 </div>
                                 <div className="card-body">
-                                    <ResponsiveContainer width="100%" height={300}>
-                                        <AreaChart data={palletCounts}>
-                                            <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                                            <YAxis tick={{ fontSize: 12 }} />
-                                            <Tooltip content={<CustomTooltip />} />
-                                            <Legend />
-                                            {pets.slice(0, 6).map((pet, idx) => (
-                                                <Area key={pet.id} type="monotone" dataKey={pet.pet_name}
-                                                    stroke={COLORS[idx % COLORS.length]}
-                                                    fill={COLORS[idx % COLORS.length]} fillOpacity={0.1} />
-                                            ))}
-                                        </AreaChart>
-                                    </ResponsiveContainer>
+                                    {palletCounts.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={300}>
+                                            <BarChart data={palletCounts}>
+                                                <CartesianGrid strokeDasharray="3 3" />
+                                                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                                                <YAxis tick={{ fontSize: 12 }} />
+                                                <Tooltip content={<CustomTooltip />} />
+                                                <Bar dataKey="count" fill="#3b82f6" name="Pallets" radius={[4, 4, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="text-center text-muted py-4">No stage data available</div>
+                                    )}
                                 </div>
                             </div>
                         </div>
                         <div className="col-lg-4">
                             <div className="card h-100">
                                 <div className="card-header">
-                                    <h6 className="mb-0">
-                                        <i className="ti ti-activity me-1"></i>
-                                        Recent Scans
-                                    </h6>
+                                    <h6 className="mb-0"><i className="ti ti-activity me-1"></i>Recent Scans</h6>
                                 </div>
                                 <div className="card-body p-0" style={{ maxHeight: 300, overflowY: 'auto' }}>
                                     <table className="table table-sm mb-0">
@@ -236,14 +265,14 @@ const LiveManagementDashboard = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {scanHistory.slice(0, 20).map((scan, idx) => (
+                                            {recentScans.map((scan, idx) => (
                                                 <tr key={idx}>
-                                                    <td><code className="small">{scan.barcode || '-'}</code></td>
-                                                    <td><span className="badge bg-soft-primary">{scan.pet_name || '-'}</span></td>
-                                                    <td className="small text-muted">{scan.time || scan.created_at || '-'}</td>
+                                                    <td><code className="small">{scan.barcode}</code></td>
+                                                    <td><span className="badge bg-soft-primary">{scan.pet_name}</span></td>
+                                                    <td className="small text-muted">{scan.time}</td>
                                                 </tr>
                                             ))}
-                                            {scanHistory.length === 0 && (
+                                            {recentScans.length === 0 && (
                                                 <tr><td colSpan="3" className="text-center text-muted py-3">No recent scans</td></tr>
                                             )}
                                         </tbody>
@@ -256,9 +285,7 @@ const LiveManagementDashboard = () => {
                     <div className="row mb-4">
                         <div className="col-lg-6">
                             <div className="card h-100">
-                                <div className="card-header">
-                                    <h6 className="mb-0">Pet Performance Metrics</h6>
-                                </div>
+                                <div className="card-header"><h6 className="mb-0">Pet Performance Metrics</h6></div>
                                 <div className="card-body">
                                     <ResponsiveContainer width="100%" height={300}>
                                         <BarChart data={petPerformance}>
@@ -277,9 +304,7 @@ const LiveManagementDashboard = () => {
                         </div>
                         <div className="col-lg-6">
                             <div className="card h-100">
-                                <div className="card-header">
-                                    <h6 className="mb-0">Batch Progress</h6>
-                                </div>
+                                <div className="card-header"><h6 className="mb-0">Batch Progress</h6></div>
                                 <div className="card-body">
                                     <ResponsiveContainer width="100%" height={300}>
                                         <BarChart data={batchProgress}>
@@ -297,14 +322,6 @@ const LiveManagementDashboard = () => {
                         </div>
                     </div>
                 </>
-            ) : (
-                <div className="card">
-                    <div className="card-body text-center py-5 text-muted">
-                        <i className="ti ti-live-photo fs-1 mb-3 d-block"></i>
-                        <h5>Unable to load live metrics</h5>
-                        <p>Check your connection and try refreshing</p>
-                    </div>
-                </div>
             )}
         </div>
     );

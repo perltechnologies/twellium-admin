@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import {
-    ChevronLeft,
-    ChevronRight,
     Search,
     Edit,
     Trash2,
@@ -12,6 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, Input, Card } from './base';
+import { Pagination } from './Pagination';
 
 export const DataTable = ({
     columns = [],
@@ -243,33 +242,12 @@ export const DataTable = ({
 
                 {/* Pagination */}
                 {pagination && (
-                    <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                        <div className="text-sm text-slate-500 dark:text-slate-400">
-                            Showing <span className="font-medium text-slate-700 dark:text-slate-300">
-                                {Math.min((pagination.currentPage - 1) * pagination.pageSize + 1, pagination.totalCount)}
-                            </span> to <span className="font-medium text-slate-700 dark:text-slate-300">
-                                {Math.min(pagination.currentPage * pagination.pageSize, pagination.totalCount)}
-                            </span> of <span className="font-medium text-slate-700 dark:text-slate-300">{pagination.totalCount}</span> results
-                        </div>
-                        <div className="flex gap-2">
-                            <Button
-                                variant="secondary"
-                                className="px-3 py-2 h-9 text-sm"
-                                disabled={!pagination.hasPrev}
-                                onClick={() => onPageChange(pagination.prev)}
-                            >
-                                <ChevronLeft className="h-4 w-4 mr-1" /> Previous
-                            </Button>
-                            <Button
-                                variant="secondary"
-                                className="px-3 py-2 h-9 text-sm"
-                                disabled={!pagination.hasNext}
-                                onClick={() => onPageChange(pagination.next)}
-                            >
-                                Next <ChevronRight className="h-4 w-4 ml-1" />
-                            </Button>
-                        </div>
-                    </div>
+                    <Pagination
+                        page={pagination.currentPage}
+                        pageSize={pagination.pageSize}
+                        totalCount={pagination.totalCount}
+                        onPageChange={onPageChange}
+                    />
                 )}
             </Card>
         </div>
