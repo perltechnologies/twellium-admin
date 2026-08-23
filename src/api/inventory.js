@@ -8,13 +8,17 @@ export const inventoryApi = {
     deleteProduct: (id) => api.delete(`/inventory/products/${id}/`),
 
     // Handling Units (Post Production)
+    getHandlingUnits: (params) => api.get('/inventory/handling-units/', { params }),
+    getHandlingUnit: (id) => api.get(`/inventory/handling-units/${id}/`),
     createHandlingUnit: (data) => api.post('/inventory/handling-units/', data),
     scanHandlingUnit: (data) => api.post('/inventory/handling-units/scan/', data),
     linkRfid: (data) => api.post('/inventory/handling-units/link-rfid/', data),
-    getBarcodesByStage: (params) => api.get(`/inventory/handling-units/barcodes-by-stage/`, { params }),
+    getBarcodesByStage: (params) => api.get('/inventory/handling-units/barcodes-by-stage/', { params }),
     getTodayOverview: () => api.get('/inventory/handling-units/today-overview/'),
     getStageCounts: () => api.get('/inventory/handling-units/stage-counts/'),
     getStageDetails: (params) => api.get('/inventory/handling-units/stage-details/', { params }),
+    lookupUnit: (params) => api.get('/inventory/handling-units/lookup/', { params }),
+    printBatch: (data) => api.post('/inventory/handling-units/print_batch/', data),
 
     // Diagnostic & Management Tools (Redesigned)
     getUnitStatus: (value) => api.get('/inventory/handling-units/get-status/', { params: { value } }),
@@ -31,15 +35,60 @@ export const inventoryApi = {
     getActivityLogs: (params) => api.get('/inventory/activity-logs/', { params }),
     getActivityLog: (id) => api.get(`/inventory/activity-logs/${id}/`),
 
-    // Post Production Analytics
-    getBulkBarcodes: (params) => api.get('/inventory/handling-units/bulk-barcodes/', { params }),
-    getBatchTraceability: (params) => api.get('/inventory/analytics/batch-traceability/', { params }),
-    getProductAnalysis: (params) => api.get('/inventory/analytics/product-analysis/', { params }),
-    getPetPerformance: (params) => api.get('/inventory/analytics/pet-performance/', { params }),
-    getLiveMetrics: (params) => api.get('/inventory/analytics/live-metrics/', { params }),
-    getPacksTrend: (params) => api.get('/inventory/analytics/packs-trend/', { params }),
-    getPalletsTrend: (params) => api.get('/inventory/analytics/pallets-trend/', { params }),
-    getWarehouseStageTrend: (params) => api.get('/inventory/analytics/warehouse-stage-trend/', { params }),
-    getCustomerDispatchTrend: (params) => api.get('/inventory/analytics/customer-dispatch-trend/', { params }),
-    getVehicleDispatchDetails: (params) => api.get('/logistics/vehicle-dispatch-details/', { params }),
+    // Post Production Analytics (computed client-side from available endpoints)
+    getBulkBarcodes: async (params) => {
+        const res = await api.get('/inventory/handling-units/', {
+            params: { page_size: 1000, ...params },
+        });
+        return res;
+    },
+    getBatchTraceability: async (params) => {
+        const res = await api.get('/inventory/handling-units/', {
+            params: { page_size: 1000, ...params },
+        });
+        return res;
+    },
+    getProductAnalysis: async (params) => {
+        const res = await api.get('/inventory/handling-units/', {
+            params: { page_size: 1000, ...params },
+        });
+        return res;
+    },
+    getPetPerformance: async (params) => {
+        const res = await api.get('/inventory/handling-units/', {
+            params: { page_size: 1000, ...params },
+        });
+        return res;
+    },
+    getLiveMetrics: async (params) => {
+        const [overviewRes, stageCountsRes] = await Promise.all([
+            api.get('/inventory/handling-units/today-overview/'),
+            api.get('/inventory/handling-units/stage-counts/'),
+        ]);
+        return { data: { data: { overview: overviewRes.data?.data, stageCounts: stageCountsRes.data?.data } } };
+    },
+    getPacksTrend: async (params) => {
+        const res = await api.get('/inventory/handling-units/', {
+            params: { page_size: 1000, ...params },
+        });
+        return res;
+    },
+    getPalletsTrend: async (params) => {
+        const res = await api.get('/inventory/handling-units/', {
+            params: { page_size: 1000, ...params },
+        });
+        return res;
+    },
+    getWarehouseStageTrend: async (params) => {
+        const res = await api.get('/inventory/handling-units/stage-details/', { params });
+        return res;
+    },
+    getCustomerDispatchTrend: async (params) => {
+        const res = await api.get('/logistics/shipments/', { params: { page_size: 1000, ...params } });
+        return res;
+    },
+    getVehicleDispatchDetails: async (params) => {
+        const res = await api.get('/logistics/shipments/', { params: { page_size: 1000, ...params } });
+        return res;
+    },
 };

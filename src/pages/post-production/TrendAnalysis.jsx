@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { inventoryApi, productionApi, logisticsApi } from '../../api';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { formatAndSortPets } from '../../utils/petUtils';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { exportToExcel } from '../../utils/exportUtils';
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
+
+const extractData = (res) => {
+    const envelope = res?.data?.data ?? res?.data ?? {};
+    if (Array.isArray(envelope)) return envelope;
+    if (envelope?.results && Array.isArray(envelope.results)) return envelope.results;
+    if (envelope?.data && Array.isArray(envelope.data)) return envelope.data;
+    return [];
+};
 
 const TrendAnalysis = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -13,18 +22,22 @@ const TrendAnalysis = () => {
         petName: '',
     });
     const [activeTab, setActiveTab] = useState('packs');
-    const [data, setData] = useState({ packs: null, pallets: null, warehouse: null, customers: null });
+    const [units, setUnits] = useState([]);
+    const [shipments, setShipments] = useState([]);
+    const [stageDetails, setStageDetails] = useState([]);
     const [loading, setLoading] = useState(false);
     const [pets, setPets] = useState([]);
 
     useEffect(() => {
         fetchPets();
+        fetchData();
     }, []);
 
     const fetchPets = async () => {
         try {
             const res = await productionApi.getPets();
-            setPets(res.data?.data?.data || res.data?.data || []);
+            const allPets = formatAndSortPets(res);
+            setPets(allPets);
         } catch (error) {
             console.error('Failed to fetch pets:', error);
         }
@@ -33,37 +46,37 @@ const TrendAnalysis = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const params = {};
-            if (filters.startDate) params.start_date = filters.startDate;
-            if (filters.endDate) params.end_date = filters.endDate;
-            if (filters.petName) params.pet_name = filters.petName;
+            const params = { page_size: 2000 };
 
-            const endpoints = {
-                packs: inventoryApi.getPacksTrend,
-                pallets: inventoryApi.getPalletsTrend,
-                warehouse: inventoryApi.getWarehouseStageTrend,
-                customers: inventoryApi.getCustomerDispatchTrend,
-            };
+            const [unitsRes, shipmentsRes, stageRes] = await Promise.allSettled([
+                inventoryApi.getHandlingUnits(params),
+                logisticsApi.getShipments({ page_size: 1000 }),
+                inventoryApi.getStageDetails(params),
+            ]);
 
-            const responses = await Promise.allSettled(
-                Object.entries(endpoints).map(async ([key, fn]) => {
-                    try {
-                        const res = await fn(params);
-                        const result = res.data?.data?.data || res.data?.data || [];
-                        return [key, result];
-                    } catch (e) {
-                        return [key, []];
-                    }
-                })
-            );
+            let unitsData = unitsRes.status === 'fulfilled' ? extractData(unitsRes.value) : [];
+            const shipmentsData = shipmentsRes.status === 'fulfilled' ? extractData(shipmentsRes.value) : [];
+            const stageData = stageRes.status === 'fulfilled' ? (stageRes.value?.data?.data ?? stageRes.value?.data ?? {}) : {};
+            const stageDetailsData = Array.isArray(stageData?.details) ? stageData.details : [];
 
-            const newData = {};
-            responses.forEach(r => {
-                if (r.status === 'fulfilled') {
-                    newData[r.value[0]] = r.value[1];
-                }
-            });
-            setData(newData);
+            // Client-side filtering for unsupported API filters
+            if (filters.startDate) {
+                const start = new Date(filters.startDate);
+                start.setHours(0, 0, 0, 0);
+                unitsData = unitsData.filter(u => new Date(u.created_at) >= start);
+            }
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                unitsData = unitsData.filter(u => new Date(u.created_at) <= end);
+            }
+            if (filters.petName) {
+                unitsData = unitsData.filter(u => String(u.pet) === String(filters.petName));
+            }
+
+            setUnits(unitsData);
+            setShipments(shipmentsData);
+            setStageDetails(stageDetailsData);
         } catch (error) {
             console.error('Failed to fetch trend data:', error);
         } finally {
@@ -72,8 +85,55 @@ const TrendAnalysis = () => {
     };
 
     const currentData = useMemo(() => {
-        return data[activeTab] || [];
-    }, [data, activeTab]);
+        if (activeTab === 'packs') {
+            const dailyMap = {};
+            units.forEach(u => {
+                const date = u.created_at ? new Date(u.created_at).toISOString().split('T')[0] : 'Unknown';
+                const rawLabel = String(u.pet_name || u.pet || 'Unknown');
+                const match = rawLabel.match(/\d+/);
+                const pet = match ? `Pet ${match[0]}` : rawLabel;
+
+                if (!dailyMap[date]) dailyMap[date] = { date };
+                dailyMap[date][pet] = (dailyMap[date][pet] || 0) + (u.quantity || 0);
+            });
+            return Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        if (activeTab === 'pallets') {
+            const dailyMap = {};
+            units.forEach(u => {
+                const date = u.created_at ? new Date(u.created_at).toISOString().split('T')[0] : 'Unknown';
+                const rawLabel = String(u.pet_name || u.pet || 'Unknown');
+                const match = rawLabel.match(/\d+/);
+                const pet = match ? `Pet ${match[0]}` : rawLabel;
+
+                if (!dailyMap[date]) dailyMap[date] = { date };
+                dailyMap[date][pet] = (dailyMap[date][pet] || 0) + 1;
+            });
+            return Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        if (activeTab === 'warehouse') {
+            return stageDetails.map(s => ({
+                date: s.date || s.created_at || 'Unknown',
+                stage: s.stage || s.name || 'Unknown',
+                count: s.count || s.total || 0,
+            }));
+        }
+
+        if (activeTab === 'customers') {
+            const dailyMap = {};
+            shipments.forEach(s => {
+                const date = s.created_at ? new Date(s.created_at).toISOString().split('T')[0] : 'Unknown';
+                const customer = s.customer_name || s.customer || 'Unknown';
+                if (!dailyMap[date]) dailyMap[date] = { date };
+                dailyMap[date][customer] = (dailyMap[date][customer] || 0) + 1;
+            });
+            return Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        return [];
+    }, [units, shipments, stageDetails, activeTab]);
 
     const handleExport = () => {
         exportToExcel(currentData, `trend_${activeTab}_${filters.startDate}`, activeTab);
@@ -103,21 +163,29 @@ const TrendAnalysis = () => {
         { key: 'customers', label: 'Customer Dispatch', icon: 'ti ti-truck-delivery' },
     ];
 
+    const lineDataKeys = useMemo(() => {
+        if (currentData.length === 0) return [];
+        return Object.keys(currentData[0])
+            .filter(key => key !== 'date' && key !== 'stage' && key !== 'count')
+            .sort((a, b) => {
+                const aNum = parseInt(a.match(/\d+/)?.[0] || '999', 10);
+                const bNum = parseInt(b.match(/\d+/)?.[0] || '999', 10);
+                return aNum - bNum;
+            });
+    }, [currentData]);
+
     return (
         <div className="container-fluid">
             <div className="d-flex align-items-center justify-content-between mb-4">
                 <div>
-                    <h4 className="mb-1">
-                        <i className="ti ti-chart-line me-2"></i>
-                        Trend Analysis
-                    </h4>
+                    <h4 className="mb-1"><i className="ti ti-chart-line me-2"></i>Trend Analysis</h4>
                     <p className="text-muted mb-0">Analyze production trends across multiple dimensions</p>
                 </div>
                 <div className="d-flex gap-2">
                     <button className="btn btn-sm btn-outline-primary" onClick={fetchData} disabled={loading}>
                         <i className="ti ti-refresh me-1"></i>Refresh
                     </button>
-                    <button className="btn btn-sm btn-success" onClick={handleExport}>
+                    <button className="btn btn-sm btn-success" onClick={handleExport} disabled={!currentData.length}>
                         <i className="ti ti-file-spreadsheet me-1"></i>Export
                     </button>
                 </div>
@@ -126,12 +194,7 @@ const TrendAnalysis = () => {
             <div className="row mb-4">
                 <div className="col-12">
                     <div className="card">
-                        <div className="card-header">
-                            <h5 className="card-title mb-0">
-                                <i className="ti ti-filter me-2"></i>
-                                Filters
-                            </h5>
-                        </div>
+                        <div className="card-header"><h5 className="card-title mb-0"><i className="ti ti-filter me-2"></i>Filters</h5></div>
                         <div className="card-body">
                             <div className="row g-3 align-items-end">
                                 <div className="col-md-3">
@@ -149,7 +212,7 @@ const TrendAnalysis = () => {
                                     <select className="form-select" value={filters.petName}
                                         onChange={(e) => setFilters({ ...filters, petName: e.target.value })}>
                                         <option value="">All Pets</option>
-                                        {pets.map(p => <option key={p.id} value={p.pet_name}>{p.pet_name}</option>)}
+                                        {pets.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                                     </select>
                                 </div>
                                 <div className="col-md-2">
@@ -186,22 +249,32 @@ const TrendAnalysis = () => {
                         <h6 className="mb-0">{tabs.find(t => t.key === activeTab)?.label}</h6>
                     </div>
                     <div className="card-body">
-                        <ResponsiveContainer width="100%" height={400}>
-                            <LineChart data={currentData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                                <YAxis tick={{ fontSize: 12 }} />
-                                <Tooltip content={<CustomTooltip />} />
-                                <Legend />
-                                {Object.keys(currentData[0] || {})
-                                    .filter(key => key !== 'date')
-                                    .map((key, idx) => (
+                        {activeTab === 'warehouse' ? (
+                            <ResponsiveContainer width="100%" height={400}>
+                                <BarChart data={currentData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                                    <YAxis tick={{ fontSize: 12 }} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Bar dataKey="count" fill="#3b82f6" name="Count" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <ResponsiveContainer width="100%" height={400}>
+                                <LineChart data={currentData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                                    <YAxis tick={{ fontSize: 12 }} />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Legend />
+                                    {lineDataKeys.map((key, idx) => (
                                         <Line key={key} type="monotone" dataKey={key}
                                             stroke={COLORS[idx % COLORS.length]}
                                             strokeWidth={2} dot={{ r: 3 }} name={key} />
                                     ))}
-                            </LineChart>
-                        </ResponsiveContainer>
+                                </LineChart>
+                            </ResponsiveContainer>
+                        )}
                     </div>
                 </div>
             ) : (

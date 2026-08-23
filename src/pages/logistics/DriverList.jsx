@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { logisticsApi } from '../../api/logistics';
+import { Pagination } from '../../components/ui/Pagination';
 import toast from 'react-hot-toast';
 
 const DriverList = () => {
@@ -8,9 +9,8 @@ const DriverList = () => {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
-  const [hasNext, setHasNext] = useState(false);
-  const [hasPrevious, setHasPrevious] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [editingDriver, setEditingDriver] = useState(null);
@@ -21,7 +21,7 @@ const DriverList = () => {
 
   useEffect(() => {
     fetchDrivers();
-  }, [page, search]);
+  }, [page, pageSize, search]);
 
   useEffect(() => {
     fetchVehicles();
@@ -30,11 +30,11 @@ const DriverList = () => {
   const fetchDrivers = async () => {
     setLoading(true);
     try {
-      const res = await logisticsApi.getDrivers({ search, page });
-      setDrivers(res.data.data || []);
-      setTotalCount(res.data.count || 0);
-      setHasNext(!!res.data.next);
-      setHasPrevious(!!res.data.previous);
+      const res = await logisticsApi.getDrivers({ search, page, page_size: pageSize });
+      const envelope = res.data?.data ?? res.data ?? {};
+      const list = Array.isArray(envelope) ? envelope : (envelope.results || envelope.data || []);
+      setDrivers(list);
+      setTotalCount(envelope.count ?? res.data?.count ?? list.length);
     } catch (error) {
       toast.error('Failed to load drivers');
     } finally {
@@ -45,7 +45,9 @@ const DriverList = () => {
   const fetchVehicles = async () => {
     try {
       const res = await logisticsApi.getVehicles({ page_size: 100 });
-      setVehicles(res.data.data || []);
+      const envelope = res.data?.data ?? res.data ?? {};
+      const list = Array.isArray(envelope) ? envelope : (envelope.results || envelope.data || []);
+      setVehicles(list);
     } catch (error) {
       toast.error('Failed to load vehicles');
     }
@@ -122,7 +124,7 @@ const DriverList = () => {
 
   const getVehiclePlate = (vehicleId) => {
     const v = vehicles.find((veh) => veh.id === vehicleId);
-    return v ? v.plate_number : '—';
+    return v ? (v.plate_number || v.vehicle_number || v.name) : '—';
   };
 
   return (
@@ -143,14 +145,20 @@ const DriverList = () => {
                 <div className="col-md-4">
                   <div className="input-group">
                     <span className="input-group-text"><i className="ti ti-search"></i></span>
-                    <input type="text" className="form-control" placeholder="Search drivers..." value={search} onChange={handleSearchChange} />
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Search drivers..."
+                      value={search}
+                      onChange={handleSearchChange}
+                    />
                   </div>
                 </div>
               </div>
 
               <div className="table-responsive">
-                <table className="table table-striped">
-                  <thead>
+                <table className="table table-striped table-hover mb-0">
+                  <thead className="table-light">
                     <tr>
                       <th>Name</th>
                       <th>License Number</th>
@@ -168,7 +176,7 @@ const DriverList = () => {
                     )}
                     {!loading && drivers.map((driver) => (
                       <tr key={driver.id}>
-                        <td><i className="ti ti-user me-1"></i>{driver.name}</td>
+                        <td className="fw-medium"><i className="ti ti-user me-1"></i>{driver.name}</td>
                         <td>{driver.license_number}</td>
                         <td>{driver.phone_number}</td>
                         <td>{driver.current_vehicle ? getVehiclePlate(driver.current_vehicle) : '—'}</td>
@@ -186,24 +194,18 @@ const DriverList = () => {
                 </table>
               </div>
 
-              <div className="d-flex align-items-center justify-content-between">
-                <span className="text-muted">Total: {totalCount} driver(s)</span>
-                <nav>
-                  <ul className="pagination mb-0">
-                    <li className={`page-item ${!hasPrevious ? 'disabled' : ''}`}>
-                      <button className="page-link" onClick={() => setPage(page - 1)} disabled={!hasPrevious}>
-                        <i className="ti ti-chevron-left"></i>
-                      </button>
-                    </li>
-                    <li className="page-item active"><span className="page-link">{page}</span></li>
-                    <li className={`page-item ${!hasNext ? 'disabled' : ''}`}>
-                      <button className="page-link" onClick={() => setPage(page + 1)} disabled={!hasNext}>
-                        <i className="ti ti-chevron-right"></i>
-                      </button>
-                    </li>
-                  </ul>
-                </nav>
-              </div>
+              <Pagination
+                page={page}
+                pageSize={pageSize}
+                totalCount={totalCount}
+                onPageChange={setPage}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={[5, 10, 20, 50]}
+                itemLabel="drivers"
+              />
             </div>
           </div>
         </div>
@@ -239,7 +241,7 @@ const DriverList = () => {
                     <select className="form-select" value={formData.current_vehicle} onChange={(e) => setFormData({ ...formData, current_vehicle: e.target.value })}>
                       <option value="">No vehicle assigned</option>
                       {vehicles.map((v) => (
-                        <option key={v.id} value={v.id}>{v.plate_number}</option>
+                        <option key={v.id} value={v.id}>{v.plate_number || v.vehicle_number || v.name}</option>
                       ))}
                     </select>
                   </div>

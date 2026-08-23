@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
+import { formatAndSortPets } from '../../utils/petUtils';
 import { Printer, Package, CheckCircle2 } from 'lucide-react';
 import BarcodeLabel from '../../components/inventory/BarcodeLabel';
 
@@ -60,25 +61,7 @@ const Production = () => {
         const fetchPets = async () => {
             try {
                 const response = await productionApi.getPets({ page: 1, page_size: 100 });
-                const petList = response?.data?.data?.data ?? response?.data?.data ?? response?.data ?? [];
-                const allPets = Array.isArray(petList) ? petList : petList.results || [];
-
-                const formattedPets = allPets
-                    .filter(p => !(p.pet_name || p.name || '').toLowerCase().includes('can'))
-                    .map((p, index) => {
-                        const rawLabel = p.pet_name || p.name || '';
-                        const numberMatch = rawLabel.match(/\d+/);
-                        const petNumber = numberMatch ? parseInt(numberMatch[0], 10) : index + 1;
-
-                        return {
-                            value: p.id,
-                            label: petNumber ? `Pet ${petNumber}` : (rawLabel || `Pet ${index + 1}`),
-                            sortValue: petNumber
-                        };
-                    })
-                    .sort((a, b) => a.sortValue - b.sortValue)
-                    .map(({ label, value }) => ({ label, value }));
-
+                const formattedPets = formatAndSortPets(response);
                 setPets(formattedPets);
             } catch (err) {
                 console.error("Failed to fetch pets", err);
@@ -230,36 +213,38 @@ const Production = () => {
                         <div className="card-body d-flex flex-column justify-content-center">
                             {generatedLabel ? (
                                 <div className="text-center">
-                                    {/* Printable Barcode Label */}
-                                    <BarcodeLabel
-                                        ref={printRef}
-                                        data={{
-                                            barcode: generatedLabel.label?.barcode || generatedLabel.barcode,
-                                            product_name: getProductName(),
-                                            pet_name: getPetName(),
-                                            quantity: formData.quantity,
-                                            pet_sequence: generatedLabel.label?.pet_sequence || generatedLabel.pet_sequence,
-                                            timestamp: generatedLabel.label?.created_at || generatedLabel.created_at || new Date(),
-                                        }}
-                                    />
+                                    {/* Printable Barcode Label - Always in Light Mode */}
+                                    <div className="d-flex justify-content-center mb-4">
+                                        <BarcodeLabel
+                                            ref={printRef}
+                                            data={{
+                                                barcode: generatedLabel.label?.barcode || generatedLabel.barcode,
+                                                product_name: getProductName(),
+                                                pet_name: getPetName(),
+                                                quantity: formData.quantity,
+                                                pet_sequence: generatedLabel.label?.pet_sequence || generatedLabel.pet_sequence,
+                                                timestamp: generatedLabel.label?.created_at || generatedLabel.created_at || new Date(),
+                                            }}
+                                        />
+                                    </div>
 
-                                    <div className="card bg-light border-0 mb-4">
+                                    <div className="card bg-light border mb-4 shadow-none">
                                         <div className="card-body py-3">
-                                            <div className="d-flex justify-content-between py-1">
+                                            <div className="d-flex justify-content-between py-1 border-bottom">
                                                 <span className="text-muted">Production Code</span>
-                                                <span className="fw-semibold">{generatedLabel.actual_production_code || 'N/A'}</span>
+                                                <span className="fw-semibold text-dark">{generatedLabel.actual_production_code || 'N/A'}</span>
                                             </div>
-                                            <div className="d-flex justify-content-between py-1">
+                                            <div className="d-flex justify-content-between py-1 border-bottom">
                                                 <span className="text-muted">Date</span>
-                                                <span className="fw-semibold">{new Date().toLocaleDateString()}</span>
+                                                <span className="fw-semibold text-dark">{new Date().toLocaleDateString()}</span>
                                             </div>
-                                            <div className="d-flex justify-content-between py-1">
+                                            <div className="d-flex justify-content-between py-1 border-bottom">
                                                 <span className="text-muted">Line</span>
-                                                <span className="fw-semibold">{getPetName() || 'N/A'}</span>
+                                                <span className="fw-semibold text-dark">{getPetName() || 'N/A'}</span>
                                             </div>
                                             <div className="d-flex justify-content-between py-1">
                                                 <span className="text-muted">Product</span>
-                                                <span className="fw-semibold">{getProductName() || 'N/A'}</span>
+                                                <span className="fw-semibold text-dark">{getProductName() || 'N/A'}</span>
                                             </div>
                                         </div>
                                     </div>

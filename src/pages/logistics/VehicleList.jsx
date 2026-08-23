@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { logisticsApi } from '../../api/logistics';
+import { Pagination } from '../../components/ui/Pagination';
 import toast from 'react-hot-toast';
 
 const VehicleList = () => {
@@ -7,9 +8,8 @@ const VehicleList = () => {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
-  const [hasNext, setHasNext] = useState(false);
-  const [hasPrevious, setHasPrevious] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
@@ -20,16 +20,16 @@ const VehicleList = () => {
 
   useEffect(() => {
     fetchVehicles();
-  }, [page, search]);
+  }, [page, pageSize, search]);
 
   const fetchVehicles = async () => {
     setLoading(true);
     try {
-      const res = await logisticsApi.getVehicles({ search, page });
-      setVehicles(res.data.data || []);
-      setTotalCount(res.data.count || 0);
-      setHasNext(!!res.data.next);
-      setHasPrevious(!!res.data.previous);
+      const res = await logisticsApi.getVehicles({ search, page, page_size: pageSize });
+      const envelope = res.data?.data ?? res.data ?? {};
+      const list = Array.isArray(envelope) ? envelope : (envelope.results || envelope.data || []);
+      setVehicles(list);
+      setTotalCount(envelope.count ?? res.data?.count ?? list.length);
     } catch (error) {
       toast.error('Failed to load vehicles');
     } finally {
@@ -117,31 +117,43 @@ const VehicleList = () => {
                 <div className="col-md-4">
                   <div className="input-group">
                     <span className="input-group-text"><i className="ti ti-search"></i></span>
-                    <input type="text" className="form-control" placeholder="Search vehicles..." value={search} onChange={handleSearchChange} />
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Search vehicles..."
+                      value={search}
+                      onChange={handleSearchChange}
+                    />
                   </div>
                 </div>
               </div>
 
               <div className="table-responsive">
-                <table className="table table-striped">
-                  <thead>
+                <table className="table table-striped table-hover mb-0">
+                  <thead className="table-light">
                     <tr>
                       <th>Plate Number</th>
                       <th>Capacity (tons)</th>
+                      <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading && (
-                      <tr><td colSpan="3" className="text-center py-4"><span className="spinner-border spinner-border-sm me-2"></span>Loading...</td></tr>
+                      <tr><td colSpan="4" className="text-center py-4"><span className="spinner-border spinner-border-sm me-2"></span>Loading...</td></tr>
                     )}
                     {!loading && vehicles.length === 0 && (
-                      <tr><td colSpan="3" className="text-center py-4 text-muted">No vehicles found.</td></tr>
+                      <tr><td colSpan="4" className="text-center py-4 text-muted">No vehicles found.</td></tr>
                     )}
                     {!loading && vehicles.map((vehicle) => (
                       <tr key={vehicle.id}>
-                        <td><i className="ti ti-car me-1"></i>{vehicle.plate_number}</td>
-                        <td>{vehicle.capacity}</td>
+                        <td><i className="ti ti-truck me-1"></i>{vehicle.plate_number || vehicle.vehicle_number || vehicle.name || '—'}</td>
+                        <td>{vehicle.capacity || '—'}</td>
+                        <td>
+                          <span className={`badge ${vehicle.status === 'ACTIVE' || vehicle.is_active ? 'bg-soft-success text-success' : 'bg-soft-secondary text-secondary'}`}>
+                            {vehicle.status || 'Active'}
+                          </span>
+                        </td>
                         <td>
                           <button className="btn btn-sm btn-outline-primary me-1" onClick={() => openEditModal(vehicle)}>
                             <i className="ti ti-edit"></i>
@@ -156,24 +168,18 @@ const VehicleList = () => {
                 </table>
               </div>
 
-              <div className="d-flex align-items-center justify-content-between">
-                <span className="text-muted">Total: {totalCount} vehicle(s)</span>
-                <nav>
-                  <ul className="pagination mb-0">
-                    <li className={`page-item ${!hasPrevious ? 'disabled' : ''}`}>
-                      <button className="page-link" onClick={() => setPage(page - 1)} disabled={!hasPrevious}>
-                        <i className="ti ti-chevron-left"></i>
-                      </button>
-                    </li>
-                    <li className="page-item active"><span className="page-link">{page}</span></li>
-                    <li className={`page-item ${!hasNext ? 'disabled' : ''}`}>
-                      <button className="page-link" onClick={() => setPage(page + 1)} disabled={!hasNext}>
-                        <i className="ti ti-chevron-right"></i>
-                      </button>
-                    </li>
-                  </ul>
-                </nav>
-              </div>
+              <Pagination
+                page={page}
+                pageSize={pageSize}
+                totalCount={totalCount}
+                onPageChange={setPage}
+                onPageSizeChange={(newSize) => {
+                  setPageSize(newSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={[5, 10, 20, 50]}
+                itemLabel="vehicles"
+              />
             </div>
           </div>
         </div>
