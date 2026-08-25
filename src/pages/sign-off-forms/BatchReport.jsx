@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
+import './css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'batchReport_filters';
 
