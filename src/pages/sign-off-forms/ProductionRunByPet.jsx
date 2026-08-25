@@ -3,6 +3,7 @@ import { Printer, Loader2, Calendar, Plus, X } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { workersApi } from '../../api/workers';
 import { inventoryApi } from '../../api/inventory';
+import './css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'productionRunByPet_filters';
 

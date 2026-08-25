@@ -1441,9 +1441,20 @@ html.dark .barcode-label-light-mode canvas {
 .production-report-form {
     font-family: 'Arial', sans-serif;
     font-size: 11px;
-    color: #000;
+    color: #000 !important;
     max-width: 900px;
     margin: 0 auto;
+}
+
+.production-report-form *,
+.production-report-form td,
+.production-report-form th,
+.production-report-form label,
+.production-report-form span,
+.production-report-form div,
+.production-report-form input,
+.production-report-form textarea {
+    color: #000 !important;
 }
 
 .production-report-form .form-header {
@@ -1688,6 +1699,22 @@ html.dark .barcode-label-light-mode canvas {
 
     .production-report-form {
         max-width: 100%;
+    }
+
+    .production-report-form,
+    .production-report-form *,
+    .production-report-form td,
+    .production-report-form th,
+    .production-report-form label,
+    .production-report-form span,
+    .production-report-form div,
+    .production-report-form input,
+    .production-report-form textarea {
+        color: #000 !important;
+    }
+
+    .production-report-form .text-muted {
+        color: #000 !important;
     }
 
     .production-report-form .form-table .label-cell {
