@@ -46,7 +46,7 @@ const BulkBarcodePrinting = () => {
             const [petsRes, productsRes, batchesRes] = await Promise.all([
                 productionApi.getPets(),
                 inventoryApi.getProducts({ page_size: 100 }),
-                productionApi.getBatches(),
+                productionApi.getBatches({ page_size: 1000 }),
             ]);
 
             const allPets = formatAndSortPets(petsRes);
@@ -73,8 +73,32 @@ const BulkBarcodePrinting = () => {
             if (filters.batchNumber) params.batch = filters.batchNumber;
 
             const response = await inventoryApi.getBulkBarcodes(params);
-            const data = extractData(response);
-            setBarcodes(data);
+            let result = extractData(response);
+
+            if (filters.startDate) {
+                const start = new Date(filters.startDate);
+                start.setHours(0, 0, 0, 0);
+                result = result.filter(u => u.created_at && new Date(u.created_at) >= start);
+            }
+            if (filters.endDate) {
+                const end = new Date(filters.endDate);
+                end.setHours(23, 59, 59, 999);
+                result = result.filter(u => u.created_at && new Date(u.created_at) <= end);
+            }
+            if (filters.petName) {
+                result = result.filter(u => String(u.pet) === String(filters.petName) || String(u.pet_name) === String(filters.petName));
+            }
+            if (filters.productType) {
+                result = result.filter(u => String(u.product) === String(filters.productType) || String(u.product_name) === String(filters.productType));
+            }
+            if (filters.batchNumber) {
+                result = result.filter(u => {
+                    const unitBatch = u.actual_production_code || u.production_run_name || '';
+                    return unitBatch.includes(filters.batchNumber);
+                });
+            }
+
+            setBarcodes(result);
             setSelectedForPrint([]);
             setCurrentPage(1);
         } catch (error) {
@@ -85,7 +109,6 @@ const BulkBarcodePrinting = () => {
         }
     };
 
-    // Client-side paginated slice
     const paginatedBarcodes = useMemo(() => {
         const start = (currentPage - 1) * pageSize;
         return barcodes.slice(start, start + pageSize);
@@ -179,7 +202,7 @@ const BulkBarcodePrinting = () => {
                 pdf.setFontSize(7);
                 pdf.setFont(undefined, 'normal');
                 pdf.text(`Seq: ${unit.pet_sequence || unit.sequence || '-'}`, x + 4, y + 41);
-                pdf.text(`Batch: ${unit.batch_number || unit.batch || '-'}`, x + labelWidth - 4, y + 41, { align: 'right' });
+                pdf.text(`Batch: ${unit.batch_number || (typeof unit.batch === 'object' && unit.batch !== null ? unit.batch.batch_number : unit.batch) || '-'}`, x + labelWidth - 4, y + 41, { align: 'right' });
 
                 pdf.setFontSize(6);
                 const timestamp = unit.created_at ? new Date(unit.created_at).toLocaleString() : new Date().toLocaleString();
@@ -187,7 +210,7 @@ const BulkBarcodePrinting = () => {
 
                 pdf.setFontSize(6);
                 pdf.setFont(undefined, 'bold');
-                pdf.text((unit.stage || 'PRODUCTION').toUpperCase(), x + labelWidth / 2, y + 52, { align: 'center' });
+                pdf.text(((unit.stage || unit.current_status) || 'PRODUCTION').toUpperCase(), x + labelWidth / 2, y + 52, { align: 'center' });
             });
 
             pdf.save(`Barcodes_${filters.startDate}_to_${filters.endDate}.pdf`);
@@ -228,8 +251,8 @@ const BulkBarcodePrinting = () => {
                         <div class="detail-row"><span>Line:</span><strong>${unit.pet_name || unit.pet || 'N/A'}</strong></div>
                         <div class="detail-row"><span>Quantity:</span><strong>${unit.quantity || 0}</strong></div>
                         <div class="detail-row"><span>Sequence:</span><strong>${unit.pet_sequence || unit.sequence || '-'}</strong></div>
-                        <div class="detail-row"><span>Batch:</span><strong>${unit.batch_number || unit.batch || '-'}</strong></div>
-                        <div class="detail-row"><span>Stage:</span><strong>${unit.stage || 'PRODUCTION'}</strong></div>
+                        <div class="detail-row"><span>Batch:</span><strong>${unit.batch_number || (typeof unit.batch === 'object' && unit.batch !== null ? unit.batch.batch_number : unit.batch) || '-'}</strong></div>
+                        <div class="detail-row"><span>Stage:</span><strong>${unit.stage || unit.current_status || 'PRODUCTION'}</strong></div>
                     </div>
                     <p class="timestamp">${unit.created_at ? new Date(unit.created_at).toLocaleString() : new Date().toLocaleString()}</p>
                 </div>
@@ -416,9 +439,9 @@ const BulkBarcodePrinting = () => {
                                                 <td>{petName}</td>
                                                 <td className="text-end">{unit.quantity || 0}</td>
                                                 <td className="text-center">{unit.pet_sequence || unit.sequence || '-'}</td>
-                                                <td>{unit.batch_number || unit.batch || '-'}</td>
+                                                <td>{unit.batch_number || (typeof unit.batch === 'object' && unit.batch !== null ? unit.batch.batch_number : unit.batch) || '-'}</td>
                                                 <td>
-                                                    <span className="badge bg-soft-info text-info">{unit.stage || '-'}</span>
+                                                    <span className="badge bg-soft-info text-info">{unit.stage || unit.current_status || '-'}</span>
                                                 </td>
                                                 <td className="text-muted" style={{ fontSize: '11px' }}>
                                                     {unit.created_at ? new Date(unit.created_at).toLocaleString() : '-'}

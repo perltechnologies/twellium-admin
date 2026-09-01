@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspens
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production';
 import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsChart';
+import DowntimeSubCategoryDurationChart from '../../components/charts/DowntimeSubCategoryDurationChart';
 import ProductionSummary from '../../components/production/ProductionSummary';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
 import { useFilters } from '../../context/FilterContext';
@@ -1369,6 +1370,15 @@ const Overview = () => {
                 <div className="col-12">
                     <ChartErrorBoundary fallbackMessage="Failed to render stoppage incidents chart">
                         <StoppageIncidentsChart />
+                    </ChartErrorBoundary>
+                </div>
+            </div>
+
+            {/* Downtime by Subcategory Description */}
+            <div className="row row-gap-3 mb-4">
+                <div className="col-12">
+                    <ChartErrorBoundary fallbackMessage="Failed to render downtime subcategory chart">
+                        <DowntimeSubCategoryDurationChart />
                     </ChartErrorBoundary>
                 </div>
             </div>

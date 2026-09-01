@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { inventoryApi, productionApi } from '../../api';
 import { formatAndSortPets } from '../../utils/petUtils';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area, LabelList } from 'recharts';
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
 
@@ -12,22 +12,30 @@ const extractData = (res) => {
     if (envelope?.data && Array.isArray(envelope.data)) return envelope.data;
     return [];
 };
+const formatStageName = (stage) => String(stage || 'Unknown')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 const LiveManagementDashboard = () => {
     const [overview, setOverview] = useState(null);
+    const [productionSummary, setProductionSummary] = useState(null);
     const [stageCounts, setStageCounts] = useState(null);
     const [units, setUnits] = useState([]);
     const [loading, setLoading] = useState(true);
     const [pets, setPets] = useState([]);
+    const [products, setProducts] = useState([]);
     const [refreshInterval, setRefreshInterval] = useState(30);
     const [autoRefresh, setAutoRefresh] = useState(true);
 
     const fetchMetrics = useCallback(async () => {
         try {
-            const [overviewRes, stageRes, unitsRes] = await Promise.all([
+            const today = new Date().toISOString().split('T')[0];
+            const [overviewRes, stageRes, unitsRes, productsRes, summaryRes] = await Promise.all([
                 inventoryApi.getTodayOverview(),
                 inventoryApi.getStageCounts(),
                 inventoryApi.getHandlingUnits({ page_size: 100, ordering: '-created_at' }),
+                inventoryApi.getProducts({ page_size: 1000 }),
+                productionApi.getProductionSummary({ start_date: today, end_date: today }),
             ]);
 
             const overviewData = overviewRes?.data?.data ?? overviewRes?.data ?? {};
@@ -38,6 +46,12 @@ const LiveManagementDashboard = () => {
 
             const unitsData = extractData(unitsRes);
             setUnits(unitsData);
+            setProducts(extractData(productsRes));
+            setProductionSummary(
+                summaryRes?.data?.data?.summary
+                ?? summaryRes?.data?.summary
+                ?? null
+            );
         } catch (error) {
             console.error('Failed to fetch live metrics:', error);
         } finally {
@@ -66,14 +80,34 @@ const LiveManagementDashboard = () => {
         return () => clearInterval(interval);
     }, [autoRefresh, refreshInterval, fetchMetrics]);
 
+    const bottlesPerPack = useCallback((unit) => {
+        const product = typeof unit.product === 'object' ? unit.product : {};
+        const catalogProduct = products.find((item) =>
+            String(item.id) === String(unit.product)
+            || String(item.id) === String(product.id)
+            || item.name === unit.product_name
+        );
+        return Number(
+            unit.bottles_per_pack
+            || product.bottles_per_pack
+            || catalogProduct?.bottles_per_pack
+        ) || 0;
+    }, [products]);
+
+    const bottlesForUnit = useCallback((unit) => (
+        (Number(unit.quantity) || 0) * bottlesPerPack(unit)
+    ), [bottlesPerPack]);
+
     const totals = useMemo(() => {
         return {
             scanned: overview?.total_units || units.length,
             pallets: overview?.total_pallets || units.filter(u => u.unit_type === 'PALLET').length,
-            bottles: overview?.total_bottles || units.reduce((s, u) => s + (u.total_bottles || u.bottles || 0), 0),
+            bottles: productionSummary?.total_bottles
+                ?? productionSummary?.total_bottles_produced
+                ?? units.reduce((s, u) => s + bottlesForUnit(u), 0),
             packs: overview?.total_packs || units.reduce((s, u) => s + (u.quantity || 0), 0),
         };
-    }, [overview, units]);
+    }, [overview, productionSummary, units, bottlesForUnit]);
 
     const petPerformance = useMemo(() => {
         const map = {};
@@ -82,34 +116,78 @@ const LiveManagementDashboard = () => {
             if (!map[pet]) map[pet] = { name: pet, scanned: 0, pallets: 0, bottles: 0 };
             map[pet].scanned += 1;
             if (u.unit_type === 'PALLET') map[pet].pallets += 1;
-            map[pet].bottles += (u.total_bottles || u.bottles || 0);
+            map[pet].bottles += bottlesForUnit(u);
         });
         return Object.values(map);
-    }, [units]);
+    }, [units, bottlesForUnit]);
 
     const batchProgress = useMemo(() => {
         const map = {};
         units.forEach(u => {
             const batch = u.batch_number || u.batch || 'Unknown';
-            if (!map[batch]) map[batch] = { name: batch, pallets: 0, bottles: 0 };
-            map[batch].pallets += 1;
-            map[batch].bottles += (u.total_bottles || u.bottles || 0);
+            if (!map[batch]) map[batch] = { name: batch, packs: 0 };
+            map[batch].packs += (u.quantity || 0);
         });
         return Object.values(map).slice(0, 10);
     }, [units]);
 
     const palletCounts = useMemo(() => {
-        const stageData = stageCounts?.stages || stageCounts || [];
-        return Array.isArray(stageData) ? stageData.map(s => ({
-            name: s.stage || s.name || 'Unknown',
-            count: s.count || s.total || 0,
-        })) : [];
-    }, [stageCounts]);
+        // Primary shape from /inventory/handling-units/stage-counts/:
+        // { total_units, stage_counts: { PRODUCTION: 5, WAREHOUSE: 3, ... } }
+        const stageCountsObj = stageCounts?.stage_counts
+            || stageCounts?.data?.stage_counts;
+        if (stageCountsObj && typeof stageCountsObj === 'object') {
+            const entries = Object.entries(stageCountsObj)
+                .map(([name, value]) => ({
+                    name: formatStageName(name),
+                    count: Number(value?.count ?? value?.total ?? value) || 0,
+                }))
+                .filter((entry) => entry.count > 0 || entry.name !== 'Unknown');
+            if (entries.length > 0) return entries;
+        }
+
+        const stageData = stageCounts?.stages
+            || stageCounts?.data?.stages
+            || stageCounts?.data
+            || stageCounts;
+
+        if (Array.isArray(stageData)) {
+            const result = stageData.reduce((result, item) => {
+                const name = formatStageName(item.stage || item.current_status || item.name);
+                const count = item.count ?? item.total ?? 1;
+                const existing = result.find((stage) => stage.name === name);
+                if (existing) existing.count += Number(count) || 0;
+                else result.push({ name, count: Number(count) || 0 });
+                return result;
+            }, []);
+            if (result.length > 0) return result;
+        }
+
+        if (stageData && typeof stageData === 'object') {
+            const entries = Object.entries(stageData)
+                .filter(([name]) => !['count', 'status_code', 'message'].includes(name))
+                .map(([name, value]) => ({
+                    name: formatStageName(name),
+                    count: Number(value?.count ?? value?.total ?? value) || 0,
+                }));
+            if (entries.length > 0) return entries;
+        }
+
+        const counts = {};
+        units.forEach((unit) => {
+            if (unit.unit_type && unit.unit_type !== 'PALLET') return;
+            const name = formatStageName(unit.current_status || unit.stage);
+            counts[name] = (counts[name] || 0) + 1;
+        });
+        return Object.entries(counts).map(([name, count]) => ({ name, count }));
+    }, [stageCounts, units]);
 
     const recentScans = useMemo(() => {
         return units.slice(0, 20).map(u => ({
             barcode: u.barcode || u.current_barcode || u.id || '-',
             pet_name: u.pet_name || u.pet?.pet_name || u.pet || '-',
+            stage: formatStageName(u.current_status || u.stage),
+            batch_number: u.batch_number || u.batch || '-',
             created_at: u.created_at,
             time: u.created_at ? new Date(u.created_at).toLocaleTimeString() : '-',
         }));
@@ -236,12 +314,26 @@ const LiveManagementDashboard = () => {
                                 <div className="card-body">
                                     {palletCounts.length > 0 ? (
                                         <ResponsiveContainer width="100%" height={300}>
-                                            <BarChart data={palletCounts}>
+                                            <BarChart data={palletCounts} margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" />
-                                                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                                                <YAxis tick={{ fontSize: 12 }} />
+                                                <XAxis
+                                                    dataKey="name"
+                                                    interval={0}
+                                                    angle={-25}
+                                                    textAnchor="end"
+                                                    height={60}
+                                                    tick={{ fontSize: 11 }}
+                                                />
+                                                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                                                 <Tooltip content={<CustomTooltip />} />
-                                                <Bar dataKey="count" fill="#3b82f6" name="Pallets" radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="count" fill="#3b82f6" name="Pallets" radius={[4, 4, 0, 0]}>
+                                                    <LabelList
+                                                        dataKey="count"
+                                                        position="top"
+                                                        style={{ fontSize: 12, fontWeight: 600, fill: '#1e293b' }}
+                                                        formatter={(value) => Number(value).toLocaleString()}
+                                                    />
+                                                </Bar>
                                             </BarChart>
                                         </ResponsiveContainer>
                                     ) : (
@@ -261,6 +353,8 @@ const LiveManagementDashboard = () => {
                                             <tr>
                                                 <th>Barcode</th>
                                                 <th>Pet</th>
+                                                <th>Stage</th>
+                                                <th>Batch</th>
                                                 <th>Time</th>
                                             </tr>
                                         </thead>
@@ -269,11 +363,13 @@ const LiveManagementDashboard = () => {
                                                 <tr key={idx}>
                                                     <td><code className="small">{scan.barcode}</code></td>
                                                     <td><span className="badge bg-soft-primary">{scan.pet_name}</span></td>
+                                                    <td><span className="badge bg-soft-info">{scan.stage}</span></td>
+                                                    <td className="small">{scan.batch_number}</td>
                                                     <td className="small text-muted">{scan.time}</td>
                                                 </tr>
                                             ))}
                                             {recentScans.length === 0 && (
-                                                <tr><td colSpan="3" className="text-center text-muted py-3">No recent scans</td></tr>
+                                                <tr><td colSpan="5" className="text-center text-muted py-3">No recent scans</td></tr>
                                             )}
                                         </tbody>
                                     </table>
@@ -309,12 +405,11 @@ const LiveManagementDashboard = () => {
                                     <ResponsiveContainer width="100%" height={300}>
                                         <BarChart data={batchProgress}>
                                             <CartesianGrid strokeDasharray="3 3" />
-                                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                                            <YAxis tick={{ fontSize: 12 }} />
+                                            <XAxis dataKey="name" tick={{ fontSize: 11 }} label={{ value: 'Batch', position: 'insideBottom', offset: -2, fontSize: 12 }} />
+                                            <YAxis tick={{ fontSize: 12 }} label={{ value: 'Packs', angle: -90, position: 'insideLeft', fontSize: 12 }} />
                                             <Tooltip content={<CustomTooltip />} />
                                             <Legend />
-                                            <Bar dataKey="pallets" fill="#8b5cf6" name="Pallets" radius={[4, 4, 0, 0]} />
-                                            <Bar dataKey="bottles" fill="#06b6d4" name="Bottles" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="packs" fill="#8b5cf6" name="Packs" radius={[4, 4, 0, 0]} />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>

@@ -186,7 +186,7 @@ const PetPerformance = () => {
                                         <div>
                                             <p className="text-muted fs-14 mb-1">Top Producing Pet</p>
                                             <h3 className="mb-0 fs-16 fw-bold">{topPet?.name || 'N/A'}</h3>
-                                            <small className="text-muted">{topPet?.totalOutput.toLocaleString()} units | {topPet?.efficiency}% efficiency</small>
+                                            <small className="text-muted">{topPet?.totalOutput.toLocaleString()} units</small>
                                         </div>
                                     </div>
                                 </div>
@@ -202,7 +202,7 @@ const PetPerformance = () => {
                                         <div>
                                             <p className="text-muted fs-14 mb-1">Least Producing Pet</p>
                                             <h3 className="mb-0 fs-16 fw-bold">{leastPet?.name || 'N/A'}</h3>
-                                            <small className="text-muted">{leastPet?.totalOutput.toLocaleString()} units | {leastPet?.efficiency}% efficiency</small>
+                                            <small className="text-muted">{leastPet?.totalOutput.toLocaleString()} units</small>
                                         </div>
                                     </div>
                                 </div>

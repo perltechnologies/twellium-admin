@@ -15,6 +15,20 @@ const extractData = (res) => {
     return [];
 };
 
+const normalize = (value) => String(value ?? '').trim().toLowerCase();
+const getBatchNumber = (unit) => (
+    unit.batch_number
+    || (typeof unit.batch === 'object' ? unit.batch?.batch_number : '')
+    || unit.batch_code
+    || unit.batch_no
+    || unit.batchNumber
+    || (typeof unit.traceability === 'object' ? unit.traceability?.batch_number : '')
+    || (typeof unit.traceability === 'string' ? unit.traceability : '')
+    || (typeof unit.batch === 'string' ? unit.batch : '')
+    || '-'
+);
+const getPetName = (unit) => unit.pet_name || unit.pet?.name || unit.pet?.label || unit.pet || 'Unknown';
+
 const BatchTraceability = () => {
     const today = new Date().toISOString().split('T')[0];
     const [filters, setFilters] = useState({
@@ -47,7 +61,7 @@ const BatchTraceability = () => {
         try {
             const [petsRes, batchesRes] = await Promise.all([
                 productionApi.getPets(),
-                productionApi.getBatches(),
+                productionApi.getBatches({ page_size: 1000 }),
             ]);
             const allPets = formatAndSortPets(petsRes);
             setPets(allPets);
@@ -64,6 +78,9 @@ const BatchTraceability = () => {
         try {
             const params = { page_size: 2000 };
             if (filters.petName) params.pet = filters.petName;
+            if (filters.startDate) params.start_date = filters.startDate;
+            if (filters.endDate) params.end_date = filters.endDate;
+            if (filters.batchNumber) params.batch = filters.batchNumber;
 
             const response = await inventoryApi.getBatchTraceability(params);
             let result = extractData(response);
@@ -79,10 +96,32 @@ const BatchTraceability = () => {
                 end.setHours(23, 59, 59, 999);
                 result = result.filter(u => new Date(u.created_at) <= end);
             }
-            if (filters.batchNumber) {
+            if (filters.petName) {
+                const selectedPet = pets.find(p => String(p.id) === String(filters.petName));
+                const selectedPetName = normalize(selectedPet?.label || selectedPet?.name);
                 result = result.filter(u => {
-                    const unitBatch = u.actual_production_code || u.production_run_name || '';
-                    return unitBatch.includes(filters.batchNumber);
+                    const unitPetId = typeof u.pet === 'object' ? u.pet?.id : u.pet;
+                    const unitPetName = normalize(u.pet_name || u.pet?.name || u.pet?.label);
+                    return String(unitPetId) === String(filters.petName)
+                        || (selectedPetName && unitPetName === selectedPetName);
+                });
+            }
+            if (filters.batchNumber) {
+                const selectedBatch = batches.find(b => String(b.id) === String(filters.batchNumber));
+                const selectedBatchNumber = normalize(selectedBatch?.batch_number);
+                result = result.filter(u => {
+                    const unitBatch = u.batch;
+                    const unitBatchId = typeof unitBatch === 'object' ? unitBatch?.id : unitBatch;
+                    const unitBatchNumber = normalize(
+                        u.batch_number
+                        || (typeof unitBatch === 'object' ? unitBatch?.batch_number : '')
+                        || u.actual_production_code
+                        || u.production_run_name
+                        || (typeof unitBatch === 'string' ? unitBatch : '')
+                    );
+                    return String(unitBatchId) === String(filters.batchNumber)
+                        || (selectedBatchNumber && unitBatchNumber.includes(selectedBatchNumber))
+                        || unitBatchNumber.includes(normalize(filters.batchNumber));
                 });
             }
 
@@ -98,8 +137,7 @@ const BatchTraceability = () => {
 
     const fetchBatchDetails = (batchNumber) => {
         const filtered = units.filter(u => {
-            const unitBatch = u.actual_production_code || u.production_run_name || '';
-            return unitBatch === batchNumber;
+            return getBatchNumber(u) === batchNumber;
         });
         setBatchDetails(filtered);
         setSelectedBatch(batchNumber);
@@ -111,7 +149,7 @@ const BatchTraceability = () => {
         units.forEach(u => {
             const stage = u.current_status || 'UNKNOWN';
             if (!stageMap[stage]) stageMap[stage] = { name: stage, packs: 0 };
-            stageMap[stage].packs += (u.quantity || 0);
+            stageMap[stage].packs += Number(u.quantity) || 0;
         });
         return Object.values(stageMap);
     }, [units]);
@@ -119,10 +157,12 @@ const BatchTraceability = () => {
     const batchSummary = useMemo(() => {
         const map = {};
         units.forEach(u => {
-            const batch = u.actual_production_code || u.production_run_name || 'Unknown';
-            if (!map[batch]) map[batch] = { name: batch, pallets: 0, packs: 0 };
-            map[batch].pallets += 1;
-            map[batch].packs += (u.quantity || 0);
+            const batch = getBatchNumber(u);
+            const pet = getPetName(u);
+            const key = `${batch}|${pet}`;
+            if (!map[key]) map[key] = { batch, pet, pallets: 0, packs: 0 };
+            map[key].pallets += 1;
+            map[key].packs += Number(u.quantity) || 0;
         });
         return Object.values(map).sort((a, b) => b.pallets - a.pallets);
     }, [units]);
@@ -141,22 +181,23 @@ const BatchTraceability = () => {
     const petBreakdown = useMemo(() => {
         const map = {};
         units.forEach(u => {
-            const pet = u.pet_name || u.pet || 'Unknown';
+            const pet = getPetName(u);
             if (!map[pet]) map[pet] = { name: pet, pallets: 0, packs: 0 };
             map[pet].pallets += 1;
-            map[pet].packs += (u.quantity || 0);
+            map[pet].packs += Number(u.quantity) || 0;
         });
         return Object.values(map).sort((a, b) => b.packs - a.packs);
     }, [units]);
 
     const totals = useMemo(() => ({
         pallets: units.length,
-        packs: units.reduce((s, u) => s + (u.quantity || 0), 0),
+        packs: units.reduce((s, u) => s + (Number(u.quantity) || 0), 0),
     }), [units]);
 
     const handleExport = () => {
         const exportData = batchSummary.map(b => ({
-            'Batch Number': b.name,
+            'Batch Number': b.batch,
+            'PET Name': b.pet,
             'Pallets': b.pallets,
             'Packs': b.packs,
         }));
@@ -317,20 +358,22 @@ const BatchTraceability = () => {
                                             <thead className="table-light">
                                                 <tr>
                                                     <th>Batch Number</th>
+                                                    <th>PET Name</th>
                                                     <th>Pallets</th>
                                                     <th>Packs</th>
                                                     <th className="text-end">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {paginatedBatchSummary.map((batch) => (
-                                                    <tr key={batch.name}>
-                                                        <td><code>{batch.name}</code></td>
+                                                {paginatedBatchSummary.map((batch, index) => (
+                                                    <tr key={index}>
+                                                        <td><code>{batch.batch}</code></td>
+                                                        <td>{batch.pet}</td>
                                                         <td>{batch.pallets.toLocaleString()}</td>
                                                         <td>{batch.packs.toLocaleString()}</td>
                                                         <td className="text-end">
                                                             <button className="btn btn-sm btn-outline-primary"
-                                                                onClick={() => fetchBatchDetails(batch.name)}>
+                                                                onClick={() => fetchBatchDetails(batch.batch)}>
                                                                 <i className="ti ti-eye me-1"></i>Trace
                                                             </button>
                                                         </td>
@@ -358,14 +401,19 @@ const BatchTraceability = () => {
                     </div>
 
                     {selectedBatch && batchDetails && (
-                        <div className="card mb-4">
-                            <div className="card-header d-flex align-items-center justify-content-between">
-                                <h6 className="mb-0"><i className="ti ti-trace me-2"></i>Trace Details: Batch {selectedBatch}</h6>
-                                <button className="btn btn-sm btn-outline-secondary" onClick={() => { setSelectedBatch(null); setBatchDetails(null); }}>
-                                    <i className="ti ti-x me-1"></i>Close
-                                </button>
-                            </div>
-                            <div className="card-body">
+                        <div className="modal fade show d-block" tabIndex="-1" role="dialog"
+                            style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+                            onClick={() => { setSelectedBatch(null); setBatchDetails(null); }}>
+                            <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable"
+                                role="document" onClick={(e) => e.stopPropagation()}>
+                                <div className="modal-content">
+                                    <div className="modal-header">
+                                        <h5 className="modal-title"><i className="ti ti-trace me-2"></i>Trace Details: Batch {selectedBatch}</h5>
+                                        <button type="button" className="btn-close"
+                                            aria-label="Close"
+                                            onClick={() => { setSelectedBatch(null); setBatchDetails(null); }} />
+                                    </div>
+                                    <div className="modal-body">
                                 <div className="row g-3">
                                     <div className="col-md-4">
                                         <div className="p-3 bg-light rounded">
@@ -396,10 +444,11 @@ const BatchTraceability = () => {
                                             <thead className="table-light">
                                                 <tr>
                                                     <th>Barcode</th>
+                                                    <th>Batch</th>
                                                     <th>Product</th>
                                                     <th>Pet</th>
                                                     <th>Quantity</th>
-                                                    <th>Status</th>
+                                                    <th>Stage</th>
                                                     <th>Created</th>
                                                 </tr>
                                             </thead>
@@ -407,6 +456,7 @@ const BatchTraceability = () => {
                                                 {paginatedBatchDetails.map((u, idx) => (
                                                     <tr key={idx}>
                                                         <td><code>{u.current_barcode || u.internal_id || u.id || '-'}</code></td>
+                                                        <td><code>{getBatchNumber(u)}</code></td>
                                                         <td>{u.product_name || '-'}</td>
                                                         <td>{u.pet_name || '-'}</td>
                                                         <td>{u.quantity || 0}</td>
@@ -430,6 +480,14 @@ const BatchTraceability = () => {
                                         pageSizeOptions={[10, 25, 50, 100]}
                                         itemLabel="units"
                                     />
+                                </div>
+                            </div>
+                                    <div className="modal-footer">
+                                        <button type="button" className="btn btn-secondary"
+                                            onClick={() => { setSelectedBatch(null); setBatchDetails(null); }}>
+                                            Close
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

@@ -15,6 +15,27 @@ const extractData = (res) => {
     return [];
 };
 
+const normalize = (value) => String(value ?? '').trim().toLowerCase();
+const getBatchNumber = (unit) => {
+    const batch = typeof unit.batch === 'object' ? unit.batch : {};
+    const productionBatch = typeof unit.production_batch === 'object' ? unit.production_batch : {};
+    const candidates = [
+        unit.batch_number,
+        unit.batch_code,
+        unit.batch_no,
+        unit.batchNumber,
+        batch.batch_number,
+        batch.number,
+        batch.code,
+        productionBatch.batch_number,
+        productionBatch.number,
+        productionBatch.code,
+        typeof unit.traceability === 'object' ? unit.traceability?.batch_number : unit.traceability,
+        typeof unit.batch === 'string' ? unit.batch : '',
+    ];
+    return candidates.find((value) => value && !/^pr[\s-]/i.test(String(value))) || '-';
+};
+
 const ProductAnalysis = () => {
     const today = new Date().toISOString().split('T')[0];
     const [filters, setFilters] = useState({
@@ -22,11 +43,13 @@ const ProductAnalysis = () => {
         endDate: today,
         petName: '',
         productFilter: '',
+        batchNumber: '',
     });
     const [units, setUnits] = useState([]);
     const [loading, setLoading] = useState(false);
     const [pets, setPets] = useState([]);
     const [products, setProducts] = useState([]);
+    const [batches, setBatches] = useState([]);
 
     // Table pagination state
     const [tablePage, setTablePage] = useState(1);
@@ -39,15 +62,18 @@ const ProductAnalysis = () => {
 
     const fetchDropdownData = async () => {
         try {
-            const [petsRes, productsRes] = await Promise.all([
+            const [petsRes, productsRes, batchesRes] = await Promise.all([
                 productionApi.getPets(),
                 inventoryApi.getProducts({ page_size: 100 }),
+                productionApi.getBatches({ page_size: 1000 }),
             ]);
             const allPets = formatAndSortPets(petsRes);
             setPets(allPets);
 
             const prodList = productsRes.data?.data?.data || productsRes.data?.data || productsRes.data?.results || [];
             setProducts(Array.isArray(prodList) ? prodList : prodList.results || []);
+            const batchList = batchesRes.data?.data?.data || batchesRes.data?.data || batchesRes.data?.results || [];
+            setBatches(Array.isArray(batchList) ? batchList : batchList.results || []);
         } catch (error) {
             console.error('Failed to fetch dropdown data:', error);
         }
@@ -57,6 +83,11 @@ const ProductAnalysis = () => {
         setLoading(true);
         try {
             const params = { page_size: 2000 };
+            if (filters.petName) params.pet = filters.petName;
+            if (filters.startDate) params.start_date = filters.startDate;
+            if (filters.endDate) params.end_date = filters.endDate;
+            if (filters.batchNumber) params.batch = filters.batchNumber;
+            if (filters.productFilter) params.product = filters.productFilter;
 
             const response = await inventoryApi.getProductAnalysis(params);
             let result = extractData(response);
@@ -78,6 +109,18 @@ const ProductAnalysis = () => {
             if (filters.productFilter) {
                 result = result.filter(u => String(u.product) === String(filters.productFilter));
             }
+            if (filters.batchNumber) {
+                const selectedBatch = batches.find(b => String(b.id) === String(filters.batchNumber));
+                const selectedBatchNumber = normalize(selectedBatch?.batch_number);
+                result = result.filter(u => {
+                    const unitBatch = u.batch;
+                    const unitBatchId = typeof unitBatch === 'object' ? unitBatch?.id : unitBatch;
+                    const unitBatchNumber = normalize(getBatchNumber(u));
+                    return String(unitBatchId) === String(filters.batchNumber)
+                        || (selectedBatchNumber && unitBatchNumber.includes(selectedBatchNumber))
+                        || unitBatchNumber.includes(normalize(filters.batchNumber));
+                });
+            }
 
             setUnits(result);
             setTablePage(1);
@@ -93,9 +136,11 @@ const ProductAnalysis = () => {
         const map = {};
         units.forEach(u => {
             const name = u.product_name || u.product || 'Unknown';
-            if (!map[name]) map[name] = { name, pallets: 0, packs: 0 };
-            map[name].pallets += 1;
-            map[name].packs += (u.quantity || 0);
+            const batch = getBatchNumber(u);
+            const key = `${name}|${batch}`;
+            if (!map[key]) map[key] = { name, batch, pallets: 0, packs: 0 };
+            map[key].pallets += 1;
+            map[key].packs += Number(u.quantity) || 0;
         });
         return Object.values(map).sort((a, b) => b.pallets - a.pallets);
     }, [units]);
@@ -108,9 +153,9 @@ const ProductAnalysis = () => {
     const packsPerBatch = useMemo(() => {
         const map = {};
         units.forEach(u => {
-            const batch = u.actual_production_code || u.production_run_name || 'Unknown';
+            const batch = getBatchNumber(u);
             if (!map[batch]) map[batch] = { name: batch, packs: 0 };
-            map[batch].packs += (u.quantity || 0);
+            map[batch].packs += Number(u.quantity) || 0;
         });
         return Object.values(map).sort((a, b) => b.packs - a.packs);
     }, [units]);
@@ -140,11 +185,12 @@ const ProductAnalysis = () => {
         products: new Set(units.map(u => u.product_name || u.product || '')).size,
         pallets: units.length,
         packs: units.reduce((s, u) => s + (u.quantity || 0), 0),
-        batches: new Set(units.map(u => u.actual_production_code || u.production_run_name || '')).size,
+        batches: new Set(units.map(getBatchNumber)).size,
     }), [units]);
 
     const handleExport = () => {
         const exportData = productsPerPallet.map(p => ({
+            'Batch Number': p.batch,
             'Product': p.name,
             'Pallets': p.pallets,
             'Packs': p.packs,
@@ -216,6 +262,14 @@ const ProductAnalysis = () => {
                                         onChange={(e) => setFilters({ ...filters, productFilter: e.target.value })}>
                                         <option value="">All Products</option>
                                         {products.map(p => <option key={p.id} value={p.id}>{p.name || p.product_name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-md-2">
+                                    <label className="form-label">Batch Number</label>
+                                    <select className="form-select" value={filters.batchNumber}
+                                        onChange={(e) => setFilters({ ...filters, batchNumber: e.target.value })}>
+                                        <option value="">All Batches</option>
+                                        {batches.map(b => <option key={b.id} value={b.id}>{b.batch_number}</option>)}
                                     </select>
                                 </div>
                                 <div className="col-md-2">
@@ -349,6 +403,7 @@ const ProductAnalysis = () => {
                                 <table className="table table-striped table-hover mb-0">
                                     <thead className="table-light">
                                         <tr>
+                                            <th>Batch Number</th>
                                             <th>Product</th>
                                             <th className="text-end">Total Pallets</th>
                                             <th className="text-end">Total Packs</th>
@@ -357,6 +412,7 @@ const ProductAnalysis = () => {
                                     <tbody>
                                         {paginatedProducts.map((p, idx) => (
                                             <tr key={idx}>
+                                                <td><code>{p.batch}</code></td>
                                                 <td className="fw-semibold">{p.name}</td>
                                                 <td className="text-end">{p.pallets.toLocaleString()}</td>
                                                 <td className="text-end">{p.packs.toLocaleString()}</td>
