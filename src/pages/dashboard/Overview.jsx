@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspens
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production';
 import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsChart';
-import DowntimeSubCategoryDurationChart from '../../components/charts/DowntimeSubCategoryDurationChart';
+import DowntimeTimeline from '../../components/charts/DowntimeTimeline';
 import ProductionSummary from '../../components/production/ProductionSummary';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
 import { useFilters } from '../../context/FilterContext';
@@ -29,7 +29,7 @@ const extractList = (res) => {
 const formatNum = (n) => (n ?? 0).toLocaleString();
 
 const formatDuration = (mins) => {
-    if (!mins || mins <= 0) return '0m';
+    if (!Number.isFinite(mins) || mins <= 0) return '0m';
     const h = Math.floor(mins / 60);
     const m = Math.round(mins % 60);
     if (h === 0) return `${m}m`;
@@ -1381,8 +1381,8 @@ const Overview = () => {
             {/* Downtime by Subcategory Description */}
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
-                    <ChartErrorBoundary fallbackMessage="Failed to render downtime subcategory chart">
-                        <DowntimeSubCategoryDurationChart
+                    <ChartErrorBoundary fallbackMessage="Failed to render downtime timeline">
+                        <DowntimeTimeline
                             dateFilter={filters}
                             subCategoryFilter={filters.sub_category || ''}
                             onSubCategoryChange={(subCategory) => updateFilters({ sub_category: subCategory || null })}
