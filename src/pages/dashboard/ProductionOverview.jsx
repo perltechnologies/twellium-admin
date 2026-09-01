@@ -58,7 +58,7 @@ const formatNum = (n) => {
 };
 
 const formatDuration = (mins) => {
-    if (!mins || mins <= 0) return '0m';
+    if (!Number.isFinite(mins) || mins <= 0) return '0m';
     const h = Math.floor(mins / 60);
     const m = Math.round(mins % 60);
     if (h === 0) return `${m}m`;
