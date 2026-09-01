@@ -105,11 +105,13 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
 
     const effectiveSelectedPet = petFilter || selectedPet;
 
-    // Build chart data from downtime_breakdown subcategories
+    // Build chart data from downtime_breakdown subcategories (Mechanical only)
     const chartData = useMemo(() => {
         if (!downtimeBreakdown?.categories) return [];
         const items = [];
         downtimeBreakdown.categories.forEach(cat => {
+            // Only include Mechanical Downtime subcategories.
+            if (!cat.category_name?.toLowerCase().includes('mechanical')) return;
             (cat.sub_categories || []).forEach(sub => {
                 let count = sub.incident_count || 0;
                 let duration = sub.total_duration_mins || 0;
@@ -135,38 +137,17 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
         return items.sort((a, b) => b.totalDuration - a.totalDuration).slice(0, 15);
     }, [downtimeBreakdown, effectiveSelectedPet]);
 
-    // Planned Downtime breakdown by subcategory
-    const plannedDowntimeData = useMemo(() => {
-        if (!downtimeBreakdown?.categories) return [];
-        const plannedCat = downtimeBreakdown.categories.find(c => c.category_name?.toLowerCase().includes('planned'));
-        if (!plannedCat) return [];
-        return (plannedCat.sub_categories || []).map(sub => {
-            let count = sub.incident_count || 0;
-            let duration = sub.total_duration_mins || 0;
-            if (effectiveSelectedPet && sub.pets_affected?.length > 0) {
-                const petData = sub.pets_affected.find(p => p.pet_name === effectiveSelectedPet);
-                if (!petData) return null;
-                count = petData.count || 0;
-                duration = petData.duration_mins || 0;
-            } else if (effectiveSelectedPet && !sub.pets_affected?.length) {
-                return null;
-            }
-            return { label: sub.sub_category_name || 'Unknown', count, totalDuration: duration };
-        }).filter(Boolean).sort((a, b) => b.totalDuration - a.totalDuration);
-    }, [downtimeBreakdown, effectiveSelectedPet]);
+    // Totals (Mechanical only) — derived from chartData so they always match
+    // the mechanical subcategory bars, with or without a PET filter.
+    const totalIncidents = useMemo(
+        () => chartData.reduce((sum, d) => sum + d.count, 0),
+        [chartData]
+    );
 
-    // Totals
-    const totalIncidents = useMemo(() => {
-        if (!downtimeBreakdown?.categories) return 0;
-        if (effectiveSelectedPet) return chartData.reduce((sum, d) => sum + d.count, 0);
-        return downtimeBreakdown.total_incidents || downtimeBreakdown.categories.reduce((s, c) => s + (c.incident_count || 0), 0);
-    }, [downtimeBreakdown, chartData, effectiveSelectedPet]);
-
-    const totalDuration = useMemo(() => {
-        if (!downtimeBreakdown?.categories) return 0;
-        if (effectiveSelectedPet) return chartData.reduce((sum, d) => sum + d.totalDuration, 0);
-        return downtimeBreakdown.total_downtime_minutes || downtimeBreakdown.total_downtime_mins || downtimeBreakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0);
-    }, [downtimeBreakdown, chartData, effectiveSelectedPet]);
+    const totalDuration = useMemo(
+        () => chartData.reduce((sum, d) => sum + d.totalDuration, 0),
+        [chartData]
+    );
 
     const chartOptions = useMemo(() => ({
         chart: {
@@ -256,7 +237,7 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                 <div className="d-flex align-items-center justify-content-between">
                     <div>
                         <h6 className="mb-0">Stoppage Incidents by Subcategory</h6>
-                        <small className="text-muted">Incident count and total duration by downtime subcategory</small>
+                        <small className="text-muted">Mechanical downtime — incident count and total duration by subcategory</small>
                     </div>
                     <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
                         <i className="ti ti-external-link me-1"></i>View All
@@ -413,44 +394,6 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                         </div>
                         <ReactApexChart options={chartOptions} series={series} type="bar" height={700} />
 
-                        {/* Planned Downtime Subcategory Breakdown */}
-                        {plannedDowntimeData.length > 0 && (
-                            <div className="mt-4 pt-3 border-top">
-                                <h6 className="mb-3">
-                                    <i className="ti ti-clock-pause me-2"></i>
-                                    Planned Downtime by Subcategory
-                                    <span className="badge bg-info text-white ms-2">{plannedDowntimeData.reduce((s, d) => s + d.count, 0)} incidents</span>
-                                    <span className="badge bg-secondary text-white ms-1">{formatDuration(plannedDowntimeData.reduce((s, d) => s + d.totalDuration, 0))}</span>
-                                </h6>
-                                <ReactApexChart
-                                    options={{
-                                        chart: { type: 'bar', toolbar: { show: false } },
-                                        plotOptions: { bar: { horizontal: true, barHeight: '70%', borderRadius: 4 } },
-                                        dataLabels: { enabled: true, style: { fontSize: '11px' } },
-                                        xaxis: {
-                                            categories: plannedDowntimeData.map(d => d.label),
-                                            labels: { style: { fontSize: '11px' } }
-                                        },
-                                        yaxis: { labels: { style: { fontSize: '11px' } } },
-                                        tooltip: {
-                                            y: {
-                                                formatter: (val, opts) => {
-                                                    return opts?.seriesIndex === 0 ? `${val} incidents` : `${formatDuration(val)}`;
-                                                }
-                                            }
-                                        },
-                                        colors: ['#3b82f6', '#f59e0b'],
-                                        legend: { position: 'top', horizontalAlign: 'right', fontSize: '12px' }
-                                    }}
-                                    series={[
-                                        { name: 'Incidents', data: plannedDowntimeData.map(d => d.count) },
-                                        { name: 'Duration (min)', data: plannedDowntimeData.map(d => Math.round(d.totalDuration)) }
-                                    ]}
-                                    type="bar"
-                                    height={Math.max(200, plannedDowntimeData.length * 50)}
-                                />
-                            </div>
-                        )}
                     </>
                 )}
             </div>
