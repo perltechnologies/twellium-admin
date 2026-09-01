@@ -1369,7 +1369,11 @@ const Overview = () => {
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
                     <ChartErrorBoundary fallbackMessage="Failed to render stoppage incidents chart">
-                        <StoppageIncidentsChart />
+                        <StoppageIncidentsChart
+                            dateFilter={filters}
+                            petFilter={rawPets.find(p => String(p.id) === String(filters.pet))?.pet_name || ''}
+                            onPetChange={(petName) => updateFilters({ pet: petName ? rawPets.find(p => p.pet_name === petName)?.id ?? petName : null })}
+                        />
                     </ChartErrorBoundary>
                 </div>
             </div>
@@ -1378,7 +1382,11 @@ const Overview = () => {
             <div className="row row-gap-3 mb-4">
                 <div className="col-12">
                     <ChartErrorBoundary fallbackMessage="Failed to render downtime subcategory chart">
-                        <DowntimeSubCategoryDurationChart />
+                        <DowntimeSubCategoryDurationChart
+                            dateFilter={filters}
+                            subCategoryFilter={filters.sub_category || ''}
+                            onSubCategoryChange={(subCategory) => updateFilters({ sub_category: subCategory || null })}
+                        />
                     </ChartErrorBoundary>
                 </div>
             </div>

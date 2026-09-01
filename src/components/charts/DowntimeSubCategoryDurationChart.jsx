@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
+import { toLocalDateStr } from '../../utils/filterParams';
 
 const formatDuration = (mins) => {
     if (!mins || mins <= 0) return '0m';
@@ -37,7 +38,7 @@ const wrapDescription = (text) => {
  * `total_duration_mins`). Descriptions are joined from the DowntimeSubCategory
  * records, matched by subcategory id (fallback: subcategory name).
  */
-const DowntimeSubCategoryDurationChart = () => {
+const DowntimeSubCategoryDurationChart = ({ dateFilter, subCategoryFilter, onSubCategoryChange }) => {
     const [useRange, setUseRange] = useState(false);
     const [singleDate, setSingleDate] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -47,6 +48,24 @@ const DowntimeSubCategoryDurationChart = () => {
     const [selectedSubCategory, setSelectedSubCategory] = useState('');
     const [loading, setLoading] = useState(false);
     const [fetchKey, setFetchKey] = useState(0);
+
+    useEffect(() => {
+        if (dateFilter) {
+            const hasRange = Boolean(dateFilter.start_date && dateFilter.end_date);
+            setUseRange(hasRange);
+            setSingleDate(dateFilter.log_date || '');
+            setStartDate(dateFilter.start_date || '');
+            setEndDate(dateFilter.end_date || '');
+        }
+    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date]);
+
+    useEffect(() => {
+        if (subCategoryFilter) {
+            setSelectedSubCategory(subCategoryFilter);
+        } else if (!selectedSubCategory && !subCategoryFilter) {
+            setSelectedSubCategory('');
+        }
+    }, [subCategoryFilter, selectedSubCategory]);
 
     // Load subcategory descriptions once (id -> description, name -> description)
     useEffect(() => {
@@ -81,22 +100,26 @@ const DowntimeSubCategoryDurationChart = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
+                const effectiveUseRange = dateFilter ? Boolean(dateFilter.start_date && dateFilter.end_date) : useRange;
+                const effectiveSingleDate = dateFilter ? (dateFilter.log_date || '') : singleDate;
+                const effectiveStartDate = dateFilter ? (dateFilter.start_date || '') : startDate;
+                const effectiveEndDate = dateFilter ? (dateFilter.end_date || '') : endDate;
+
                 let dateStart, dateEnd;
-                if (useRange && startDate && endDate) {
-                    dateStart = startDate;
-                    dateEnd = endDate;
-                } else if (singleDate) {
-                    dateStart = singleDate;
-                    dateEnd = singleDate;
+                if (effectiveUseRange && effectiveStartDate && effectiveEndDate) {
+                    dateStart = effectiveStartDate;
+                    dateEnd = effectiveEndDate;
+                } else if (effectiveSingleDate) {
+                    dateStart = effectiveSingleDate;
+                    dateEnd = effectiveSingleDate;
                 } else {
                     const now = new Date();
                     const currentTime = now.toTimeString().slice(0, 5);
-                    let todayStr = now.toISOString().split('T')[0];
+                    const ref = new Date(now);
                     if (currentTime < '06:00') {
-                        const yesterday = new Date(now);
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        todayStr = yesterday.toISOString().split('T')[0];
+                        ref.setDate(ref.getDate() - 1);
                     }
+                    const todayStr = toLocalDateStr(ref);
                     dateStart = todayStr;
                     dateEnd = todayStr;
                 }
@@ -112,7 +135,9 @@ const DowntimeSubCategoryDurationChart = () => {
             }
         };
         fetchData();
-    }, [useRange, singleDate, startDate, endDate, fetchKey]);
+    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date, useRange, singleDate, startDate, endDate, fetchKey]);
+
+    const effectiveSelectedSubCategory = subCategoryFilter || selectedSubCategory;
 
     // Build: subcategory description -> total duration
     const chartData = useMemo(() => {
@@ -124,7 +149,7 @@ const DowntimeSubCategoryDurationChart = () => {
                 if (duration <= 0) return;
                 const subCategory = sub.sub_category_name || 'Unknown';
                 // Filter to a single subcategory when one is selected.
-                if (selectedSubCategory && subCategory !== selectedSubCategory) return;
+                if (effectiveSelectedSubCategory && subCategory !== effectiveSelectedSubCategory) return;
                 const byId = sub.sub_category_id != null ? descriptionMap[`id:${sub.sub_category_id}`] : '';
                 const byName = sub.sub_category_name
                     ? descriptionMap[`name:${sub.sub_category_name.toLowerCase().trim()}`]
@@ -143,7 +168,7 @@ const DowntimeSubCategoryDurationChart = () => {
         });
         // One bar per downtime description, largest duration first.
         return items.sort((a, b) => b.totalDuration - a.totalDuration).slice(0, 20);
-    }, [downtimeBreakdown, descriptionMap, selectedSubCategory]);
+    }, [downtimeBreakdown, descriptionMap, effectiveSelectedSubCategory]);
 
     // All subcategories that have downtime (for the filter dropdown), regardless of selection.
     const availableSubCategories = useMemo(() => {
@@ -217,7 +242,7 @@ const DowntimeSubCategoryDurationChart = () => {
         { name: 'Total Duration (min)', data: chartData.map((d) => Math.round(d.totalDuration)) }
     ], [chartData]);
 
-    const hasActiveFilters = singleDate || startDate || endDate || selectedSubCategory;
+    const hasActiveFilters = singleDate || startDate || endDate || effectiveSelectedSubCategory;
 
     return (
         <div className="card">
@@ -231,8 +256,8 @@ const DowntimeSubCategoryDurationChart = () => {
                         <button
                             className="btn btn-outline-primary"
                             onClick={() => {
-                                const end = new Date().toISOString().split('T')[0];
-                                const start = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                                const end = toLocalDateStr(new Date());
+                                const start = toLocalDateStr(new Date(Date.now() - 6 * 86400000));
                                 setUseRange(true);
                                 setStartDate(start);
                                 setEndDate(end);
@@ -245,8 +270,8 @@ const DowntimeSubCategoryDurationChart = () => {
                         <button
                             className="btn btn-outline-primary"
                             onClick={() => {
-                                const end = new Date().toISOString().split('T')[0];
-                                const start = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                                const end = toLocalDateStr(new Date());
+                                const start = toLocalDateStr(new Date(Date.now() - 29 * 86400000));
                                 setUseRange(true);
                                 setStartDate(start);
                                 setEndDate(end);
@@ -307,8 +332,11 @@ const DowntimeSubCategoryDurationChart = () => {
                         <label className="form-label small">Subcategory</label>
                         <select
                             className="form-select form-select-sm"
-                            value={selectedSubCategory}
-                            onChange={(e) => setSelectedSubCategory(e.target.value)}
+                            value={effectiveSelectedSubCategory}
+                            onChange={(e) => {
+                                setSelectedSubCategory(e.target.value);
+                                if (onSubCategoryChange) onSubCategoryChange(e.target.value || null);
+                            }}
                         >
                             <option value="">All subcategories</option>
                             {availableSubCategories.map((sub) => (
@@ -326,7 +354,7 @@ const DowntimeSubCategoryDurationChart = () => {
                             {singleDate && <span className="ms-2">Date: {singleDate}</span>}
                             {startDate && <span className="ms-2">From: {startDate}</span>}
                             {endDate && <span className="ms-2">To: {endDate}</span>}
-                            {selectedSubCategory && <span className="ms-2">• Subcategory: {selectedSubCategory}</span>}
+                            {effectiveSelectedSubCategory && <span className="ms-2">• Subcategory: {effectiveSelectedSubCategory}</span>}
                         </div>
                         <button
                             className="btn btn-sm btn-outline-info"
@@ -353,7 +381,7 @@ const DowntimeSubCategoryDurationChart = () => {
                     <div className="text-center text-muted py-5">
                         <i className="ti ti-clock-pause fs-1 mb-3 d-block"></i>
                         <p className="mb-0">No downtime description data available</p>
-                        <small className="d-block mt-2">No downtime recorded for the selected date range</small>
+                        <small className="d-block mt-2">No downtime was recorded for the selected date range. Try the <strong>Week</strong> or <strong>Month</strong> quick-select above, or widen the date range.</small>
                     </div>
                 ) : (
                     <>

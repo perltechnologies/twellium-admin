@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
+import { toLocalDateStr } from '../../utils/filterParams';
 
 const formatDuration = (mins) => {
     if (!mins || mins <= 0) return '0m';
@@ -12,7 +13,7 @@ const formatDuration = (mins) => {
     return `${h}h ${m}m`;
 };
 
-const StoppageIncidentsChart = () => {
+const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
     const navigate = useNavigate();
     const [useRange, setUseRange] = useState(false);
     const [singleDate, setSingleDate] = useState('');
@@ -24,25 +25,47 @@ const StoppageIncidentsChart = () => {
     const [fetchKey, setFetchKey] = useState(0);
 
     useEffect(() => {
+        if (dateFilter) {
+            const hasRange = Boolean(dateFilter.start_date && dateFilter.end_date);
+            setUseRange(hasRange);
+            setSingleDate(dateFilter.log_date || '');
+            setStartDate(dateFilter.start_date || '');
+            setEndDate(dateFilter.end_date || '');
+        }
+    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date]);
+
+    useEffect(() => {
+        if (petFilter) {
+            setSelectedPet(petFilter);
+        } else if (!selectedPet && !petFilter) {
+            setSelectedPet('');
+        }
+    }, [petFilter, selectedPet]);
+
+    useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
+                const effectiveUseRange = dateFilter ? Boolean(dateFilter.start_date && dateFilter.end_date) : useRange;
+                const effectiveSingleDate = dateFilter ? (dateFilter.log_date || '') : singleDate;
+                const effectiveStartDate = dateFilter ? (dateFilter.start_date || '') : startDate;
+                const effectiveEndDate = dateFilter ? (dateFilter.end_date || '') : endDate;
+
                 let dateStart, dateEnd;
-                if (useRange && startDate && endDate) {
-                    dateStart = startDate;
-                    dateEnd = endDate;
-                } else if (singleDate) {
-                    dateStart = singleDate;
-                    dateEnd = singleDate;
+                if (effectiveUseRange && effectiveStartDate && effectiveEndDate) {
+                    dateStart = effectiveStartDate;
+                    dateEnd = effectiveEndDate;
+                } else if (effectiveSingleDate) {
+                    dateStart = effectiveSingleDate;
+                    dateEnd = effectiveSingleDate;
                 } else {
                     const now = new Date();
                     const currentTime = now.toTimeString().slice(0, 5);
-                    let todayStr = now.toISOString().split('T')[0];
+                    const ref = new Date(now);
                     if (currentTime < '06:00') {
-                        const yesterday = new Date(now);
-                        yesterday.setDate(yesterday.getDate() - 1);
-                        todayStr = yesterday.toISOString().split('T')[0];
+                        ref.setDate(ref.getDate() - 1);
                     }
+                    const todayStr = toLocalDateStr(ref);
                     dateStart = todayStr;
                     dateEnd = todayStr;
                 }
@@ -60,7 +83,7 @@ const StoppageIncidentsChart = () => {
         };
 
         fetchData();
-    }, [useRange, singleDate, startDate, endDate, fetchKey]);
+    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date, useRange, singleDate, startDate, endDate, fetchKey]);
 
     // Extract available pets from downtime breakdown
     const availablePets = useMemo(() => {
@@ -80,6 +103,8 @@ const StoppageIncidentsChart = () => {
         });
     }, [downtimeBreakdown]);
 
+    const effectiveSelectedPet = petFilter || selectedPet;
+
     // Build chart data from downtime_breakdown subcategories
     const chartData = useMemo(() => {
         if (!downtimeBreakdown?.categories) return [];
@@ -90,12 +115,12 @@ const StoppageIncidentsChart = () => {
                 let duration = sub.total_duration_mins || 0;
                 
                 // Filter by pet if selected
-                if (selectedPet && sub.pets_affected?.length > 0) {
-                    const petData = sub.pets_affected.find(p => p.pet_name === selectedPet);
+                if (effectiveSelectedPet && sub.pets_affected?.length > 0) {
+                    const petData = sub.pets_affected.find(p => p.pet_name === effectiveSelectedPet);
                     if (!petData) return;
                     count = petData.count || 0;
                     duration = petData.duration_mins || 0;
-                } else if (selectedPet && !sub.pets_affected?.length) {
+                } else if (effectiveSelectedPet && !sub.pets_affected?.length) {
                     return;
                 }
                 
@@ -108,7 +133,7 @@ const StoppageIncidentsChart = () => {
             });
         });
         return items.sort((a, b) => b.totalDuration - a.totalDuration).slice(0, 15);
-    }, [downtimeBreakdown, selectedPet]);
+    }, [downtimeBreakdown, effectiveSelectedPet]);
 
     // Planned Downtime breakdown by subcategory
     const plannedDowntimeData = useMemo(() => {
@@ -118,30 +143,30 @@ const StoppageIncidentsChart = () => {
         return (plannedCat.sub_categories || []).map(sub => {
             let count = sub.incident_count || 0;
             let duration = sub.total_duration_mins || 0;
-            if (selectedPet && sub.pets_affected?.length > 0) {
-                const petData = sub.pets_affected.find(p => p.pet_name === selectedPet);
+            if (effectiveSelectedPet && sub.pets_affected?.length > 0) {
+                const petData = sub.pets_affected.find(p => p.pet_name === effectiveSelectedPet);
                 if (!petData) return null;
                 count = petData.count || 0;
                 duration = petData.duration_mins || 0;
-            } else if (selectedPet && !sub.pets_affected?.length) {
+            } else if (effectiveSelectedPet && !sub.pets_affected?.length) {
                 return null;
             }
             return { label: sub.sub_category_name || 'Unknown', count, totalDuration: duration };
         }).filter(Boolean).sort((a, b) => b.totalDuration - a.totalDuration);
-    }, [downtimeBreakdown, selectedPet]);
+    }, [downtimeBreakdown, effectiveSelectedPet]);
 
     // Totals
     const totalIncidents = useMemo(() => {
         if (!downtimeBreakdown?.categories) return 0;
-        if (selectedPet) return chartData.reduce((sum, d) => sum + d.count, 0);
+        if (effectiveSelectedPet) return chartData.reduce((sum, d) => sum + d.count, 0);
         return downtimeBreakdown.total_incidents || downtimeBreakdown.categories.reduce((s, c) => s + (c.incident_count || 0), 0);
-    }, [downtimeBreakdown, chartData, selectedPet]);
+    }, [downtimeBreakdown, chartData, effectiveSelectedPet]);
 
     const totalDuration = useMemo(() => {
         if (!downtimeBreakdown?.categories) return 0;
-        if (selectedPet) return chartData.reduce((sum, d) => sum + d.totalDuration, 0);
-        return downtimeBreakdown.total_downtime_mins || downtimeBreakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0);
-    }, [downtimeBreakdown, chartData, selectedPet]);
+        if (effectiveSelectedPet) return chartData.reduce((sum, d) => sum + d.totalDuration, 0);
+        return downtimeBreakdown.total_downtime_minutes || downtimeBreakdown.total_downtime_mins || downtimeBreakdown.categories.reduce((s, c) => s + (c.total_duration_mins || 0), 0);
+    }, [downtimeBreakdown, chartData, effectiveSelectedPet]);
 
     const chartOptions = useMemo(() => ({
         chart: {
@@ -225,14 +250,6 @@ const StoppageIncidentsChart = () => {
         }
     ], [chartData]);
     
-    const dailyRate = useMemo(() => {
-        if (!useRange || !startDate || !endDate) return null;
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-        return days > 0 ? (totalIncidents / days).toFixed(1) : 0;
-    }, [useRange, startDate, endDate, totalIncidents]);
-
     return (
         <div className="card">
             <div className="card-header">
@@ -294,8 +311,11 @@ const StoppageIncidentsChart = () => {
                         <label className="form-label small">PET</label>
                         <select
                             className="form-select form-select-sm"
-                            value={selectedPet}
-                            onChange={(e) => setSelectedPet(e.target.value)}
+                            value={effectiveSelectedPet}
+                            onChange={(e) => {
+                                setSelectedPet(e.target.value);
+                                if (onPetChange) onPetChange(e.target.value || null);
+                            }}
                         >
                             <option value="">All</option>
                             {availablePets.map(pet => (
@@ -309,8 +329,8 @@ const StoppageIncidentsChart = () => {
                             <button 
                                 className="btn btn-outline-primary"
                                 onClick={() => {
-                                    const end = new Date().toISOString().split('T')[0];
-                                    const start = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                                    const end = toLocalDateStr(new Date());
+                                    const start = toLocalDateStr(new Date(Date.now() - 6 * 86400000));
                                     setUseRange(true);
                                     setStartDate(start);
                                     setEndDate(end);
@@ -323,8 +343,8 @@ const StoppageIncidentsChart = () => {
                             <button 
                                 className="btn btn-outline-primary"
                                 onClick={() => {
-                                    const end = new Date().toISOString().split('T')[0];
-                                    const start = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                                    const end = toLocalDateStr(new Date());
+                                    const start = toLocalDateStr(new Date(Date.now() - 29 * 86400000));
                                     setUseRange(true);
                                     setStartDate(start);
                                     setEndDate(end);
@@ -373,32 +393,23 @@ const StoppageIncidentsChart = () => {
                     <div className="text-center text-muted py-5">
                         <i className="ti ti-alert-circle fs-1 mb-3 d-block"></i>
                         <p className="mb-0">No incident data available</p>
-                        <small className="d-block mt-2">No downtime data for selected filters</small>
+                        <small className="d-block mt-2">No downtime was recorded for the selected date range. Try the <strong>Week</strong> or <strong>Month</strong> quick-select above, or widen the date range.</small>
                     </div>
                 ) : (
                     <>
                         <div className="row mb-3">
-                            <div className="col-4">
+                            <div className="col-6">
                                 <div className="border rounded p-3 text-center">
                                     <small className="text-muted d-block mb-1">Total Incidents</small>
                                     <h4 className="mb-0 text-primary">{totalIncidents}</h4>
                                 </div>
                             </div>
-                            <div className="col-4">
+                            <div className="col-6">
                                 <div className="border rounded p-3 text-center">
                                     <small className="text-muted d-block mb-1">Total Duration</small>
                                     <h4 className={`mb-0 ${totalDuration <= 60 ? 'text-success' : 'text-danger'}`}>{formatDuration(totalDuration)}</h4>
                                 </div>
                             </div>
-                            {dailyRate && (
-                                <div className="col-4">
-                                    <div className="border rounded p-3 text-center">
-                                        <small className="text-muted d-block mb-1">Daily Rate</small>
-                                        <h4 className="mb-0 text-info">{dailyRate}</h4>
-                                        <small className="text-muted">incidents/day</small>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                         <ReactApexChart options={chartOptions} series={series} type="bar" height={700} />
 
