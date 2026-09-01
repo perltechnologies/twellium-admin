@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
 import { toLocalDateStr } from '../../utils/filterParams';
 import Pagination from '../ui/Pagination';
@@ -13,39 +14,74 @@ const formatDuration = (mins) => {
     return `${h}h ${m}m`;
 };
 
-// Format a YYYY-MM-DD (optionally with time) into a friendly label.
-const formatDateLabel = (dateStr) => {
-    if (!dateStr) return 'Unknown date';
-    const d = new Date(`${dateStr}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+// --- Similarity helpers (dependency-free, heuristic) ---------------------
+
+// Normalize free-text: lowercase, strip punctuation, collapse whitespace.
+const normalizeText = (s) =>
+    String(s || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const tokenize = (s) => normalizeText(s).split(' ').filter(Boolean);
+
+// Jaccard similarity over the word sets (0..1). Good for word-order/extra words.
+const jaccard = (aTokens, bTokens) => {
+    if (!aTokens.length && !bTokens.length) return 1;
+    const a = new Set(aTokens);
+    const b = new Set(bTokens);
+    let inter = 0;
+    a.forEach((t) => { if (b.has(t)) inter += 1; });
+    const union = a.size + b.size - inter;
+    return union === 0 ? 0 : inter / union;
 };
 
-const formatTimeLabel = (timeStr) => {
-    if (!timeStr) return null;
-    const d = new Date(`2000-01-01T${timeStr}`);
-    if (Number.isNaN(d.getTime())) return timeStr;
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+// Levenshtein edit distance (iterative, O(n*m)) on normalized strings.
+const levenshtein = (a, b) => {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    let curr = new Array(b.length + 1);
+    for (let i = 1; i <= a.length; i += 1) {
+        curr[0] = i;
+        for (let j = 1; j <= b.length; j += 1) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+        }
+        [prev, curr] = [curr, prev];
+    }
+    return prev[b.length];
 };
 
-// Color the left rail dot by downtime category.
-const categoryColor = (category = '') => {
-    const c = category.toLowerCase();
-    if (c.includes('planned')) return '#f59e0b';       // amber
-    if (c.includes('mechanical')) return '#ef4444';     // red
-    if (c.includes('electrical')) return '#3b82f6';     // blue
-    if (c.includes('quality')) return '#8b5cf6';        // purple
-    return '#6b7280';                                    // gray fallback
+// Character-level similarity (0..1) from edit distance. Catches typos.
+const charRatio = (a, b) => {
+    const maxLen = Math.max(a.length, b.length);
+    if (maxLen === 0) return 1;
+    return 1 - levenshtein(a, b) / maxLen;
 };
+
+// Combined similarity score (0..1): the stronger of token-overlap and
+// char-level similarity, so either near-identical wording OR minor typos merge.
+const similarity = (aRaw, bRaw) => {
+    const aNorm = normalizeText(aRaw);
+    const bNorm = normalizeText(bRaw);
+    if (aNorm === bNorm) return 1;
+    const tokenScore = jaccard(tokenize(aRaw), tokenize(bRaw));
+    const charScore = charRatio(aNorm, bNorm);
+    return Math.max(tokenScore, charScore);
+};
+
+// Merge threshold: descriptions with similarity >= this cluster together.
+const SIMILARITY_THRESHOLD = 0.72;
 
 /**
- * Date-ordered timeline of individual downtime incidents.
+ * "Downtime by Description" — horizontal bar chart.
  *
- * Data source: /production/stoppages/ (per-incident detail), because the
- * aggregated production_summary `downtime_breakdown` carries no dates.
- * Each incident shows a category → sub-category → description trail plus its
- * duration. Incidents are grouped by date (newest first) and sorted within a
- * day by duration (longest first).
+ * Data source: /production/stoppages/ (per-incident detail). Incidents on the
+ * current page are aggregated into one bar per description (kept distinct per
+ * sub-category); bar length is total duration, sorted longest first.
  */
 const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }) => {
     const navigate = useNavigate();
@@ -154,20 +190,79 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
         return [...set].sort();
     }, [incidents]);
 
-    // Apply subcategory filter, then produce a flat list sorted by date
-    // (newest first), and within a day by duration (longest first).
-    const sortedIncidents = useMemo(() => {
+    // Apply subcategory filter, then aggregate incidents into bars using a
+    // heuristic similarity strategy: within a sub-category, descriptions that
+    // are *similar* (typos, word-order, extra words) are merged into one bar
+    // and their durations summed. The highest-duration wording becomes the
+    // cluster's display label. Sorted by total duration, longest first.
+    const allBars = useMemo(() => {
         const filtered = effectiveSelectedSubCategory
             ? incidents.filter((i) => i.subCategory === effectiveSelectedSubCategory)
             : incidents;
-        return [...filtered].sort((a, b) => {
-            const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
-            if (dateCmp !== 0) return dateCmp;
-            return b.duration - a.duration;
+
+        // Step 1: collapse exact (normalized) duplicates first, grouped by
+        // sub-category, to reduce the number of pairwise comparisons.
+        const exact = {};
+        filtered.forEach((i) => {
+            const subCategory = i.subCategory || 'Uncategorized';
+            const description = i.description || '(No description)';
+            const key = `${subCategory}||${normalizeText(description)}`;
+            if (!exact[key]) {
+                exact[key] = {
+                    description,
+                    subCategory,
+                    category: i.category || '',
+                    duration: 0,
+                    count: 0,
+                };
+            }
+            exact[key].duration += i.duration;
+            exact[key].count += 1;
         });
+
+        // Step 2: group the exact-items by sub-category.
+        const bySub = {};
+        Object.values(exact).forEach((item) => {
+            (bySub[item.subCategory] = bySub[item.subCategory] || []).push(item);
+        });
+
+        // Step 3: greedy similarity clustering within each sub-category.
+        const clusters = [];
+        Object.values(bySub).forEach((items) => {
+            // Seed clusters with the longest-duration items first so the
+            // representative label is the most significant wording.
+            const ordered = [...items].sort((a, b) => b.duration - a.duration);
+            const subClusters = [];
+            ordered.forEach((item) => {
+                let placed = false;
+                for (const cluster of subClusters) {
+                    if (similarity(item.description, cluster.description) >= SIMILARITY_THRESHOLD) {
+                        cluster.duration += item.duration;
+                        cluster.count += item.count;
+                        cluster.variants.push(item.description);
+                        placed = true;
+                        break;
+                    }
+                }
+                if (!placed) {
+                    subClusters.push({
+                        key: `${item.subCategory}||${item.description}`,
+                        description: item.description, // canonical (longest duration)
+                        subCategory: item.subCategory,
+                        category: item.category,
+                        duration: item.duration,
+                        count: item.count,
+                        variants: [item.description],
+                    });
+                }
+            });
+            clusters.push(...subClusters);
+        });
+
+        return clusters.sort((a, b) => b.duration - a.duration);
     }, [incidents, effectiveSelectedSubCategory]);
 
-    const totalCount = sortedIncidents.length;
+    const totalCount = allBars.length;              // number of merged descriptions
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
     // Keep the current page within bounds when data/filters change.
@@ -180,33 +275,69 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
         setPage(1);
     }, [effectiveSelectedSubCategory, stoppages]);
 
-    // The incidents visible on the current page.
-    const pageIncidents = useMemo(() => {
+    // The description bars visible on the current page.
+    const barData = useMemo(() => {
         const start = (page - 1) * pageSize;
-        return sortedIncidents.slice(start, start + pageSize);
-    }, [sortedIncidents, page, pageSize]);
+        return allBars.slice(start, start + pageSize);
+    }, [allBars, page, pageSize]);
 
-    // Re-group the current page's incidents by date for rendering.
-    const groups = useMemo(() => {
-        const byDate = {};
-        pageIncidents.forEach((i) => {
-            const key = i.date || 'Unknown';
-            (byDate[key] = byDate[key] || []).push(i);
-        });
-        return Object.entries(byDate)
-            .sort(([a], [b]) => String(b).localeCompare(String(a)))
-            .map(([date, list]) => ({
-                date,
-                total: list.reduce((s, i) => s + i.duration, 0),
-                incidents: list, // already globally sorted by duration desc
-            }));
-    }, [pageIncidents]);
+    // A readable bar label: the description only.
+    const barLabels = useMemo(
+        () => barData.map((d) => d.description),
+        [barData]
+    );
+
+    const chartOptions = useMemo(() => ({
+        chart: { type: 'bar', toolbar: { show: false } },
+        plotOptions: {
+            bar: { horizontal: true, barHeight: '70%', borderRadius: 4, distributed: false },
+        },
+        dataLabels: {
+            enabled: true,
+            formatter: (val) => formatDuration(val),
+            style: { fontSize: '11px', colors: ['#fff'] },
+        },
+        stroke: { show: true, width: 1, colors: ['#fff'] },
+        xaxis: {
+            categories: barLabels,
+            title: { text: 'Duration (minutes)' },
+            labels: { style: { fontSize: '11px' } },
+        },
+        yaxis: { labels: { style: { fontSize: '10px' }, maxWidth: 320 } },
+        tooltip: {
+            y: {
+                title: { formatter: () => 'Duration:' },
+                formatter: (val) => formatDuration(val),
+            },
+            x: {
+                formatter: (_val, opts) => {
+                    const row = barData[opts?.dataPointIndex];
+                    if (!row) return '';
+                    const variantNote = row.variants && row.variants.length > 1
+                        ? ` · ${row.variants.length} similar wordings merged`
+                        : '';
+                    return `${row.description}  (${row.subCategory} · ${row.count} incident${row.count !== 1 ? 's' : ''}${variantNote})`;
+                },
+            },
+        },
+        colors: ['#8b5cf6'],
+        legend: { show: false },
+    }), [barData, barLabels]);
+
+    const chartSeries = useMemo(
+        () => [{ name: 'Total Duration (min)', data: barData.map((d) => Math.round(d.duration)) }],
+        [barData]
+    );
 
     // Totals reflect the whole filtered dataset, not just the current page.
-    const totalIncidents = totalCount;
+    const totalDescriptions = totalCount;                       // unique descriptions (bars)
+    const totalIncidents = useMemo(
+        () => allBars.reduce((s, b) => s + b.count, 0),          // underlying incident count
+        [allBars]
+    );
     const totalDuration = useMemo(
-        () => sortedIncidents.reduce((s, i) => s + i.duration, 0),
-        [sortedIncidents]
+        () => allBars.reduce((s, b) => s + b.duration, 0),
+        [allBars]
     );
 
     const hasActiveFilters = singleDate || startDate || endDate || effectiveSelectedSubCategory;
@@ -217,7 +348,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
                     <div>
                         <h6 className="mb-0">Downtime by Description</h6>
-                        <small className="text-muted">Timeline of downtime incidents (newest first, longest first within a day)</small>
+                        <small className="text-muted">Total downtime duration per description (longest first)</small>
                     </div>
                     <div className="d-flex gap-2">
                         <div className="btn-group btn-group-sm" role="group">
@@ -349,7 +480,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                     <div className="text-center py-5">
                         <span className="spinner-border spinner-border-sm"></span>
                     </div>
-                ) : groups.length === 0 ? (
+                ) : barData.length === 0 ? (
                     <div className="text-center text-muted py-5">
                         <i className="ti ti-clock-pause fs-1 mb-3 d-block"></i>
                         <p className="mb-0">No downtime incidents available</p>
@@ -360,8 +491,9 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                         <div className="row mb-4">
                             <div className="col-6">
                                 <div className="border rounded p-3 text-center">
-                                    <small className="text-muted d-block mb-1">Incidents</small>
-                                    <h4 className="mb-0 text-primary">{totalIncidents}</h4>
+                                    <small className="text-muted d-block mb-1">Descriptions</small>
+                                    <h4 className="mb-0 text-primary">{totalDescriptions}</h4>
+                                    <small className="text-muted">{totalIncidents} incident{totalIncidents !== 1 ? 's' : ''}</small>
                                 </div>
                             </div>
                             <div className="col-6">
@@ -372,72 +504,13 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                             </div>
                         </div>
 
-                        {/* Vertical timeline */}
-                        <div className="downtime-timeline" style={{ position: 'relative' }}>
-                            {groups.map((group) => (
-                                <div key={group.date} className="mb-4">
-                                    {/* Date header */}
-                                    <div className="d-flex align-items-center mb-2">
-                                        <span className="badge bg-dark text-white me-2">{formatDateLabel(group.date)}</span>
-                                        <small className="text-muted">
-                                            {group.incidents.length} incident{group.incidents.length !== 1 ? 's' : ''} · {formatDuration(group.total)}
-                                        </small>
-                                    </div>
-
-                                    {/* Incidents for the day */}
-                                    <div style={{ borderLeft: '2px solid #e5e7eb', marginLeft: 6, paddingLeft: 16 }}>
-                                        {group.incidents.map((inc) => (
-                                            <div key={inc.id} className="position-relative mb-3">
-                                                {/* Rail dot */}
-                                                <span
-                                                    style={{
-                                                        position: 'absolute',
-                                                        left: -23,
-                                                        top: 4,
-                                                        width: 12,
-                                                        height: 12,
-                                                        borderRadius: '50%',
-                                                        background: categoryColor(inc.category),
-                                                        border: '2px solid #fff',
-                                                        boxShadow: '0 0 0 1px #e5e7eb',
-                                                    }}
-                                                />
-                                                <div className="d-flex justify-content-between align-items-start gap-2">
-                                                    <div className="flex-grow-1">
-                                                        {/* Trail: category > sub-category > description */}
-                                                        <div className="d-flex align-items-center flex-wrap gap-1 mb-1" style={{ fontSize: 12 }}>
-                                                            <span
-                                                                className="badge"
-                                                                style={{ background: categoryColor(inc.category), color: '#fff' }}
-                                                            >
-                                                                {inc.category}
-                                                            </span>
-                                                            {inc.subCategory && (
-                                                                <>
-                                                                    <i className="ti ti-chevron-right text-muted" style={{ fontSize: 12 }}></i>
-                                                                    <span className="badge bg-soft-secondary text-secondary">{inc.subCategory}</span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                        <div className="text-body" style={{ fontSize: 13 }}>
-                                                            {inc.description || <span className="text-muted fst-italic">No description</span>}
-                                                        </div>
-                                                        <div className="text-muted mt-1" style={{ fontSize: 11 }}>
-                                                            {formatTimeLabel(inc.time) && <span className="me-2"><i className="ti ti-clock me-1"></i>{formatTimeLabel(inc.time)}</span>}
-                                                            <span className="me-2"><i className="ti ti-versions me-1"></i>{inc.pet}</span>
-                                                            {inc.reportCode && <span><i className="ti ti-file me-1"></i>{inc.reportCode}</span>}
-                                                        </div>
-                                                    </div>
-                                                    <span className={`badge ${inc.duration <= 15 ? 'bg-soft-success text-success' : inc.duration <= 60 ? 'bg-soft-warning text-warning' : 'bg-soft-danger text-danger'}`} style={{ whiteSpace: 'nowrap' }}>
-                                                        {formatDuration(inc.duration)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        {/* Horizontal bar: one bar per description (duration) */}
+                        <ReactApexChart
+                            options={chartOptions}
+                            series={chartSeries}
+                            type="bar"
+                            height={Math.max(300, barData.length * 42)}
+                        />
 
                         <Pagination
                             page={page}
@@ -446,7 +519,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                             onPageChange={setPage}
                             onPageSizeChange={setPageSize}
                             pageSizeOptions={[10, 20, 50, 100]}
-                            itemLabel="incidents"
+                            itemLabel="descriptions"
                         />
                     </>
                 )}
