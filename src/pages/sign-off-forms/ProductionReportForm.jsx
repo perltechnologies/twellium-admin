@@ -64,25 +64,43 @@ const ProductionReportForm = () => {
     const [totalProductionTimeHrs, setTotalProductionTimeHrs] = useState('');
     
     const getApprovedValue = (field, defaultValue) => {
-        if (selectedDate === '2026-08-20' && String(selectedPet) === '12') { // Pet 2 is 12
-            const shift = shifts.find(s => String(s.id) === String(selectedShift));
-            if (shift && (String(shift.shift_name || shift.name).toUpperCase() === 'DAY')) {
-                const overrides = {
-                    'production_end_time': '18:00',
-                    'total_production_time_hrs': '12.00',
-                    'total_bottles_rw': '244800',
-                    'syrup_yield': '100.71',
-                    'std_co2_consumption': '588.85',
-                    'syrup_density': '1.2',
-                    'syrup_dilution_ratio': '1.5',
-                    'std_syrup_consumption': '14940.92',
-                    'shrink_reading_total_packs': '98.78'
-                };
-                if (overrides[field]) return overrides[field];
-            }
-        }
+        // Formulas now compute correct values for all dates, so no per-date
+        // overrides are applied. Kept as a passthrough for call-site stability.
         return defaultValue;
     };
+
+    // --- Dilution ratio helpers ------------------------------------------
+    // A dilution ratio expresses syrup : water. "1+5" / "1:5" means 1 part
+    // syrup to 5 parts water => 6 TOTAL parts. Standard syrup consumption
+    // divides the total beverage volume by these total parts.
+    //
+    // Accepts: "1+5", "1:5", "1/5" (parts a & b -> a+b), or a bare number n
+    // (interpreted as syrup:water = 1:n -> 1+n total parts).
+    const getDilutionTotalParts = (raw) => {
+        if (raw == null || raw === '') return 0;
+        const s = String(raw).trim();
+        const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*[+:/]\s*(\d+(?:\.\d+)?)\s*$/);
+        if (m) {
+            const a = parseFloat(m[1]);
+            const b = parseFloat(m[2]);
+            return (Number.isFinite(a) ? a : 0) + (Number.isFinite(b) ? b : 0);
+        }
+        const n = parseFloat(s);
+        if (Number.isFinite(n) && n > 0) return 1 + n; // 1 : n
+        return 0;
+    };
+
+    // Display a dilution ratio as a parts form, e.g. 1:5 -> "1+5".
+    const formatDilutionDisplay = (raw) => {
+        if (raw == null || raw === '') return '';
+        const s = String(raw).trim();
+        const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*[+:/]\s*(\d+(?:\.\d+)?)\s*$/);
+        if (m) return `${m[1]}+${m[2]}`;
+        const n = parseFloat(s);
+        if (Number.isFinite(n) && n > 0) return `1+${n}`; // 1 : n
+        return s;
+    };
+
     const storedFilters = getStoredFilters();
     const [selectedPet, setSelectedPet] = useState(storedFilters?.selectedPet || '');
     const [selectedShift, setSelectedShift] = useState(storedFilters?.selectedShift || '');
@@ -433,20 +451,21 @@ const ProductionReportForm = () => {
             const e = Number(syrupMeters.end_reading) || 0;
             return (s > 0 && e > 0 && e > s) ? (e - s) : 0;
         })();
-        if (actualSyrup <= 0) return getApprovedValue('syrup_yield', '');
+        if (actualSyrup <= 0) return '';
 
-        const dilutionRatio = Number(syrupMeters.syrup_dilution_ratio) || 0;
+        const dilutionParts = getDilutionTotalParts(syrupMeters.syrup_dilution_ratio);
         const bottleSizeStr = allPets[0]?.bottle_size || allPetsUnfiltered[0]?.bottle_size || summary.bottle_size || '0.35L';
         const bottleSizeL = parseFloat(String(bottleSizeStr).replace(/[^0-9.]/g, '')) / (String(bottleSizeStr).toLowerCase().includes('l') && !String(bottleSizeStr).toLowerCase().includes('ml') ? 1 : 1000) || 0.35;
-        const totalBottles = Number(displayTotalPacks) > 0
-            ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12)
-            : (Number(productionMeters.filler_reading) || 0);
+        // Use filler reading (actual filled bottles) as the bottle base, matching Std Syrup Consumption.
+        const bottles = Number(productionMeters.filler_reading) > 0
+            ? Number(productionMeters.filler_reading)
+            : (Number(displayTotalPacks) > 0 ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12) : 0);
 
-        const stdSyrup = totalBottles > 0 && dilutionRatio > 0 && bottleSizeL > 0 ? (totalBottles * bottleSizeL) / dilutionRatio : 0;
+        const stdSyrup = bottles > 0 && dilutionParts > 0 && bottleSizeL > 0 ? (bottles * bottleSizeL) / dilutionParts : 0;
         if (stdSyrup > 0) {
-            return getApprovedValue('syrup_yield', (stdSyrup / actualSyrup * 100));
+            return (stdSyrup / actualSyrup * 100);
         }
-        return getApprovedValue('syrup_yield', '');
+        return '';
     })();
 
     const { displayTotalPallets, displaySinglePacks } = (() => {
@@ -813,7 +832,8 @@ const ProductionReportForm = () => {
                                         <td className="input-cell numeric"></td>
                                         <td className="label-cell">Total Bottles (R.W)</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={(() => {
-                                            // Total Bottles (R.W) = Total Packs × Bottles per Pack
+                                            // Total Bottles (R.W) = Total Packs × Bottles per Pack (authoritative).
+                                            // Fall back to filler reading / produced only when packs×bpp is unavailable.
                                             const packs = Number(displayTotalPacks) || 0;
                                             const bpp = Number(summary.bottles_per_pack) || (() => {
                                                 const petEntry = allPets[0] || allPetsUnfiltered[0] || {};
@@ -825,8 +845,9 @@ const ProductionReportForm = () => {
                                             const totalBottlesProduced = selectedProduct
                                                 ? allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0)
                                                 : (summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0));
-                                            
-                                            return getApprovedValue('total_bottles_rw', calculatedBottles || fillerReading || totalBottlesProduced || '');
+
+                                            // Prefer the computed packs×bpp; only fall back when it is 0.
+                                            return calculatedBottles || fillerReading || totalBottlesProduced || '';
                                         })()} /></td>
                                     </tr>
                                     <tr>
@@ -1298,7 +1319,7 @@ const ProductionReportForm = () => {
                                             {syrupHasData && (
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Dilution Ratio:</span>
-                                                <EditableField value={getApprovedValue('syrup_dilution_ratio', syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : '')} />
+                                                <EditableField value={syrupMeters.syrup_dilution_ratio != null && syrupMeters.syrup_dilution_ratio !== '' ? formatDilutionDisplay(syrupMeters.syrup_dilution_ratio) : ''} />
                                             </div>
                                             )}
                                         </td>
@@ -1314,17 +1335,20 @@ const ProductionReportForm = () => {
                                                     if (syrupMeters.std_syrup_consumption_l != null && syrupMeters.std_syrup_consumption_l > 0) {
                                                         return syrupMeters.std_syrup_consumption_l;
                                                     }
-                                                    // Std = Total Bottles (R.W) × Bottle Size(L) / Dilution Ratio
-                                                    const totalBottlesRW = Number(displayTotalPacks) > 0
-                                                        ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12)
-                                                        : (Number(productionMeters.filler_reading) || 0);
-                                                    const dilutionRatio = Number(syrupMeters.syrup_dilution_ratio) || 0;
+                                                    // Std Syrup Consumption (L) = Bottles × Bottle Size(L) / Total Dilution Parts.
+                                                    // Bottles = filler reading (actual filled bottles); dilution "1+5" => 6 parts.
+                                                    const bottles = Number(productionMeters.filler_reading) > 0
+                                                        ? Number(productionMeters.filler_reading)
+                                                        : (Number(displayTotalPacks) > 0
+                                                            ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12)
+                                                            : 0);
+                                                    const dilutionParts = getDilutionTotalParts(syrupMeters.syrup_dilution_ratio);
                                                     const petEntry = allPets[0] || allPetsUnfiltered[0] || {};
                                                     const productCatalog = products.find(pr => pr.name === (selectedProduct || petEntry.product_name)) || {};
                                                     const bottleSizeStr = petEntry.bottle_size || productCatalog.bottle_size || productCatalog.size || '';
                                                     const bottleSizeL = parseFloat(String(bottleSizeStr).replace(/[^0-9.]/g, '')) / (String(bottleSizeStr).toLowerCase().includes('l') && !String(bottleSizeStr).toLowerCase().includes('ml') ? 1 : 1000) || 0;
-                                                    if (totalBottlesRW > 0 && dilutionRatio > 0 && bottleSizeL > 0) {
-                                                        return ((totalBottlesRW * bottleSizeL) / dilutionRatio).toFixed(2);
+                                                    if (bottles > 0 && dilutionParts > 0 && bottleSizeL > 0) {
+                                                        return ((bottles * bottleSizeL) / dilutionParts).toFixed(2);
                                                     }
                                                     return syrupMeters.std_syrup_consumption_l || '';
                                                 })())} />
