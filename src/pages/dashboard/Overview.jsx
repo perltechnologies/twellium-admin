@@ -1386,6 +1386,8 @@ const Overview = () => {
                             dateFilter={filters}
                             subCategoryFilter={filters.sub_category || ''}
                             onSubCategoryChange={(subCategory) => updateFilters({ sub_category: subCategory || null })}
+                            petFilter={rawPets.find(p => String(p.id) === String(filters.pet))?.pet_name || ''}
+                            onPetChange={(petName) => updateFilters({ pet: petName ? rawPets.find(p => p.pet_name === petName)?.id ?? petName : null })}
                         />
                     </ChartErrorBoundary>
                 </div>

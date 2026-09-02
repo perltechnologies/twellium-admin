@@ -83,13 +83,14 @@ const SIMILARITY_THRESHOLD = 0.72;
  * current page are aggregated into one bar per description (kept distinct per
  * sub-category); bar length is total duration, sorted longest first.
  */
-const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }) => {
+const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange, petFilter, onPetChange }) => {
     const navigate = useNavigate();
     const [useRange, setUseRange] = useState(false);
     const [singleDate, setSingleDate] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedSubCategory, setSelectedSubCategory] = useState('');
+    const [selectedPet, setSelectedPet] = useState('');
     const [stoppages, setStoppages] = useState([]);
     const [loading, setLoading] = useState(false);
     const [fetchKey, setFetchKey] = useState(0);
@@ -113,6 +114,14 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
             setSelectedSubCategory('');
         }
     }, [subCategoryFilter, selectedSubCategory]);
+
+    useEffect(() => {
+        if (petFilter) {
+            setSelectedPet(petFilter);
+        } else if (!selectedPet && !petFilter) {
+            setSelectedPet('');
+        }
+    }, [petFilter, selectedPet]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -156,6 +165,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
     }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date, useRange, singleDate, startDate, endDate, fetchKey]);
 
     const effectiveSelectedSubCategory = subCategoryFilter || selectedSubCategory;
+    const effectiveSelectedPet = petFilter || selectedPet;
 
     // Flatten every incident into a timeline entry with its trail + duration.
     const incidents = useMemo(() => {
@@ -190,15 +200,28 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
         return [...set].sort();
     }, [incidents]);
 
-    // Apply subcategory filter, then aggregate incidents into bars using a
-    // heuristic similarity strategy: within a sub-category, descriptions that
+    // PETs available for the filter dropdown (numeric-aware sort).
+    const availablePets = useMemo(() => {
+        const set = new Set();
+        incidents.forEach((i) => { if (i.pet) set.add(i.pet); });
+        return [...set].sort((a, b) => {
+            const aNum = parseInt(a.match(/(\d+)/)?.[0] || '999', 10);
+            const bNum = parseInt(b.match(/(\d+)/)?.[0] || '999', 10);
+            return aNum - bNum;
+        });
+    }, [incidents]);
+
+    // Apply subcategory + PET filters, then aggregate incidents into bars using
+    // a heuristic similarity strategy: within a sub-category, descriptions that
     // are *similar* (typos, word-order, extra words) are merged into one bar
     // and their durations summed. The highest-duration wording becomes the
     // cluster's display label. Sorted by total duration, longest first.
     const allBars = useMemo(() => {
-        const filtered = effectiveSelectedSubCategory
-            ? incidents.filter((i) => i.subCategory === effectiveSelectedSubCategory)
-            : incidents;
+        const filtered = incidents.filter((i) => {
+            if (effectiveSelectedSubCategory && i.subCategory !== effectiveSelectedSubCategory) return false;
+            if (effectiveSelectedPet && i.pet !== effectiveSelectedPet) return false;
+            return true;
+        });
 
         // Step 1: collapse exact (normalized) duplicates first, grouped by
         // sub-category, to reduce the number of pairwise comparisons.
@@ -260,7 +283,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
         });
 
         return clusters.sort((a, b) => b.duration - a.duration);
-    }, [incidents, effectiveSelectedSubCategory]);
+    }, [incidents, effectiveSelectedSubCategory, effectiveSelectedPet]);
 
     const totalCount = allBars.length;              // number of merged descriptions
     const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -273,7 +296,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
     // Reset to page 1 whenever the underlying data or filters change.
     useEffect(() => {
         setPage(1);
-    }, [effectiveSelectedSubCategory, stoppages]);
+    }, [effectiveSelectedSubCategory, effectiveSelectedPet, stoppages]);
 
     // The description bars visible on the current page.
     const barData = useMemo(() => {
@@ -340,7 +363,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
         [allBars]
     );
 
-    const hasActiveFilters = singleDate || startDate || endDate || effectiveSelectedSubCategory;
+    const hasActiveFilters = singleDate || startDate || endDate || effectiveSelectedSubCategory || effectiveSelectedPet;
 
     return (
         <div className="card">
@@ -388,7 +411,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                 </div>
 
                 <div className="row mt-3 align-items-end">
-                    <div className="col-md-6">
+                    <div className="col-md-4">
                         <div className="d-flex align-items-center gap-2 mb-2">
                             <label className="form-label mb-0 small">Date</label>
                             <div className="form-check form-switch">
@@ -429,7 +452,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                             </div>
                         )}
                     </div>
-                    <div className="col-md-6">
+                    <div className="col-md-4">
                         <label className="form-label small">Subcategory</label>
                         <select
                             className="form-select form-select-sm"
@@ -445,6 +468,22 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                             ))}
                         </select>
                     </div>
+                    <div className="col-md-4">
+                        <label className="form-label small">PET</label>
+                        <select
+                            className="form-select form-select-sm"
+                            value={effectiveSelectedPet}
+                            onChange={(e) => {
+                                setSelectedPet(e.target.value);
+                                if (onPetChange) onPetChange(e.target.value || null);
+                            }}
+                        >
+                            <option value="">All PETs</option>
+                            {availablePets.map((pet) => (
+                                <option key={pet} value={pet}>{pet}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
 
                 {hasActiveFilters && (
@@ -456,6 +495,7 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                             {startDate && <span className="ms-2">From: {startDate}</span>}
                             {endDate && <span className="ms-2">To: {endDate}</span>}
                             {effectiveSelectedSubCategory && <span className="ms-2">• Subcategory: {effectiveSelectedSubCategory}</span>}
+                            {effectiveSelectedPet && <span className="ms-2">• PET: {effectiveSelectedPet}</span>}
                         </div>
                         <button
                             className="btn btn-sm btn-outline-info"
@@ -464,8 +504,10 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange }
                                 setStartDate('');
                                 setEndDate('');
                                 setSelectedSubCategory('');
+                                setSelectedPet('');
                                 setUseRange(false);
                                 if (onSubCategoryChange) onSubCategoryChange(null);
+                                if (onPetChange) onPetChange(null);
                                 setFetchKey((k) => k + 1);
                             }}
                         >
