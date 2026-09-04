@@ -143,51 +143,47 @@ const SyrupReport = () => {
     };
 
     // Build per-pet syrup yield data (aggregated across all dates/shifts)
-    const syrupByPet = useMemo(() => {
-        const petMap = {};
-        defaultPets.forEach(p => { petMap[p] = { pet: p, totalActual: 0, totalStd: 0, count: 0, values: [] }; });
-
+    // Build detailed table — the single source of truth for "Syrup Yield Details".
+    // Each row is a per-report syrup_yield exactly as returned by the API.
+    const tableData = useMemo(() => {
+        const rows = [];
         (rawData?.daily_breakdown || []).forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                const name = normalizePet(p.pet_name);
-                if (!petMap[name]) petMap[name] = { pet: name, totalActual: 0, totalStd: 0, count: 0, values: [] };
-                const sy = p.syrup_yield;
-                if (sy !== null && sy !== undefined && sy > 0) {
-                    petMap[name].count += 1;
-                    petMap[name].values.push({ date: day.date, shift: p.shift, yield: sy, product: p.product_name });
-
-                    // Cumulative weighting: use actual syrup volume or bottles as weight
-                    const actualSyrup = p.meters_reading?.syrup?.total_syrup_used_l
-                        || p.total_syrup_used_l || p.syrup_used_liters || 0;
-                    const stdSyrup = p.meters_reading?.syrup?.std_syrup_consumption_l
-                        || p.std_syrup_consumption_l || 0;
-
-                    if (actualSyrup > 0 && stdSyrup > 0) {
-                        petMap[name].totalActual += actualSyrup;
-                        petMap[name].totalStd += stdSyrup;
-                    } else if (actualSyrup > 0) {
-                        petMap[name].totalActual += actualSyrup;
-                        petMap[name].totalStd += actualSyrup * (sy / 100);
-                    } else {
-                        // Weight by bottles produced as proxy
-                        const bottles = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
-                        if (bottles > 0) {
-                            petMap[name].totalActual += bottles;
-                            petMap[name].totalStd += bottles * (sy / 100);
-                        } else {
-                            // No volume data — use equal weight (1 unit per entry)
-                            petMap[name].totalActual += 1;
-                            petMap[name].totalStd += sy / 100;
-                        }
-                    }
+                if (p.syrup_yield !== null && p.syrup_yield !== undefined && p.syrup_yield > 0) {
+                    rows.push({
+                        date: day.date,
+                        pet: normalizePet(p.pet_name),
+                        product: p.product_name || '-',
+                        shift: p.shift || '-',
+                        syrup_yield: p.syrup_yield,
+                        total_bottles_produced: p.total_bottles_produced || 0,
+                    });
                 }
             });
+        });
+        return rows.sort((a, b) => a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet));
+    }, [rawData]);
+
+    // Build per-pet syrup yield for the "Syrup Yield by PET Line" chart.
+    // Derived from the SAME rows that populate "Syrup Yield Details" (tableData),
+    // so each bar equals the average of the syrup_yield values shown in the table
+    // for that PET line.
+    const syrupByPet = useMemo(() => {
+        const petMap = {};
+        defaultPets.forEach(p => { petMap[p] = { pet: p, sum: 0, count: 0, values: [] }; });
+
+        tableData.forEach(row => {
+            const name = row.pet;
+            if (!petMap[name]) petMap[name] = { pet: name, sum: 0, count: 0, values: [] };
+            petMap[name].sum += row.syrup_yield;
+            petMap[name].count += 1;
+            petMap[name].values.push({ date: row.date, shift: row.shift, yield: row.syrup_yield, product: row.product });
         });
 
         return Object.values(petMap)
             .map(p => ({
                 pet: p.pet,
-                avg_yield: p.totalActual > 0 ? (p.totalStd / p.totalActual) * 100 : 0,
+                avg_yield: p.count > 0 ? p.sum / p.count : 0,
                 count: p.count,
                 values: p.values,
             }))
@@ -196,7 +192,7 @@ const SyrupReport = () => {
                 const bNum = parseInt(b.pet.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
             });
-    }, [rawData]);
+    }, [tableData]);
 
     // Build daily trend data for line chart
     const dailyTrendData = useMemo(() => {
@@ -217,26 +213,6 @@ const SyrupReport = () => {
             });
             return row;
         });
-    }, [rawData]);
-
-    // Build detailed table
-    const tableData = useMemo(() => {
-        const rows = [];
-        (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                if (p.syrup_yield !== null && p.syrup_yield !== undefined && p.syrup_yield > 0) {
-                    rows.push({
-                        date: day.date,
-                        pet: normalizePet(p.pet_name),
-                        product: p.product_name || '-',
-                        shift: p.shift || '-',
-                        syrup_yield: p.syrup_yield,
-                        total_bottles_produced: p.total_bottles_produced || 0,
-                    });
-                }
-            });
-        });
-        return rows.sort((a, b) => a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet));
     }, [rawData]);
 
     const handleExport = () => {
@@ -372,7 +348,7 @@ const SyrupReport = () => {
                                                     <ReferenceLine y={TARGET_YIELD} stroke="#16a34a" strokeDasharray="5 5" label={{ value: `Target ${TARGET_YIELD}%`, position: 'right', fill: '#16a34a', fontSize: 11 }} />
                                                     <Bar dataKey="avg_yield" name="Syrup Yield %" radius={[4, 4, 0, 0]}>
                                                         {syrupByPet.map((entry, idx) => (
-                                                            <Cell key={idx} fill={yieldColor(entry.avg_yield)} />
+                                                            <Cell key={idx} fill={PET_COLORS[idx % PET_COLORS.length]} />
                                                         ))}
                                                     </Bar>
                                                 </BarChart>
