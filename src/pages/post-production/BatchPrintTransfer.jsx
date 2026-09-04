@@ -102,7 +102,7 @@ const BatchPrintTransfer = () => {
 
     // Computed values
     const totalPallets = barcodes.length;
-    const totalPacks = barcodes.reduce((sum, b) => sum + (parseInt(b.packs_per_pallet) || parseInt(b.total_packs) || 0), 0);
+    const totalPacks = barcodes.reduce((sum, b) => sum + (parseInt(b.quantity) || parseInt(b.packs_per_pallet) || parseInt(b.total_packs) || 0), 0);
     const productName = filters.productType || barcodes[0]?.product_name || barcodes[0]?.product_type || '';
     const displayDate = filters.startDate === filters.endDate
         ? new Date(filters.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -281,13 +281,14 @@ const BatchPrintTransfer = () => {
                         <table className="form-table section-table">
                             <thead>
                                 <tr className="section-header-row">
-                                    <th colSpan={4}>Pallet Details</th>
+                                    <th colSpan={5}>Pallet Details</th>
                                 </tr>
                                 <tr className="sub-header-row">
-                                    <th style={{ width: '35%' }}>Barcode</th>
-                                    <th style={{ width: '15%' }}>Sequence Number</th>
-                                    <th style={{ width: '20%' }}>Packs per Pallet</th>
-                                    <th style={{ width: '30%' }}>Trnce</th>
+                                    <th style={{ width: '28%' }}>Barcode</th>
+                                    <th style={{ width: '20%' }}>Batch number</th>
+                                    <th style={{ width: '12%' }}>Sequence Number</th>
+                                    <th style={{ width: '15%' }}>Packs per Pallet</th>
+                                    <th style={{ width: '25%' }}>Date time</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -296,18 +297,22 @@ const BatchPrintTransfer = () => {
                                         <td className="label-cell" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                                             {barcode.current_barcode || barcode.barcode || ''}
                                         </td>
-                                        <td className="input-cell numeric">{idx + 1}</td>
-                                        <td className="input-cell numeric">
-                                            {barcode.packs_per_pallet || barcode.total_packs || barcode.packs || ''}
-                                        </td>
                                         <td className="input-cell" style={{ fontSize: '0.8rem' }}>
                                             {barcode.batch_number || barcode.batch || barcode.traceability || ''}
+                                        </td>
+                                        <td className="input-cell numeric">{idx + 1}</td>
+                                        <td className="input-cell numeric">
+                                            {barcode.quantity ?? barcode.packs_per_pallet ?? barcode.total_packs ?? barcode.packs ?? ''}
+                                        </td>
+                                        <td className="input-cell" style={{ fontSize: '0.8rem' }}>
+                                            {barcode.created_at ? new Date(barcode.created_at).toLocaleString() : ''}
                                         </td>
                                     </tr>
                                 ))}
                                 {/* Totals row */}
                                 <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
                                     <td className="label-cell">TOTAL</td>
+                                    <td className="input-cell"></td>
                                     <td className="input-cell numeric">{barcodes.length}</td>
                                     <td className="input-cell numeric">{totalPacks.toLocaleString()}</td>
                                     <td className="input-cell"></td>
