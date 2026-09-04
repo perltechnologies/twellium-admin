@@ -6,14 +6,27 @@ import './css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'productionReportForm_filters';
 
+// Format a value for display: if it is a pure number that has a fractional
+// part, render it with exactly 2 decimal places. Integers, non-numeric strings
+// (dates, times, units, ratios like "1+5"), and empty values are left as-is.
+const formatDisplayValue = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const s = String(value).trim();
+    // Must be a plain number, optionally signed, with a decimal point.
+    // Excludes dates ("2026-08-25"), times ("06:00"), ratios ("1+5"), etc.
+    if (/^-?\d+\.\d+$/.test(s)) {
+        const n = Number(s);
+        if (Number.isFinite(n)) return n.toFixed(2);
+    }
+    return s;
+};
+
 // Generic editable input that preserves its own state while syncing with initial value changes
 const EditableField = ({ value, type = 'text', className = '', onChange, step, min, max, readOnly }) => {
-    const [val, setVal] = useState(() =>
-        value === null || value === undefined || value === '' ? '' : String(value)
-    );
+    const [val, setVal] = useState(() => formatDisplayValue(value));
 
     useEffect(() => {
-        setVal(value === null || value === undefined || value === '' ? '' : String(value));
+        setVal(formatDisplayValue(value));
     }, [value]);
     const alignment = type === 'number' ? 'right' : 'left';
     return (
