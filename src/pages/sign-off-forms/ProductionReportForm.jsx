@@ -76,7 +76,13 @@ const ProductionReportForm = () => {
     //
     // Accepts: "1+5", "1:5", "1/5" (parts a & b -> a+b), or a bare number n
     // (interpreted as syrup:water = 1:n -> 1+n total parts).
-    const getDilutionTotalParts = (raw) => {
+    //
+    // The backend now returns an authoritative `dr_sum` (total parts sum, e.g.
+    // 6.0 for "1:5"). When present and valid it is preferred over parsing the
+    // ratio string, removing the ambiguity of bare-decimal values.
+    const getDilutionTotalParts = (raw, drSum) => {
+        const sum = Number(drSum);
+        if (Number.isFinite(sum) && sum > 0) return sum;
         if (raw == null || raw === '') return 0;
         const s = String(raw).trim();
         const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*[+:/]\s*(\d+(?:\.\d+)?)\s*$/);
@@ -353,6 +359,7 @@ const ProductionReportForm = () => {
                 syrup_density_kg_per_l: syrupEntries[0]?.syrup_density_kg_per_l,
                 total_syrup_used_l: syrupEntries.reduce((s, sy) => s + (sy.total_syrup_used_l || 0), 0),
                 syrup_dilution_ratio: syrupEntries[0]?.syrup_dilution_ratio,
+                dr_sum: syrupEntries[0]?.dr_sum,
                 std_syrup_consumption_l: syrupEntries.reduce((s, sy) => s + (sy.std_syrup_consumption_l || 0), 0),
                 syrup_yield_percent: syrupEntries.reduce((s, sy) => s + (sy.syrup_yield_percent || 0), 0) / syrupEntries.length,
             } : {},
@@ -453,7 +460,7 @@ const ProductionReportForm = () => {
         })();
         if (actualSyrup <= 0) return '';
 
-        const dilutionParts = getDilutionTotalParts(syrupMeters.syrup_dilution_ratio);
+        const dilutionParts = getDilutionTotalParts(syrupMeters.syrup_dilution_ratio, syrupMeters.dr_sum);
         const bottleSizeStr = allPets[0]?.bottle_size || allPetsUnfiltered[0]?.bottle_size || summary.bottle_size || '0.35L';
         const bottleSizeL = parseFloat(String(bottleSizeStr).replace(/[^0-9.]/g, '')) / (String(bottleSizeStr).toLowerCase().includes('l') && !String(bottleSizeStr).toLowerCase().includes('ml') ? 1 : 1000) || 0.35;
         // Use filler reading (actual filled bottles) as the bottle base, matching Std Syrup Consumption.
@@ -1342,7 +1349,7 @@ const ProductionReportForm = () => {
                                                         : (Number(displayTotalPacks) > 0
                                                             ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12)
                                                             : 0);
-                                                    const dilutionParts = getDilutionTotalParts(syrupMeters.syrup_dilution_ratio);
+                                                    const dilutionParts = getDilutionTotalParts(syrupMeters.syrup_dilution_ratio, syrupMeters.dr_sum);
                                                     const petEntry = allPets[0] || allPetsUnfiltered[0] || {};
                                                     const productCatalog = products.find(pr => pr.name === (selectedProduct || petEntry.product_name)) || {};
                                                     const bottleSizeStr = petEntry.bottle_size || productCatalog.bottle_size || productCatalog.size || '';
