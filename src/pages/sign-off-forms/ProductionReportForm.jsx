@@ -249,6 +249,10 @@ const ProductionReportForm = () => {
         // Priority: shift master times first, then API data
         let start = '';
         let end = '';
+        // When "All Shifts" is selected, the production window must span a full
+        // 24-hour day (e.g. DAY + NIGHT combined), anchored at the earliest
+        // shift start time.
+        const isAllShifts = !selectedShift;
 
         // First try shift master times
         if (selectedShift) {
@@ -256,6 +260,16 @@ const ProductionReportForm = () => {
             if (shift) {
                 start = shift.start_time?.slice(0, 5) || '';
                 end = shift.end_time?.slice(0, 5) || '';
+            }
+        } else if (isAllShifts && shifts.length > 0) {
+            // Earliest shift start time across all shifts is the window anchor.
+            const earliestStart = shifts
+                .map(s => s.start_time?.slice(0, 5))
+                .filter(Boolean)
+                .sort()[0];
+            if (earliestStart) {
+                start = earliestStart;
+                end = earliestStart; // same clock time next day => 24h window
             }
         }
 
@@ -296,7 +310,10 @@ const ProductionReportForm = () => {
         setProductionEndTime(getApprovedValue('production_end_time', end || ''));
 
         // Total production hours: calculate from start and end times (not from API sum)
-        if (start && end) {
+        if (isAllShifts && start) {
+            // All Shifts => full 24-hour production window.
+            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
+        } else if (start && end) {
             const startDate = new Date(`${selectedDate}T${start}`);
             let endDate = new Date(`${selectedDate}T${end}`);
             if (endDate <= startDate) {
@@ -850,24 +867,30 @@ const ProductionReportForm = () => {
                                         })()} /></td>
                                         <td className="label-cell"></td>
                                         <td className="input-cell numeric"></td>
-                                        <td className="label-cell">Total Bottles (R.W)</td>
+                                        <td className="label-cell">Total Output (R.W)</td>
                                         <td className="input-cell numeric"><EditableField type="number" value={(() => {
-                                            // Total Bottles (R.W) = Total Packs × Bottles per Pack (authoritative).
-                                            // Fall back to filler reading / produced only when packs×bpp is unavailable.
+                                            // Total Output (R.W) = total bottles produced (real working output).
+                                            const totalBottlesProduced = selectedProduct
+                                                ? allPets.reduce((sum, p) => sum + (Number(p.total_bottles_produced) || 0), 0)
+                                                : (Number(summary.total_bottles_produced) || allPets.reduce((sum, p) => sum + (Number(p.total_bottles_produced) || 0), 0));
+                                            if (totalBottlesProduced > 0) return totalBottlesProduced;
+
+                                            // Fallbacks when total_bottles_produced is unavailable.
+                                            const totalBottles = selectedProduct
+                                                ? allPets.reduce((sum, p) => sum + (Number(p.total_bottles) || 0), 0)
+                                                : (Number(summary.total_bottles) || allPets.reduce((sum, p) => sum + (Number(p.total_bottles) || 0), 0));
+                                            if (totalBottles > 0) return totalBottles;
+
+                                            const fillerReading = Number(productionMeters.filler_reading || productionMeters.combi_reading) || 0;
+                                            if (fillerReading > 0) return fillerReading;
+
                                             const packs = Number(displayTotalPacks) || 0;
                                             const bpp = Number(summary.bottles_per_pack) || (() => {
                                                 const petEntry = allPets[0] || allPetsUnfiltered[0] || {};
                                                 const pCatalog = products.find(pr => pr.name === (selectedProduct || petEntry.product_name)) || {};
                                                 return Number(petEntry.bottles_per_pack || pCatalog.bottles_per_pack) || 0;
                                             })();
-                                            const calculatedBottles = packs > 0 && bpp > 0 ? packs * bpp : 0;
-                                            const fillerReading = Number(productionMeters.filler_reading || productionMeters.combi_reading) || 0;
-                                            const totalBottlesProduced = selectedProduct
-                                                ? allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0)
-                                                : (summary.total_bottles_produced || allPets.reduce((sum, p) => sum + (p.total_bottles_produced || p.total_bottles || 0), 0));
-
-                                            // Prefer the computed packs×bpp; only fall back when it is 0.
-                                            return calculatedBottles || fillerReading || totalBottlesProduced || '';
+                                            return (packs > 0 && bpp > 0) ? packs * bpp : '';
                                         })()} /></td>
                                     </tr>
                                     <tr>
@@ -1269,7 +1292,7 @@ const ProductionReportForm = () => {
                                                     })();
                                                     let std = Number(co2Meters.std_co2_consumption_kg) || 0;
                                                     if (std === 0) {
-                                                        // Compute Std. CO2: Total Bottles (R.W) × CO2 grams per bottle / 1000
+                                                        // Compute Std. CO2: Total Output (R.W) × CO2 grams per bottle / 1000
                                                         const totalBottlesCO2 = Number(displayTotalPacks) > 0
                                                             ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12)
                                                             : (Number(productionMeters.filler_reading) || 0);
