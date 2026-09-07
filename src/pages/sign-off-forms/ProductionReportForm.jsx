@@ -249,20 +249,30 @@ const ProductionReportForm = () => {
         // Priority: shift master times first, then API data
         let start = '';
         let end = '';
-        // When "All Shifts" is selected, the production window must span a full
-        // 24-hour day (e.g. DAY + NIGHT combined), anchored at the earliest
-        // shift start time.
+
+        // Priority: ACTUAL production times from reports/pets first, then shift
+        // master times as a fallback. The scheduled shift end (e.g. DAY = 18:00)
+        // is NOT the real production end — reports carry the true end_time
+        // (e.g. 17:26), so actual data must win.
         const isAllShifts = !selectedShift;
 
-        // First try shift master times
-        if (selectedShift) {
-            const shift = shifts.find(s => String(s.id) === String(selectedShift));
-            if (shift) {
-                start = shift.start_time?.slice(0, 5) || '';
-                end = shift.end_time?.slice(0, 5) || '';
+        // Helper: normalize a time value to HH:MM. Accepts "HH:MM[:SS]" or ISO
+        // datetime ("2026-09-05T17:26:00Z"). Returns '' when not parseable.
+        const toHHMM = (val) => {
+            if (!val) return '';
+            const s = String(val);
+            if (s.includes('T')) {
+                const t = s.split('T')[1] || '';
+                return t.slice(0, 5);
             }
-        } else if (isAllShifts && shifts.length > 0) {
-            // Earliest shift start time across all shifts is the window anchor.
+            return s.slice(0, 5);
+        };
+
+        // First, resolve actual production start/end from reports & pet entries.
+        // For end time, prefer the plain `end_time` (actual shut-down) over
+        // `production_end_time` which may be a last-activity timestamp.
+        if (isAllShifts && shifts.length > 0) {
+            // "All Shifts" => full 24-hour window anchored at earliest shift start.
             const earliestStart = shifts
                 .map(s => s.start_time?.slice(0, 5))
                 .filter(Boolean)
@@ -271,28 +281,47 @@ const ProductionReportForm = () => {
                 start = earliestStart;
                 end = earliestStart; // same clock time next day => 24h window
             }
+        } else {
+            // Prefer sources in priority order. The report `end_time` (actual
+            // shut-down, e.g. 17:26) is authoritative; the pet/summary
+            // `production_end_time` (e.g. 20:06) is a last-activity timestamp and
+            // must NOT override it. So we resolve by priority, not by max value.
+            const firstHHMM = (arr) => arr.map(toHHMM).filter(Boolean).sort()[0] || '';
+            const lastHHMM = (arr) => arr.map(toHHMM).filter(Boolean).sort().slice(-1)[0] || '';
+
+            // START: earliest actual start across reports, then pets.
+            start = firstHHMM(reportsList.map(r => r.start_time))
+                || firstHHMM(reportsList.map(r => r.production_start_time || r.actual_start_time || r.user_defined_shift_start_time))
+                || firstHHMM(allPets.map(p => p.start_time || p.production_start_time))
+                || firstHHMM(allPetsUnfiltered.map(p => p.start_time || p.production_start_time))
+                || '';
+
+            // END: latest actual end across reports (`end_time` wins), then fall
+            // back through less-authoritative fields only if `end_time` is absent.
+            end = lastHHMM(reportsList.map(r => r.end_time))
+                || lastHHMM(reportsList.map(r => r.production_end_time || r.actual_end_time || r.user_defined_shift_end_time))
+                || lastHHMM(allPets.map(p => p.end_time))
+                || lastHHMM(allPets.map(p => p.production_end_time))
+                || lastHHMM(allPetsUnfiltered.map(p => p.end_time))
+                || lastHHMM(allPetsUnfiltered.map(p => p.production_end_time))
+                || '';
+
+            // Fallback to shift master times only when actual data is missing.
+            if (!start || !end) {
+                const shift = shifts.find(s => String(s.id) === String(selectedShift));
+                if (shift) {
+                    if (!start) start = shift.start_time?.slice(0, 5) || '';
+                    if (!end) end = shift.end_time?.slice(0, 5) || '';
+                }
+            }
         }
 
-        // Fall back to API data if shift times not available
+        // Final fallback to day/summary level times.
         if (!start) {
-            const startTimes = [
-                ...allPets.map(p => p.production_start_time || p.start_time),
-                ...allPetsUnfiltered.map(p => p.production_start_time || p.start_time),
-                ...reportsList.map(r => r.start_time || r.production_start_time || r.user_defined_shift_start_time || r.actual_start_time || r.shift_start_time),
-                dayData.production_start_time,
-                summary.production_start_time,
-            ].filter(Boolean).sort();
-            start = startTimes[0] || '';
+            start = toHHMM(dayData.production_start_time || summary.production_start_time) || '';
         }
         if (!end) {
-            const endTimes = [
-                ...allPets.map(p => p.production_end_time || p.end_time),
-                ...allPetsUnfiltered.map(p => p.production_end_time || p.end_time),
-                ...reportsList.map(r => r.end_time || r.production_end_time || r.user_defined_shift_end_time || r.actual_end_time || r.shift_end_time),
-                dayData.production_end_time,
-                summary.production_end_time,
-            ].filter(Boolean).sort();
-            end = endTimes[endTimes.length - 1] || '';
+            end = toHHMM(dayData.production_end_time || summary.production_end_time) || '';
         }
 
         // Additional fallback — compute end from start + total hours if available
@@ -309,10 +338,19 @@ const ProductionReportForm = () => {
         setProductionStartTime(start || '');
         setProductionEndTime(getApprovedValue('production_end_time', end || ''));
 
-        // Total production hours: calculate from start and end times (not from API sum)
+        // Total production time (Hrs). Prefer the authoritative per-report value
+        // (`total_production_time_hours`) when a specific shift/line is selected —
+        // it already reflects the real start/end. Otherwise derive from start/end.
+        const reportHrs = reportsList
+            .map(r => parseFloat(r.total_production_time_hours ?? r.total_production_time_hrs))
+            .filter(v => !isNaN(v) && v > 0);
         if (isAllShifts && start) {
             // All Shifts => full 24-hour production window.
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
+        } else if (!isAllShifts && reportHrs.length > 0) {
+            // Sum authoritative per-report hours for the selected shift/line.
+            const total = reportHrs.reduce((s, v) => s + v, 0);
+            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', total.toFixed(2)));
         } else if (start && end) {
             const startDate = new Date(`${selectedDate}T${start}`);
             let endDate = new Date(`${selectedDate}T${end}`);

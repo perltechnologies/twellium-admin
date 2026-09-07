@@ -629,59 +629,65 @@ const ProductionRunByPet = () => {
                             {/* Row 28-34: Paid Hours / Time / Workers */}
                             {/* Batch Details Table */}
                             {(() => {
-                                // Default batch numbers to always show
-                                const defaultBatchNumbers = ['323', '320', '108', '477', '105', '476', '106', '107', '256', '321', '162', '322'];
-
                                 // Dilution ratio for computing beverage liters from syrup
                                 const dilutionRatio = parseFloat(syrupMeters.syrup_dilution_ratio) || 0;
 
-                                // Collect batch data from reports list (individual reports have detailed batch info)
+                                // Build batch details purely from actual fetched data (no hardcoded defaults).
+                                // `order` preserves first-seen ordering across sources.
                                 const batchMap = {};
-                                defaultBatchNumbers.forEach(bNum => {
-                                    batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
-                                });
+                                const order = [];
+                                const ensureBatch = (bNum) => {
+                                    if (!batchMap[bNum]) {
+                                        batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
+                                        order.push(bNum);
+                                    }
+                                    return batchMap[bNum];
+                                };
 
-                                // From individual reports (most detailed source)
+                                // Primary source: individual reports (contain per-batch syrup quantities)
+                                // production/reports[].batches[] => { batch_number, syrup_liters, ... }
                                 reportsList.forEach(report => {
                                     (report.batches || []).forEach(batch => {
-                                        const bNum = String(batch.batch_number || '');
+                                        const bNum = String(batch.batch_number || '').trim();
                                         if (!bNum) return;
-                                        if (!batchMap[bNum]) {
-                                            batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
-                                        }
+                                        const entry = ensureBatch(bNum);
                                         const syrup = parseFloat(batch.syrup_liters || batch.syrup_used_l || batch.total_syrup_used_l || 0);
                                         const bev = parseFloat(batch.beverage_liters || batch.bev_liters || batch.total_beverage_liters || 0);
-                                        batchMap[bNum].syrup_liters += syrup;
-                                        // Use beverage_liters if available, otherwise compute from syrup × dilution ratio
-                                        batchMap[bNum].beverage_liters += bev > 0 ? bev : (dilutionRatio > 0 && syrup > 0 ? syrup * dilutionRatio : 0);
+                                        entry.syrup_liters += syrup;
+                                        // Use beverage_liters if provided, otherwise compute from syrup × dilution ratio
+                                        entry.beverage_liters += bev > 0 ? bev : (dilutionRatio > 0 && syrup > 0 ? syrup * dilutionRatio : 0);
                                     });
                                 });
 
-                                // Also check pet entries from production summary as fallback
+                                // Fallback source: production_summary pet entries may carry batches[] objects
                                 allPetEntries.forEach(pet => {
                                     (pet.batches || []).forEach(batch => {
-                                        const bNum = String(batch.batch_number || '');
+                                        const bNum = String(batch.batch_number || '').trim();
                                         if (!bNum) return;
-                                        if (!batchMap[bNum]) {
-                                            batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
-                                        }
-                                        // Only add if not already populated from reports
-                                        if (batchMap[bNum].syrup_liters === 0) {
+                                        const entry = ensureBatch(bNum);
+                                        // Only fill quantities if not already populated from reports
+                                        if (entry.syrup_liters === 0) {
                                             const syrup = parseFloat(batch.syrup_liters || batch.syrup_used_l || batch.total_syrup_used_l || 0);
-                                            batchMap[bNum].syrup_liters += syrup;
-                                            if (batchMap[bNum].beverage_liters === 0) {
+                                            entry.syrup_liters += syrup;
+                                            if (entry.beverage_liters === 0) {
                                                 const bev = parseFloat(batch.beverage_liters || batch.bev_liters || batch.total_beverage_liters || 0);
-                                                batchMap[bNum].beverage_liters += bev > 0 ? bev : (dilutionRatio > 0 && syrup > 0 ? syrup * dilutionRatio : 0);
+                                                entry.beverage_liters += bev > 0 ? bev : (dilutionRatio > 0 && syrup > 0 ? syrup * dilutionRatio : 0);
                                             }
                                         }
                                     });
                                 });
 
-                                // Ensure default batches come first in order, then any additional from API
-                                const batchRows = [
-                                    ...defaultBatchNumbers.map(bNum => batchMap[bNum]),
-                                    ...Object.values(batchMap).filter(b => !defaultBatchNumbers.includes(b.batch_number))
-                                ];
+                                // Final fallback: production_summary exposes batch_numbers (string[]) without
+                                // quantities. Register those numbers so at least the Batch No column is filled.
+                                [
+                                    ...(summary.batch_numbers || []),
+                                    ...allPetEntries.flatMap(p => p.batch_numbers || [])
+                                ].forEach(bn => {
+                                    const bNum = String(bn || '').trim();
+                                    if (bNum) ensureBatch(bNum);
+                                });
+
+                                const batchRows = order.map(bNum => batchMap[bNum]);
 
                                 return (
                                     <table className="form-table section-table">
@@ -696,18 +702,24 @@ const ProductionRunByPet = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {batchRows.map((batch, idx) => (
+                                            {batchRows.length > 0 ? batchRows.map((batch, idx) => (
                                                 <tr key={idx}>
                                                     <td className="label-cell">{batch.batch_number}</td>
                                                     <td className="input-cell numeric"><EditableField value={batch.syrup_liters ? fmt(batch.syrup_liters, 1) : ''} /></td>
                                                     <td className="input-cell numeric"><EditableField value={batch.beverage_liters ? fmt(batch.beverage_liters, 1) : ''} /></td>
                                                 </tr>
-                                            ))}
+                                            )) : (
+                                                <tr>
+                                                    <td className="input-cell text-center" colSpan={3}>No batch data available</td>
+                                                </tr>
+                                            )}
+                                            {batchRows.length > 0 && (
                                             <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
                                                 <td className="label-cell">TOTAL</td>
                                                 <td className="input-cell numeric"><EditableField value={fmt(batchRows.reduce((s, b) => s + b.syrup_liters, 0), 1)} /></td>
                                                 <td className="input-cell numeric"><EditableField value={fmt(batchRows.reduce((s, b) => s + b.beverage_liters, 0), 1)} /></td>
                                             </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 );
