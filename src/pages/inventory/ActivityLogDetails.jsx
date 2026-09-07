@@ -148,7 +148,7 @@ const ActivityLogDetails = () => {
                             <MetaField icon={Clock} label="Timestamp" value={log.timestamp ? format(new Date(log.timestamp), 'dd MMM yyyy HH:mm:ss') : ''} />
                             <MetaField icon={FileText} label="Description" value={log.description} />
                             <MetaField icon={Activity} label="Type" value={
-                                <span className={`badge ${config.bg} ${config.text.replace('text-', 'text-')}`}>{config.label}</span>
+                                <span className={`badge ${config.bg} text-${config.color}`}>{config.label}</span>
                             } />
                         </div>
                     </div>
@@ -161,20 +161,54 @@ const ActivityLogDetails = () => {
                             <h6 className="mb-0"><Database size={16} className="me-2" />Metadata</h6>
                         </div>
                         <div className="card-body">
-                            <div className="row g-0">
-                                <div className="col-md-6">
-                                    <MetaField icon={ArrowRightLeft} label="From Stage" value={metadata.from_stage} />
-                                    <MetaField icon={MapPin} label="Location" value={metadata.location} />
-                                    <MetaField icon={QrCode} label="Barcode" value={metadata.barcode} />
-                                    <MetaField icon={Hash} label="Session ID" value={<small className="text-monospace text-muted">{metadata.session_id}</small>} />
-                                </div>
-                                <div className="col-md-6">
-                                    <MetaField icon={ArrowRightLeft} label="To Stage" value={metadata.to_stage} />
-                                    <MetaField icon={Package} label="Quantity" value={metadata.quantity} />
-                                    <MetaField icon={Wifi} label="RFID Number" value={metadata.rfid_number} />
-                                    <MetaField icon={FileText} label="Trigger Method" value={metadata.trigger_method} />
-                                </div>
-                            </div>
+                            {(() => {
+                                const entries = Object.entries(metadata).filter(
+                                    ([, v]) => v !== null && v !== undefined && v !== ''
+                                );
+                                if (entries.length === 0) {
+                                    return <p className="text-muted mb-0">No metadata available.</p>;
+                                }
+                                // Icon per known key; default to FileText.
+                                const iconFor = (key) => {
+                                    const k = key.toLowerCase();
+                                    if (k.includes('barcode')) return QrCode;
+                                    if (k.includes('rfid')) return Wifi;
+                                    if (k.includes('stage')) return ArrowRightLeft;
+                                    if (k.includes('location') || k.includes('warehouse')) return MapPin;
+                                    if (k.includes('quantity') || k.includes('sequence') || k.includes('count')) return Package;
+                                    if (k.includes('id') || k.includes('session')) return Hash;
+                                    return FileText;
+                                };
+                                // "pet_sequence" -> "Pet Sequence"
+                                const humanize = (key) => key
+                                    .replace(/_/g, ' ')
+                                    .replace(/\b\w/g, (c) => c.toUpperCase());
+                                const isMono = (key) => {
+                                    const k = key.toLowerCase();
+                                    return k.includes('id') || k.includes('barcode') || k.includes('rfid') || k.includes('session');
+                                };
+                                // Split entries into two balanced columns.
+                                const mid = Math.ceil(entries.length / 2);
+                                const cols = [entries.slice(0, mid), entries.slice(mid)];
+                                return (
+                                    <div className="row g-0">
+                                        {cols.map((col, ci) => (
+                                            <div className="col-md-6" key={ci}>
+                                                {col.map(([key, value]) => (
+                                                    <MetaField
+                                                        key={key}
+                                                        icon={iconFor(key)}
+                                                        label={humanize(key)}
+                                                        value={isMono(key)
+                                                            ? <small className="text-monospace text-muted">{String(value)}</small>
+                                                            : String(value)}
+                                                    />
+                                                ))}
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 </div>
