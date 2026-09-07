@@ -359,28 +359,36 @@ const ProductionReportForm = () => {
         setProductionStartTime(start || '');
         setProductionEndTime(getApprovedValue('production_end_time', end || ''));
 
-        // Total production time (Hrs). Priority:
-        //  1) All Shifts => full 24-hour window (DAY + NIGHT span).
-        //  2) authoritative per-report `total_production_time_hours` (real value)
-        //  3) real window from actual start/end times
-        //  4) summary value; else blank when nothing happened.
+        // Total production time (Hrs) = the SUM of ACTUAL production hours across
+        // the shifts that ran. It must NOT be hard-coded to 24 for All Shifts —
+        // if only one shift produced (e.g. DAY = 11.43, NIGHT idle), the total is
+        // 11.43, not 24. Priority:
+        //  1) sum of authoritative per-report `total_production_time_hours`
+        //  2) sum of per-pet `total_production_time_hrs`
+        //  3) real window from actual start/end times (single-shift case)
+        //  4) summary value
+        //  5) All Shifts with production but no measurable hours => 24h window
+        //  6) blank when nothing happened.
         const reportHrs = reportsList
             .map(r => parseFloat(r.total_production_time_hours ?? r.total_production_time_hrs))
             .filter(v => !isNaN(v) && v > 0);
-        // Did we have any ACTUAL production times (not the 24h shift fallback)?
+        const petHrs = allPets
+            .map(p => parseFloat(p.total_production_time_hrs ?? p.total_production_time_hours))
+            .filter(v => !isNaN(v) && v > 0);
+        // Did we have any ACTUAL production times (not a shift-master fallback)?
         const hasActualTimes = [
             ...reportsList.map(r => r.start_time || r.end_time),
             ...allPets.map(p => p.start_time || p.end_time || p.production_start_time || p.production_end_time),
         ].some(Boolean);
 
-        if (isAllShifts && hasProductionData && start) {
-            // All Shifts spans the full 24-hour day.
-            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
-        } else if (reportHrs.length > 0) {
-            // Sum authoritative per-report hours for the selected shift/line.
+        if (reportHrs.length > 0) {
+            // Sum authoritative per-report hours (only shifts that actually ran).
             const total = reportHrs.reduce((s, v) => s + v, 0);
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', total.toFixed(2)));
-        } else if (hasActualTimes && start && end) {
+        } else if (petHrs.length > 0) {
+            const total = petHrs.reduce((s, v) => s + v, 0);
+            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', total.toFixed(2)));
+        } else if (!isAllShifts && hasActualTimes && start && end) {
             const startDate = new Date(`${selectedDate}T${start}`);
             let endDate = new Date(`${selectedDate}T${end}`);
             if (endDate <= startDate) {
@@ -389,8 +397,15 @@ const ProductionReportForm = () => {
             const diff = (endDate - startDate) / (1000 * 60 * 60);
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', diff > 0 ? diff.toFixed(2) : ''));
         } else if (hasProductionData) {
-            const hrs = parseFloat(summary.total_production_time_hrs) || parseFloat(summary.total_production_time_hours) || 0;
-            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', hrs > 0 ? hrs.toFixed(2) : ''));
+            const summaryHrs = parseFloat(summary.total_production_time_hrs) || parseFloat(summary.total_production_time_hours) || 0;
+            if (summaryHrs > 0) {
+                setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', summaryHrs.toFixed(2)));
+            } else if (isAllShifts && start) {
+                // Production exists but no measurable hours anywhere => 24h window.
+                setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
+            } else {
+                setTotalProductionTimeHrs('');
+            }
         } else {
             // Nothing happened on this shift — keep it blank.
             setTotalProductionTimeHrs('');
