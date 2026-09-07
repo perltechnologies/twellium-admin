@@ -311,16 +311,20 @@ const ProductionReportForm = () => {
                 || '';
 
             if (isAllShifts) {
-                // For All Shifts, only fall back to a full 24-hour window anchored
-                // at the earliest shift start when there are NO actual times
-                // (i.e. we cannot determine the real production window).
-                if ((!start || !end) && shifts.length > 0) {
-                    const earliestStart = shifts
-                        .map(s => s.start_time?.slice(0, 5))
-                        .filter(Boolean)
-                        .sort()[0];
-                    if (earliestStart && !start) start = earliestStart;
-                    if (earliestStart && !end) end = earliestStart; // same clock next day => 24h
+                // "All Shifts" is the full 24-hour day. Production Start Time =
+                // the time the day's production started (earliest shift start,
+                // e.g. DAY 06:00). Production End Time = the NIGHT shift ending
+                // time, which is usually the following day (e.g. 06:00). Anchor
+                // these on the shift master times so the window is a clean 24h.
+                if (hasProductionData && shifts.length > 0) {
+                    const shiftStarts = shifts.map(s => s.start_time?.slice(0, 5)).filter(Boolean).sort();
+                    // Day production start = earliest actual start if known, else
+                    // the earliest scheduled shift start.
+                    if (!start) start = shiftStarts[0] || '';
+                    // Night shift end = the NIGHT shift's scheduled end time
+                    // (falls on the following day => completes the 24h window).
+                    const nightShift = shifts.find(s => (s.name || s.shift_name || '').toUpperCase().includes('NIGHT'));
+                    end = (nightShift?.end_time || shiftStarts[0])?.slice(0, 5) || start;
                 }
             } else if ((!start || !end) && hasProductionData) {
                 // Specific shift: fall back to shift master times only when actual
@@ -356,9 +360,9 @@ const ProductionReportForm = () => {
         setProductionEndTime(getApprovedValue('production_end_time', end || ''));
 
         // Total production time (Hrs). Priority:
-        //  1) authoritative per-report `total_production_time_hours` (real value)
-        //  2) real window from actual start/end times
-        //  3) All Shifts fallback = 24h (only when we could not determine a window)
+        //  1) All Shifts => full 24-hour window (DAY + NIGHT span).
+        //  2) authoritative per-report `total_production_time_hours` (real value)
+        //  3) real window from actual start/end times
         //  4) summary value; else blank when nothing happened.
         const reportHrs = reportsList
             .map(r => parseFloat(r.total_production_time_hours ?? r.total_production_time_hrs))
@@ -369,9 +373,11 @@ const ProductionReportForm = () => {
             ...allPets.map(p => p.start_time || p.end_time || p.production_start_time || p.production_end_time),
         ].some(Boolean);
 
-        if (reportHrs.length > 0) {
-            // Sum authoritative per-report hours (works for specific shift and
-            // All Shifts — e.g. only DAY ran => 11.43, not 24).
+        if (isAllShifts && hasProductionData && start) {
+            // All Shifts spans the full 24-hour day.
+            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
+        } else if (reportHrs.length > 0) {
+            // Sum authoritative per-report hours for the selected shift/line.
             const total = reportHrs.reduce((s, v) => s + v, 0);
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', total.toFixed(2)));
         } else if (hasActualTimes && start && end) {
@@ -382,10 +388,6 @@ const ProductionReportForm = () => {
             }
             const diff = (endDate - startDate) / (1000 * 60 * 60);
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', diff > 0 ? diff.toFixed(2) : ''));
-        } else if (isAllShifts && start && hasProductionData) {
-            // All Shifts with no per-report/actual times but production exists
-            // => full 24-hour window.
-            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
         } else if (hasProductionData) {
             const hrs = parseFloat(summary.total_production_time_hrs) || parseFloat(summary.total_production_time_hours) || 0;
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', hrs > 0 ? hrs.toFixed(2) : ''));
