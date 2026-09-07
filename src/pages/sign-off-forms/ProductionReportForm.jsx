@@ -519,8 +519,25 @@ const ProductionReportForm = () => {
         ? allPets.reduce((sum, p) => sum + (Number(p.total_packs) || 0), 0)
         : (summary.total_packs != null ? summary.total_packs : allPets.reduce((sum, p) => sum + (Number(p.total_packs) || 0), 0));
 
-    // Centralized Syrup Yield calculation - single source of truth
+    // Centralized Syrup Yield calculation - single source of truth.
+    // Prefer the API's authoritative syrup_yield_percent (it already accounts
+    // for dilution, bottle size and standard consumption). Only recompute when
+    // the API does not provide a usable yield.
     const computedSyrupYield = (() => {
+        // 1) Authoritative API yield values (in priority order).
+        const apiYieldCandidates = [
+            Number(syrupMeters.syrup_yield_percent),
+            ...allPets.filter(p => p.syrup_yield != null).map(p => Number(p.syrup_yield)),
+            ...allPets.map(p => Number(p.meters_reading?.syrup?.syrup_yield_percent)),
+            Number(summary.avg_syrup_yield),
+        ].filter(v => Number.isFinite(v) && v > 0);
+        if (apiYieldCandidates.length > 0) {
+            // Average when multiple lines/reports contribute (e.g. All Lines view).
+            const avg = apiYieldCandidates.reduce((s, v) => s + v, 0) / apiYieldCandidates.length;
+            return avg;
+        }
+
+        // 2) Fallback: recompute from meters. actualSyrup = used, or end - start.
         const actualSyrup = Number(syrupMeters.total_syrup_used_l) || (() => {
             const s = Number(syrupMeters.start_reading) || 0;
             const e = Number(syrupMeters.end_reading) || 0;
@@ -528,15 +545,23 @@ const ProductionReportForm = () => {
         })();
         if (actualSyrup <= 0) return '';
 
+        // Prefer API std consumption; otherwise derive from bottles × size / parts.
         const dilutionParts = getDilutionTotalParts(syrupMeters.syrup_dilution_ratio, syrupMeters.dr_sum);
-        const bottleSizeStr = allPets[0]?.bottle_size || allPetsUnfiltered[0]?.bottle_size || summary.bottle_size || '0.35L';
-        const bottleSizeL = parseFloat(String(bottleSizeStr).replace(/[^0-9.]/g, '')) / (String(bottleSizeStr).toLowerCase().includes('l') && !String(bottleSizeStr).toLowerCase().includes('ml') ? 1 : 1000) || 0.35;
-        // Use filler reading (actual filled bottles) as the bottle base, matching Std Syrup Consumption.
-        const bottles = Number(productionMeters.filler_reading) > 0
-            ? Number(productionMeters.filler_reading)
-            : (Number(displayTotalPacks) > 0 ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12) : 0);
+        const bottleSizeStr = String(allPets[0]?.bottle_size || allPetsUnfiltered[0]?.bottle_size || summary.bottle_size || '0.35L');
+        const sizeNum = parseFloat(bottleSizeStr.replace(/[^0-9.]/g, '')) || 0;
+        // Decide L vs mL: values <= 5 are already litres (e.g. "0.35", "0.35L");
+        // larger values are millilitres (e.g. "350", "350ml").
+        const isMl = bottleSizeStr.toLowerCase().includes('ml') || sizeNum > 5;
+        const bottleSizeL = (isMl ? sizeNum / 1000 : sizeNum) || 0.35;
 
-        const stdSyrup = bottles > 0 && dilutionParts > 0 && bottleSizeL > 0 ? (bottles * bottleSizeL) / dilutionParts : 0;
+        const stdFromApi = Number(syrupMeters.std_syrup_consumption_l) || 0;
+        let stdSyrup = stdFromApi;
+        if (stdSyrup <= 0) {
+            const bottles = Number(productionMeters.filler_reading) > 0
+                ? Number(productionMeters.filler_reading)
+                : (Number(displayTotalPacks) > 0 ? Number(displayTotalPacks) * (Number(summary.bottles_per_pack) || 12) : 0);
+            stdSyrup = bottles > 0 && dilutionParts > 0 && bottleSizeL > 0 ? (bottles * bottleSizeL) / dilutionParts : 0;
+        }
         if (stdSyrup > 0) {
             return (stdSyrup / actualSyrup * 100);
         }
