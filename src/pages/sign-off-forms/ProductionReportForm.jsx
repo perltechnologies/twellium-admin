@@ -216,6 +216,16 @@ const ProductionReportForm = () => {
             if (product) {
                 reportList = reportList.filter(r => r.product_name === product);
             }
+            // Filter by shift client-side: the /production/reports endpoint does
+            // not reliably honor the `shift` query param (it can return other
+            // shifts' reports, e.g. a DAY report leaking into a NIGHT view). The
+            // report's `shift` field is the numeric shift id (matches shiftId).
+            if (shiftId) {
+                reportList = reportList.filter(r =>
+                    String(r.shift) === String(shiftId) ||
+                    String(r.shift_id) === String(shiftId)
+                );
+            }
             reportList = reportList.filter(r => !r.pet_name?.toLowerCase().includes('can'));
             setReportsList(reportList);
         } catch (err) {
@@ -268,6 +278,12 @@ const ProductionReportForm = () => {
             return s.slice(0, 5);
         };
 
+        // Whether any actual production occurred for the current filter. When a
+        // specific shift is selected and there are no reports and no pet entries,
+        // nothing happened on that shift — the form must stay blank rather than
+        // showing the scheduled shift window (e.g. NIGHT 18:00–06:00).
+        const hasProductionData = reportsList.length > 0 || allPets.length > 0 || allPetsUnfiltered.length > 0;
+
         // First, resolve actual production start/end from reports & pet entries.
         // For end time, prefer the plain `end_time` (actual shut-down) over
         // `production_end_time` which may be a last-activity timestamp.
@@ -306,8 +322,9 @@ const ProductionReportForm = () => {
                 || lastHHMM(allPetsUnfiltered.map(p => p.production_end_time))
                 || '';
 
-            // Fallback to shift master times only when actual data is missing.
-            if (!start || !end) {
+            // Fallback to shift master times only when actual data is missing
+            // AND production actually occurred on this shift.
+            if ((!start || !end) && hasProductionData) {
                 const shift = shifts.find(s => String(s.id) === String(selectedShift));
                 if (shift) {
                     if (!start) start = shift.start_time?.slice(0, 5) || '';
@@ -316,11 +333,11 @@ const ProductionReportForm = () => {
             }
         }
 
-        // Final fallback to day/summary level times.
-        if (!start) {
+        // Final fallback to day/summary level times (only when production occurred).
+        if (!start && (isAllShifts || hasProductionData)) {
             start = toHHMM(dayData.production_start_time || summary.production_start_time) || '';
         }
-        if (!end) {
+        if (!end && (isAllShifts || hasProductionData)) {
             end = toHHMM(dayData.production_end_time || summary.production_end_time) || '';
         }
 
@@ -359,9 +376,12 @@ const ProductionReportForm = () => {
             }
             const diff = (endDate - startDate) / (1000 * 60 * 60);
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', diff > 0 ? diff.toFixed(2) : ''));
-        } else {
+        } else if (hasProductionData) {
             const hrs = parseFloat(summary.total_production_time_hrs) || parseFloat(summary.total_production_time_hours) || 0;
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', hrs > 0 ? hrs.toFixed(2) : ''));
+        } else {
+            // Nothing happened on this shift — keep it blank.
+            setTotalProductionTimeHrs('');
         }
     }, [data, reportsList, selectedShift, shifts, selectedDate, selectedProduct]);
 
