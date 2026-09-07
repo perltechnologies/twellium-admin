@@ -285,23 +285,11 @@ const ProductionReportForm = () => {
         const hasProductionData = reportsList.length > 0 || allPets.length > 0 || allPetsUnfiltered.length > 0;
 
         // First, resolve actual production start/end from reports & pet entries.
-        // For end time, prefer the plain `end_time` (actual shut-down) over
-        // `production_end_time` which may be a last-activity timestamp.
-        if (isAllShifts && shifts.length > 0) {
-            // "All Shifts" => full 24-hour window anchored at earliest shift start.
-            const earliestStart = shifts
-                .map(s => s.start_time?.slice(0, 5))
-                .filter(Boolean)
-                .sort()[0];
-            if (earliestStart) {
-                start = earliestStart;
-                end = earliestStart; // same clock time next day => 24h window
-            }
-        } else {
-            // Prefer sources in priority order. The report `end_time` (actual
-            // shut-down, e.g. 17:26) is authoritative; the pet/summary
-            // `production_end_time` (e.g. 20:06) is a last-activity timestamp and
-            // must NOT override it. So we resolve by priority, not by max value.
+        // This applies to BOTH All Shifts and a specific shift — the real
+        // production window (e.g. 06:00–17:26) is always preferred. For end time
+        // prefer the plain `end_time` (actual shut-down) over `production_end_time`
+        // which may be a last-activity timestamp.
+        {
             const firstHHMM = (arr) => arr.map(toHHMM).filter(Boolean).sort()[0] || '';
             const lastHHMM = (arr) => arr.map(toHHMM).filter(Boolean).sort().slice(-1)[0] || '';
 
@@ -322,9 +310,21 @@ const ProductionReportForm = () => {
                 || lastHHMM(allPetsUnfiltered.map(p => p.production_end_time))
                 || '';
 
-            // Fallback to shift master times only when actual data is missing
-            // AND production actually occurred on this shift.
-            if ((!start || !end) && hasProductionData) {
+            if (isAllShifts) {
+                // For All Shifts, only fall back to a full 24-hour window anchored
+                // at the earliest shift start when there are NO actual times
+                // (i.e. we cannot determine the real production window).
+                if ((!start || !end) && shifts.length > 0) {
+                    const earliestStart = shifts
+                        .map(s => s.start_time?.slice(0, 5))
+                        .filter(Boolean)
+                        .sort()[0];
+                    if (earliestStart && !start) start = earliestStart;
+                    if (earliestStart && !end) end = earliestStart; // same clock next day => 24h
+                }
+            } else if ((!start || !end) && hasProductionData) {
+                // Specific shift: fall back to shift master times only when actual
+                // data is missing AND production occurred on this shift.
                 const shift = shifts.find(s => String(s.id) === String(selectedShift));
                 if (shift) {
                     if (!start) start = shift.start_time?.slice(0, 5) || '';
@@ -355,20 +355,26 @@ const ProductionReportForm = () => {
         setProductionStartTime(start || '');
         setProductionEndTime(getApprovedValue('production_end_time', end || ''));
 
-        // Total production time (Hrs). Prefer the authoritative per-report value
-        // (`total_production_time_hours`) when a specific shift/line is selected —
-        // it already reflects the real start/end. Otherwise derive from start/end.
+        // Total production time (Hrs). Priority:
+        //  1) authoritative per-report `total_production_time_hours` (real value)
+        //  2) real window from actual start/end times
+        //  3) All Shifts fallback = 24h (only when we could not determine a window)
+        //  4) summary value; else blank when nothing happened.
         const reportHrs = reportsList
             .map(r => parseFloat(r.total_production_time_hours ?? r.total_production_time_hrs))
             .filter(v => !isNaN(v) && v > 0);
-        if (isAllShifts && start) {
-            // All Shifts => full 24-hour production window.
-            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
-        } else if (!isAllShifts && reportHrs.length > 0) {
-            // Sum authoritative per-report hours for the selected shift/line.
+        // Did we have any ACTUAL production times (not the 24h shift fallback)?
+        const hasActualTimes = [
+            ...reportsList.map(r => r.start_time || r.end_time),
+            ...allPets.map(p => p.start_time || p.end_time || p.production_start_time || p.production_end_time),
+        ].some(Boolean);
+
+        if (reportHrs.length > 0) {
+            // Sum authoritative per-report hours (works for specific shift and
+            // All Shifts — e.g. only DAY ran => 11.43, not 24).
             const total = reportHrs.reduce((s, v) => s + v, 0);
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', total.toFixed(2)));
-        } else if (start && end) {
+        } else if (hasActualTimes && start && end) {
             const startDate = new Date(`${selectedDate}T${start}`);
             let endDate = new Date(`${selectedDate}T${end}`);
             if (endDate <= startDate) {
@@ -376,6 +382,10 @@ const ProductionReportForm = () => {
             }
             const diff = (endDate - startDate) / (1000 * 60 * 60);
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', diff > 0 ? diff.toFixed(2) : ''));
+        } else if (isAllShifts && start && hasProductionData) {
+            // All Shifts with no per-report/actual times but production exists
+            // => full 24-hour window.
+            setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', '24.00'));
         } else if (hasProductionData) {
             const hrs = parseFloat(summary.total_production_time_hrs) || parseFloat(summary.total_production_time_hours) || 0;
             setTotalProductionTimeHrs(getApprovedValue('total_production_time_hrs', hrs > 0 ? hrs.toFixed(2) : ''));
