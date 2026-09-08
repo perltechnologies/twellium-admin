@@ -768,7 +768,22 @@ const ProductionReportFormV2 = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Syrup Yield (%):</span>
-                                                <EditableField value={syrupMeters.syrup_yield_percent != null ? syrupMeters.syrup_yield_percent : ''} />
+                                                <EditableField value={(() => {
+                                                    // The meters value can be 0 when the backend fails to compute
+                                                    // it (total_syrup_used_l = 0). Prefer the authoritative
+                                                    // summary/line yield, then derive from std / actual syrup.
+                                                    const metersVal = Number(syrupMeters.syrup_yield_percent);
+                                                    if (Number.isFinite(metersVal) && metersVal > 0) return metersVal;
+                                                    const summaryVal = Number(summary.avg_syrup_yield);
+                                                    if (Number.isFinite(summaryVal) && summaryVal > 0) return summaryVal;
+                                                    const lineVal = Number(lines.find(l => Number(l.syrup_yield) > 0)?.syrup_yield);
+                                                    if (Number.isFinite(lineVal) && lineVal > 0) return lineVal;
+                                                    // Fallback: std_syrup_consumption_l / actual syrup used × 100.
+                                                    const std = Number(syrupMeters.std_syrup_consumption_l) || 0;
+                                                    const actual = Number(syrupMeters.total_syrup_used_l) || Number(syrupMeters.difference) || 0;
+                                                    if (std > 0 && actual > 0) return Number(((std / actual) * 100).toFixed(2));
+                                                    return '';
+                                                })()} />
                                             </div>
                                         </td>
                                         <td></td>
