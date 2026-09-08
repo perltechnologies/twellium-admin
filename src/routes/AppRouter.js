@@ -87,6 +87,9 @@ const WorkerList = React.lazy(() => import('../pages/production/WorkerList'));
 const ProductionReportForm = React.lazy(() => import('../pages/sign-off-forms/ProductionReportForm'));
 const ProductionRunByPet = React.lazy(() => import('../pages/sign-off-forms/ProductionRunByPet'));
 const BatchReport = React.lazy(() => import('../pages/sign-off-forms/BatchReport'));
+const ProductionReportFormV2 = React.lazy(() => import('../pages/sign-off-forms-v2/ProductionReportFormV2'));
+const ProductionRunByPetV2 = React.lazy(() => import('../pages/sign-off-forms-v2/ProductionRunByPetV2'));
+const BatchReportV2 = React.lazy(() => import('../pages/sign-off-forms-v2/BatchReportV2'));
 
 const ProtectedRoute = ({ children }) => {
     const { user } = useAuth();
@@ -459,6 +462,13 @@ export const AppRouter = () => {
                                 <Route path="production-report" element={<ProductionReportForm />} />
                                 <Route path="product-report" element={<ProductionRunByPet />} />
                                 <Route path="batch-report" element={<BatchReport />} />
+                            </Route>
+
+                            {/* Sign Off v2 */}
+                            <Route path="sign-off-forms-v2">
+                                <Route path="production-report" element={<ProductionReportFormV2 />} />
+                                <Route path="product-report" element={<ProductionRunByPetV2 />} />
+                                <Route path="batch-report" element={<BatchReportV2 />} />
                             </Route>
                         </Route>
 

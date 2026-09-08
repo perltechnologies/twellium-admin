@@ -108,6 +108,21 @@ const navigation = [
             ],
         },
         {
+            section: 'Sign Off v2',
+            items: [
+                {
+                    name: 'Sign Off v2',
+                    icon: 'ti-clipboard-check',
+                    key: 'sign-off-forms-v2',
+                    submenu: [
+                        { name: 'Production Report', path: '/dashboard/sign-off-forms-v2/production-report' },
+                        { name: 'Product Report', path: '/dashboard/sign-off-forms-v2/product-report' },
+                        { name: 'Batch Report', path: '/dashboard/sign-off-forms-v2/batch-report' },
+                    ],
+                },
+            ],
+        },
+        {
             section: 'User Management',
             items: [
                 { name: 'Manage Users', icon: 'ti-users', path: '/dashboard/users' },

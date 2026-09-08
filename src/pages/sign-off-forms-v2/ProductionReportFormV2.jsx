@@ -1,0 +1,848 @@
+import React, { useRef, useState, useEffect } from 'react';
+import { Printer, Loader2, Calendar } from 'lucide-react';
+import { productionApi } from '../../api/production';
+import { inventoryApi } from '../../api/inventory';
+import '../sign-off-forms/css/Sign-Off-Styles.css';
+
+const STORAGE_KEY = 'productionReportFormV2_filters';
+
+// Format a value for display: if it is a pure number that has a fractional
+// part, render it with exactly 2 decimal places. Integers, non-numeric strings
+// (dates, times, units, ratios like "1+5"), and empty values are left as-is.
+const formatDisplayValue = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const s = String(value).trim();
+    if (/^-?\d+\.\d+$/.test(s)) {
+        const n = Number(s);
+        if (Number.isFinite(n)) return n.toFixed(2);
+    }
+    return s;
+};
+
+// Generic editable input that preserves its own state while syncing with initial value changes
+const EditableField = ({ value, type = 'text', className = '', onChange, step, min, max, readOnly }) => {
+    const [val, setVal] = useState(() => formatDisplayValue(value));
+
+    useEffect(() => {
+        setVal(formatDisplayValue(value));
+    }, [value]);
+    const alignment = type === 'number' ? 'right' : 'left';
+    return (
+        <input
+            type={type}
+            step={step}
+            min={min}
+            max={max}
+            readOnly={readOnly}
+            className={`form-control form-control-sm border-0 rounded-0 shadow-none ${className}`}
+            style={{
+                minWidth: '48px',
+                height: '1.6rem',
+                padding: '0.1rem 0.25rem',
+                textAlign: alignment,
+                backgroundColor: 'transparent',
+                borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                color: '#212529',
+                fontSize: '0.85rem'
+            }}
+            value={val}
+            onChange={(e) => {
+                setVal(e.target.value);
+                if (onChange) onChange(e.target.value);
+            }}
+        />
+    );
+};
+
+const getStoredFilters = () => {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+};
+
+// Display a dilution ratio as a parts form, e.g. 1:5 -> "1+5".
+const formatDilutionDisplay = (raw) => {
+    if (raw == null || raw === '') return '';
+    const s = String(raw).trim();
+    const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*[+:/]\s*(\d+(?:\.\d+)?)\s*$/);
+    if (m) return `${m[1]}+${m[2]}`;
+    const n = parseFloat(s);
+    if (Number.isFinite(n) && n > 0) return `1+${n}`; // 1 : n
+    return s;
+};
+
+const ProductionReportFormV2 = () => {
+    const printRef = useRef();
+    const [loading, setLoading] = useState(false);
+    const [data, setData] = useState(null);
+    const [error, setError] = useState(null);
+    const [pets, setPets] = useState([]);
+    const [shifts, setShifts] = useState([]);
+    const [products, setProducts] = useState([]);
+
+    const storedFilters = getStoredFilters();
+    const [selectedPet, setSelectedPet] = useState(storedFilters?.selectedPet || '');
+    const [selectedShift, setSelectedShift] = useState(storedFilters?.selectedShift || '');
+    const [selectedProduct, setSelectedProduct] = useState(storedFilters?.selectedProduct || '');
+    const [selectedDate, setSelectedDate] = useState(() => {
+        if (storedFilters?.selectedDate) return storedFilters.selectedDate;
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday.toISOString().split('T')[0];
+    });
+
+    // Persist filters to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            selectedPet,
+            selectedShift,
+            selectedProduct,
+            selectedDate,
+        }));
+    }, [selectedPet, selectedShift, selectedProduct, selectedDate]);
+
+    // Fetch available pets/lines (exclude can lines), shifts, products
+    useEffect(() => {
+        const fetchPets = async () => {
+            try {
+                const res = await productionApi.getPets();
+                const petList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                const allPets = Array.isArray(petList) ? petList : petList.results || [];
+                setPets(
+                    allPets
+                        .filter(p => !p.pet_name?.toLowerCase().includes('can'))
+                        .sort((a, b) => {
+                            const numA = parseInt(a.pet_name?.match(/\d+/)?.[0]) || 0;
+                            const numB = parseInt(b.pet_name?.match(/\d+/)?.[0]) || 0;
+                            return numA - numB;
+                        })
+                );
+            } catch (err) {
+                console.error('Failed to fetch pets:', err);
+            }
+        };
+        const fetchShifts = async () => {
+            try {
+                const res = await productionApi.getShifts();
+                const shiftList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                setShifts(Array.isArray(shiftList) ? shiftList : shiftList.results || []);
+            } catch (err) {
+                console.error('Failed to fetch shifts:', err);
+            }
+        };
+        const fetchProducts = async () => {
+            try {
+                const res = await inventoryApi.getProducts({ page_size: 100 });
+                const productList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                const allProducts = Array.isArray(productList) ? productList : productList.results || [];
+                setProducts(allProducts);
+            } catch (err) {
+                console.error('Failed to fetch products:', err);
+            }
+        };
+        fetchPets();
+        fetchShifts();
+        fetchProducts();
+    }, []);
+
+    const fetchData = async (date, petId, shiftId, product) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const params = { start_date: date, end_date: date };
+            if (petId) params.pet = petId;
+            if (shiftId) params.shift = shiftId;
+            if (product) params.product = product;
+            const res = await productionApi.getSignOffProductionReport(params);
+            // Unwrap defensively — the endpoint may double-wrap the envelope.
+            let envelope = res?.data ?? {};
+            while (envelope && typeof envelope === 'object' && 'data' in envelope
+                && (('status_code' in envelope) || ('message' in envelope))) {
+                envelope = envelope.data;
+            }
+            setData(envelope || {});
+        } catch (err) {
+            console.error('Failed to fetch production report:', err);
+            setError(err?.message || 'Failed to fetch data');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchData(selectedDate, selectedPet, selectedShift, selectedProduct);
+    }, [selectedDate, selectedPet, selectedShift, selectedProduct]);
+
+    const handlePrint = () => {
+        const prevTitle = document.title;
+        const petLabel = selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines';
+        document.title = `Production Report - ${selectedDate} - ${petLabel}`;
+        window.print();
+        document.title = prevTitle;
+    };
+
+    // --- Bind directly to the dedicated endpoint response ------------------
+    const productionWindow = data?.production_window || {};
+    const summary = data?.summary || {};
+    const lines = Array.isArray(data?.lines) ? data.lines : [];
+    const materials = Array.isArray(data?.materials) ? data.materials : [];
+    const meters = data?.meters || {};
+    const co2Meters = meters.co2 || {};
+    const syrupMeters = meters.syrup || {};
+    const productionMeters = meters.production || {};
+    const downtimeBreakdown = data?.downtime_breakdown || {};
+
+    const productNames = products.length > 0
+        ? products.map(p => p.name).filter(Boolean).sort()
+        : [...new Set(lines.map(l => l.product_name).filter(Boolean))].sort();
+
+    // Helper to find material by type
+    const getMaterial = (type) => materials.find(m => m.material_type === type) || {};
+
+    // CO2/Syrup meters are per-line instruments — only meaningful when a
+    // specific line/pet is selected.
+    const showLineMeters = !!selectedPet;
+
+    // Products present in the current response (for the Product Details table)
+    const uniqueLineProducts = (() => {
+        const seen = new Set();
+        const out = [];
+        lines.forEach(l => {
+            const name = l.product_name;
+            if (name && !seen.has(name)) {
+                seen.add(name);
+                out.push(l);
+            }
+        });
+        return out;
+    })();
+
+    return (
+        <div className="page-wrapper">
+            <div className="content">
+                {/* Header with Controls - hidden on print */}
+                <div className="d-flex justify-content-between align-items-center mb-3 no-print">
+                    <div>
+                        <h4 className="fw-bold mb-1">Production Report - Daily Sign Off</h4>
+                        <p className="text-muted mb-0">FMPSOP-2-1 | Print and sign off this production report form</p>
+                    </div>
+                    <div className="d-flex align-items-center gap-3">
+                        <div className="d-flex align-items-center gap-2">
+                            <Calendar size={18} className="text-muted" />
+                            <input
+                                type="date"
+                                className="form-control form-control-sm"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                style={{ width: '160px' }}
+                            />
+                        </div>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedPet}
+                            onChange={(e) => setSelectedPet(e.target.value)}
+                            style={{ width: '160px' }}
+                        >
+                            <option value="">All Lines</option>
+                            {pets.map((pet) => (
+                                <option key={pet.id} value={pet.id}>
+                                    {pet.pet_name}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedShift}
+                            onChange={(e) => setSelectedShift(e.target.value)}
+                            style={{ width: '140px' }}
+                        >
+                            <option value="">All Shifts</option>
+                            {shifts.map((shift) => (
+                                <option key={shift.id} value={shift.id}>
+                                    {shift.name}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="form-select form-select-sm"
+                            value={selectedProduct}
+                            onChange={(e) => setSelectedProduct(e.target.value)}
+                            style={{ width: '200px' }}
+                        >
+                            <option value="">All Products</option>
+                            {productNames.map((prod) => (
+                                <option key={prod} value={prod}>
+                                    {prod}
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            className="btn btn-primary d-flex align-items-center gap-2"
+                            onClick={handlePrint}
+                            disabled={loading || !data}
+                        >
+                            <Printer size={18} />
+                            Print Form
+                        </button>
+                    </div>
+                </div>
+
+                {/* Loading State */}
+                {loading && (
+                    <div className="d-flex justify-content-center align-items-center py-5">
+                        <Loader2 size={32} className="text-primary spinning" />
+                        <span className="ms-2 text-muted">Loading production data...</span>
+                    </div>
+                )}
+
+                {/* Error State */}
+                {error && !loading && (
+                    <div className="alert alert-danger">{error}</div>
+                )}
+
+                {/* Printable Form */}
+                {!loading && data && (
+                    <div className="print-form-container" ref={printRef}>
+                        <div className="production-report-form">
+                            {/* Form Header */}
+                            <div className="form-header">
+                                <div className="header-left">
+                                    <img src="/logo.jpeg" alt="Twellium" className="print-logo" />
+                                    <h5 className="company-name">TWELLIUM INDUSTRIAL COMPANY LTD.</h5>
+                                </div>
+                                <div className="header-center">
+                                    <h4 className="report-title">PRODUCTION REPORT</h4>
+                                </div>
+                                <div className="header-right">
+                                    <div className="header-info">
+                                        <span>PRODUCTION DEPARTMENT</span>
+                                        <span>SOP No: PSOP-2</span>
+                                        <span>SOP TITLE: FILLING PROCEDURE</span>
+                                        <span className="doc-ref">FMPSOP-2-1</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Active Filters Display */}
+                            <div className="active-filters-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '6px 10px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontSize: '11px' }}>
+                                <span><strong>Date:</strong> {selectedDate}</span>
+                                <span><strong>Line:</strong> {selectedPet ? (pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '') : 'All Lines'}</span>
+                                <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || 'All Shifts') : 'All Shifts'}</span>
+                            </div>
+
+                            {/* Product Details - shown when a product or specific PET is selected */}
+                            {(selectedProduct || selectedPet) && (
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={5}>Product Details</th>
+                                    </tr>
+                                    <tr className="sub-header-row">
+                                        <th style={{ width: '28%' }}>Product</th>
+                                        <th style={{ width: '18%' }}>Bottle Size</th>
+                                        <th style={{ width: '18%' }}>Bottles/Pack</th>
+                                        <th style={{ width: '18%' }}>Packs/Pallet</th>
+                                        <th style={{ width: '18%' }}>Single Packs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {uniqueLineProducts.length > 0 ? uniqueLineProducts.map((line, idx) => {
+                                        const p = products.find(pr => pr.name === line.product_name);
+                                        return (
+                                            <tr key={idx}>
+                                                <td className="label-cell">{line.product_name}</td>
+                                                <td className="input-cell numeric"><EditableField value={line.bottle_size || summary.bottle_size || p?.size || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={line.bottles_per_pack || summary.bottles_per_pack || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={line.packs_per_pallet || summary.packs_per_pallet || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={line.single_packs != null ? line.single_packs : ''} /></td>
+                                            </tr>
+                                        );
+                                    }) : (
+                                        <tr>
+                                            <td className="label-cell">{selectedProduct || '—'}</td>
+                                            <td className="input-cell numeric"><EditableField value={summary.bottle_size || ''} /></td>
+                                            <td className="input-cell numeric"><EditableField value={summary.bottles_per_pack || ''} /></td>
+                                            <td className="input-cell numeric"><EditableField value={summary.packs_per_pallet || ''} /></td>
+                                            <td className="input-cell numeric"><EditableField value={summary.single_packs != null ? summary.single_packs : ''} /></td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                            )}
+
+                            {/* Production Info Table */}
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={6}>Production Information</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td className="label-cell" style={{ width: '15%' }}>Date</td>
+                                        <td className="input-cell numeric" style={{ width: '20%' }}>{selectedDate}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Shift</td>
+                                        <td className="input-cell" style={{ width: '15%' }}>{selectedShift ? shifts.find(s => String(s.id) === String(selectedShift))?.name || '' : 'All Shifts'}</td>
+                                        <td className="label-cell" style={{ width: '15%' }}>Line</td>
+                                        <td className="input-cell" style={{ width: '20%' }}>{selectedPet ? pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '' : 'All Lines'}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Production Start Time</td>
+                                        <td className="input-cell">
+                                            <input
+                                                type="time"
+                                                className="form-control form-control-sm border-0 rounded-0 shadow-none"
+                                                style={{
+                                                    minWidth: '68px',
+                                                    height: '1.6rem',
+                                                    padding: '0.1rem 0.25rem',
+                                                    textAlign: 'center',
+                                                    backgroundColor: 'transparent',
+                                                    borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                                                    color: '#212529',
+                                                    fontSize: '0.85rem'
+                                                }}
+                                                defaultValue={productionWindow.start_time || ''}
+                                                key={`start-${productionWindow.start_time || ''}`}
+                                            />
+                                        </td>
+                                        <td className="label-cell">Production End Time</td>
+                                        <td className="input-cell">
+                                            <input
+                                                type="time"
+                                                className="form-control form-control-sm border-0 rounded-0 shadow-none"
+                                                style={{
+                                                    minWidth: '68px',
+                                                    height: '1.6rem',
+                                                    padding: '0.1rem 0.25rem',
+                                                    textAlign: 'center',
+                                                    backgroundColor: 'transparent',
+                                                    borderBottom: '1px dashed rgba(33, 37, 41, 0.35)',
+                                                    color: '#212529',
+                                                    fontSize: '0.85rem'
+                                                }}
+                                                defaultValue={productionWindow.end_time || ''}
+                                                key={`end-${productionWindow.end_time || ''}`}
+                                            />
+                                        </td>
+                                        <td className="label-cell">Total Production Time (Hrs)</td>
+                                        <td className="input-cell">
+                                            <EditableField
+                                                type="number"
+                                                step="0.1"
+                                                value={productionWindow.total_production_hours != null ? productionWindow.total_production_hours : ''}
+                                            />
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Total Pallets</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_pallets != null ? summary.total_pallets : ''} /></td>
+                                        <td className="label-cell">Single Packs</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.single_packs != null ? summary.single_packs : ''} /></td>
+                                        <td className="label-cell">Total Packs</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_packs != null ? summary.total_packs : ''} /></td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Workers Count</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.worker_count != null ? summary.worker_count : ''} /></td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
+                                        <td className="label-cell">Total Output (R.W)</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles_produced != null ? summary.total_bottles_produced : ''} /></td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Total Downtime (min)</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.total_downtime_minutes != null ? summary.total_downtime_minutes : ''} /></td>
+                                        <td className="label-cell">Planned Downtime (min)</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.planned_downtime_mins != null ? summary.planned_downtime_mins : ''} /></td>
+                                        <td className="label-cell">Mechanical Downtime (min)</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.mechanical_downtime_mins != null ? summary.mechanical_downtime_mins : ''} /></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={8}>Performance Summary</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td className="label-cell">OEE</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.oee != null ? summary.oee : ''} /></td>
+                                        <td className="label-cell">Availability</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_availability != null ? summary.avg_availability : ''} /></td>
+                                        <td className="label-cell">Performance (Efficiency)</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_performance != null ? summary.avg_performance : ''} /></td>
+                                        <td className="label-cell">Quality</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_quality != null ? summary.avg_quality : ''} /></td>
+                                    </tr>
+                                    <tr>
+                                        <td className="label-cell">Syrup Yield</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_syrup_yield != null ? summary.avg_syrup_yield : ''} /></td>
+                                        <td className="label-cell">CO2 Yield</td>
+                                        <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_co2_yield != null ? summary.avg_co2_yield : ''} /></td>
+                                        <td className="label-cell">Target Met</td>
+                                        <td className="input-cell numeric"><EditableField type="number" value={summary.target_met_count != null ? summary.target_met_count : ''} /></td>
+                                        <td className="label-cell"></td>
+                                        <td className="input-cell numeric"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            {/* Production by Line */}
+                            {!selectedPet && (
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th className="section-label">Line</th>
+                                        <th>Product</th>
+                                        <th>Total Bottles</th>
+                                        <th>Total Packs</th>
+                                        <th>OEE</th>
+                                        <th>Efficiency</th>
+                                        <th>Downtime (min)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {lines.length > 0 ? lines.map((line, idx) => (
+                                        <tr key={idx}>
+                                            <td className="label-cell">{line.pet_name}</td>
+                                            <td className="input-cell"><EditableField value={line.product_name || ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.total_bottles != null ? line.total_bottles : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.total_packs != null ? line.total_packs : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" step="0.1" value={line.oee != null ? line.oee : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" step="0.1" value={line.efficiency != null ? line.efficiency : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={line.total_downtime_minutes != null ? line.total_downtime_minutes : ''} /></td>
+                                        </tr>
+                                    )) : (
+                                        <tr>
+                                            <td colSpan={7} className="input-cell text-center">No line data available</td>
+                                        </tr>
+                                    )}
+                                    {/* Totals row */}
+                                    {lines.length > 0 && (
+                                        <tr className="fw-bold">
+                                            <td className="label-cell">TOTAL</td>
+                                            <td className="input-cell"></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={summary.total_bottles != null ? summary.total_bottles : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={summary.total_packs != null ? summary.total_packs : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.oee != null ? summary.oee : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" step="0.1" value={summary.avg_performance != null ? summary.avg_performance : ''} /></td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={summary.total_downtime_minutes != null ? summary.total_downtime_minutes : ''} /></td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                            )}
+
+                            {/* Materials Consumption Section */}
+                            <table className="form-table section-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th className="section-label" colSpan={2}>Materials Consumption</th>
+                                        <th>Unit</th>
+                                        <th>Used</th>
+                                        <th>Losses</th>
+                                        <th>Yield%</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {[
+                                        { type: 'PREFORMS', label: 'Preforms Consumption', defaultUnit: 'Pcs' },
+                                        { type: 'CLOSURES', label: 'Closure Consumption', defaultUnit: 'Pcs' },
+                                        { type: 'LABELS', label: 'Label / Sleeve Consumption', defaultUnit: 'Pcs' },
+                                        { type: 'SHRINK', label: 'Shrink Consumption', defaultUnit: 'Kg' },
+                                        { type: 'STRETCH_FILM', label: 'Stretch Film', defaultUnit: 'Kg' },
+                                        { type: 'CARTON_LAYER', label: 'Carton Layer', defaultUnit: 'Pcs' },
+                                        { type: 'CARTON_BOXES', label: 'Carton Boxes', defaultUnit: 'Pcs' },
+                                        { type: 'GLUE', label: 'Glue Consumption', defaultUnit: 'Kg' },
+                                    ].map(({ type, label, defaultUnit }) => {
+                                        const mat = getMaterial(type);
+                                        return (
+                                            <tr key={type}>
+                                                <td className="label-cell" colSpan={2}>{mat.material_type_display || label}</td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || defaultUnit} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used != null ? mat.total_used : ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses != null ? mat.total_losses : ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={mat.yield_percentage != null && mat.yield_percentage !== '' ? `${Number(mat.yield_percentage).toFixed(2)}%` : ''} /></td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+
+                            {/* Meters Reading Section */}
+                            <table className="form-table section-table meters-table">
+                                <thead>
+                                    <tr className="section-header-row">
+                                        <th colSpan={3}>Meters Reading</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="sub-header-row">
+                                        <th style={{ width: '33%' }}>CO2</th>
+                                        <th style={{ width: '33%' }}>Syrup</th>
+                                        <th style={{ width: '34%' }}>Production Reading</th>
+                                    </tr>
+                                    {/* CO2 and Syrup meters are per-line instruments — only shown when a specific line/pet is selected */}
+                                    {!showLineMeters ? (
+                                    <tr>
+                                        <td style={{ verticalAlign: 'top', padding: '12px 8px' }}>
+                                            <div style={{ textAlign: 'center', color: '#000', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                                <strong>Not Applicable</strong><br />
+                                                <span>CO2 meters are per-line specific.<br />Select a specific line to view.</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ verticalAlign: 'top', padding: '12px 8px' }}>
+                                            <div style={{ textAlign: 'center', color: '#000', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                                <strong>Not Applicable</strong><br />
+                                                <span>Syrup meters are per-line specific.<br />Select a specific line to view.</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ verticalAlign: 'top' }}>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Filler Reading:</span>
+                                                <EditableField value={productionMeters.filler_reading != null ? productionMeters.filler_reading : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Shrink Reading:</span>
+                                                <EditableField value={productionMeters.shrink_reading != null ? productionMeters.shrink_reading : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Filler Rejects (M/C):</span>
+                                                <EditableField value={productionMeters.filler_rejects_mc != null ? productionMeters.filler_rejects_mc : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Blower Rejects (Manual Count):</span>
+                                                <EditableField value={productionMeters.blower_rejects_manual != null ? productionMeters.blower_rejects_manual : ''} />
+                                            </div>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Shrink Reading / T. Packs (%):</span>
+                                                <EditableField value={productionMeters.shrink_reading_packs_percent != null ? productionMeters.shrink_reading_packs_percent : ''} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    ) : (
+                                    <>
+                                    <tr>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Start up Reading (Kg):</span>
+                                                <EditableField value={co2Meters.start_reading_kg != null ? co2Meters.start_reading_kg : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Start up Reading:</span>
+                                                <EditableField value={syrupMeters.start_reading != null ? syrupMeters.start_reading : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Filler Reading:</span>
+                                                <EditableField value={productionMeters.filler_reading != null ? productionMeters.filler_reading : ''} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">End up Reading (Kg):</span>
+                                                <EditableField value={co2Meters.end_reading_kg != null ? co2Meters.end_reading_kg : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">End up Reading:</span>
+                                                <EditableField value={syrupMeters.end_reading != null ? syrupMeters.end_reading : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Shrink Reading:</span>
+                                                <EditableField value={productionMeters.shrink_reading != null ? productionMeters.shrink_reading : ''} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Total CO2 Consumed (kg):</span>
+                                                <EditableField value={co2Meters.total_co2_consumed_kg != null ? co2Meters.total_co2_consumed_kg : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Difference:</span>
+                                                <EditableField value={syrupMeters.difference != null ? syrupMeters.difference : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Filler Rejects (M/C):</span>
+                                                <EditableField value={productionMeters.filler_rejects_mc != null ? productionMeters.filler_rejects_mc : ''} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Std. CO2 Consumption (kg):</span>
+                                                <EditableField value={co2Meters.std_co2_consumption_kg != null ? co2Meters.std_co2_consumption_kg : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Unit (L, m3, kg):</span>
+                                                <EditableField value={syrupMeters.unit || ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Blower Rejects (Manual Count):</span>
+                                                <EditableField value={productionMeters.blower_rejects_manual != null ? productionMeters.blower_rejects_manual : ''} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">CO2 Yield (%):</span>
+                                                <EditableField value={co2Meters.co2_yield_percent != null ? co2Meters.co2_yield_percent : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Syrup Density (kg/L):</span>
+                                                <EditableField value={syrupMeters.syrup_density_kg_per_l != null ? syrupMeters.syrup_density_kg_per_l : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Shrink Reading / T. Packs (%):</span>
+                                                <EditableField value={productionMeters.shrink_reading_packs_percent != null ? productionMeters.shrink_reading_packs_percent : ''} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">CO2 (g/bottle):</span>
+                                                <EditableField value={co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : ''} />
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Total Syrup Used (L):</span>
+                                                <EditableField value={syrupMeters.total_syrup_used_l != null ? syrupMeters.total_syrup_used_l : ''} />
+                                            </div>
+                                        </td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Syrup Dilution Ratio:</span>
+                                                <EditableField value={syrupMeters.syrup_dilution_ratio != null && syrupMeters.syrup_dilution_ratio !== '' ? formatDilutionDisplay(syrupMeters.syrup_dilution_ratio) : ''} />
+                                            </div>
+                                        </td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Std. Syrup Consumption (L):</span>
+                                                <EditableField value={syrupMeters.std_syrup_consumption_l != null ? syrupMeters.std_syrup_consumption_l : ''} />
+                                            </div>
+                                        </td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td>
+                                            <div className="meter-field">
+                                                <span className="meter-label">Syrup Yield (%):</span>
+                                                <EditableField value={syrupMeters.syrup_yield_percent != null ? syrupMeters.syrup_yield_percent : ''} />
+                                            </div>
+                                        </td>
+                                        <td></td>
+                                    </tr>
+                                    </>
+                                    )}
+                                </tbody>
+                            </table>
+
+                            {/* Downtime Breakdown */}
+                            {downtimeBreakdown?.categories?.length > 0 && (
+                                <table className="form-table section-table">
+                                    <thead>
+                                        <tr className="section-header-row">
+                                            <th className="section-label">Downtime Category</th>
+                                            <th>Duration (min)</th>
+                                            <th>% of Total</th>
+                                            <th>Incidents</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {downtimeBreakdown.categories.map((cat) => (
+                                            <tr key={cat.category_id}>
+                                                <td className="label-cell">{cat.category_name}</td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={cat.total_duration_mins != null ? cat.total_duration_mins : ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={cat.percentage_of_total != null ? `${cat.percentage_of_total}%` : ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={cat.incident_count != null ? cat.incident_count : ''} /></td>
+                                            </tr>
+                                        ))}
+                                        <tr className="fw-bold">
+                                            <td className="label-cell">TOTAL</td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={downtimeBreakdown.total_downtime_minutes != null ? downtimeBreakdown.total_downtime_minutes : ''} /></td>
+                                            <td className="input-cell numeric">100%</td>
+                                            <td className="input-cell numeric"><EditableField type="number" value={downtimeBreakdown.total_incidents != null ? downtimeBreakdown.total_incidents : ''} /></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            )}
+
+                            {/* Sign Off Section */}
+                            <div className="sign-off-section">
+                                <div className="sign-off-row">
+                                    <div className="sign-off-field">
+                                        <label>Production Supervisor:</label>
+                                        <div className="sign-line"></div>
+                                    </div>
+                                    <div className="sign-off-field">
+                                        <label>Production Manager:</label>
+                                        <div className="sign-line"></div>
+                                    </div>
+                                </div>
+                                <div className="sign-off-row">
+                                    <div className="sign-off-field">
+                                        <label>Signature:</label>
+                                        <div className="sign-line"></div>
+                                    </div>
+                                    <div className="sign-off-field">
+                                        <label>Signature:</label>
+                                        <div className="sign-line"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="form-footer">
+                                <span>Page 1 of 1</span>
+                                <span>REVIEW No: 03</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default ProductionReportFormV2;

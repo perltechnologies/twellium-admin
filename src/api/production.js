@@ -271,4 +271,9 @@ export const productionApi = {
     getYieldsConsumptionDateRange: (params) => api.get('/production/dashboard/yields_consumption_date_range/', { params }),
     getOeeSummaryByDate: (params) => api.get('/production/reports/oee_summary/', { params }),
     getProductionSummary: (params) => api.get('/production/dashboard/production_summary/', { params }),
+
+    // Production Sign-Off (dedicated endpoints for the sign-off v2 forms)
+    getSignOffProductionReport: (params) => api.get('/production/sign-off/production-report/', { params }),
+    getSignOffProductReport: (params) => api.get('/production/sign-off/product-report/', { params }),
+    getSignOffBatchReport: (params) => api.get('/production/sign-off/batch-report/', { params }),
 };
