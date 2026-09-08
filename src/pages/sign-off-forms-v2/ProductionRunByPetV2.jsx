@@ -1,13 +1,15 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Printer, Loader2, Calendar } from 'lucide-react';
+import { Printer, Loader2, Calendar, Plus, X } from 'lucide-react';
 import { productionApi } from '../../api/production';
+import { workersApi } from '../../api/workers';
+import { inventoryApi } from '../../api/inventory';
 import '../sign-off-forms/css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'productionRunByPetV2_filters';
 
 // Format a value for display: if it is a pure number that has a fractional
 // part, render it with exactly 2 decimal places. Integers, non-numeric strings
-// (dates, times, units, ratios like "1:5"), and empty values are left as-is.
+// (dates, times, units, ratios like "1+5"), and empty values are left as-is.
 const formatDisplayValue = (value) => {
     if (value === null || value === undefined || value === '') return '';
     const s = String(value).trim();
@@ -59,12 +61,10 @@ const getStoredFilters = () => {
     } catch { return null; }
 };
 
-// Unwrap the API envelope: { status_code, message, data: {...} }. The live
-// endpoint may double-wrap, so drill down until we reach the object that
-// actually carries the report payload (identified by the `run` key).
+// Peel the (possibly double-wrapped) API envelope until we reach the payload
+// object that carries the report fields (identified by the `run` key).
 const unwrapReport = (res) => {
     let d = res?.data ?? {};
-    // Peel nested { data: {...} } wrappers until we find the report fields.
     for (let i = 0; i < 4; i += 1) {
         if (d && typeof d === 'object' && !('run' in d) && d.data && typeof d.data === 'object') {
             d = d.data;
@@ -75,16 +75,109 @@ const unwrapReport = (res) => {
     return d && typeof d === 'object' ? d : {};
 };
 
+// Adapt the dedicated Product Report Sign-Off response into the `data` shape
+// the (v1) template consumes: { summary, daily_breakdown[].pets[],
+// material_consumptions.materials, meters_reading, downtime_breakdown }.
+const adaptSignOffToTemplateData = (payload) => {
+    if (!payload || typeof payload !== 'object') return null;
+    const run = payload.run || {};
+    const products = Array.isArray(payload.products) ? payload.products : [];
+    const batches = Array.isArray(payload.batches) ? payload.batches : [];
+    const workers = payload.workers || {};
+    const materials = Array.isArray(payload.materials) ? payload.materials : [];
+    const meters = payload.meters || {};
+    const downtime = payload.downtime || {};
+
+    // summary mirrors run, plus derived/aliased fields the template reads.
+    const summary = {
+        ...run,
+        total_production_time_hrs: run.total_production_hours,
+        worker_count: workers.worker_count,
+        total_beverage_liters: run.total_beverage_liters,
+        planned_downtime_mins: downtime.total_planned_downtime_mins,
+        mechanical_downtime_mins: downtime.total_mechanical_downtime_mins,
+        total_downtime_minutes: downtime.total_downtime_minutes,
+        batch_numbers: batches.map(b => b.batch_number).filter(Boolean),
+    };
+
+    // One pet entry per product; batches attach to the first entry so the
+    // Batch Details table (which reads pet.batches) is populated.
+    const pets = products.map((p, idx) => ({
+        pet_id: run.pet_id || idx,
+        pet_name: run.pet_name || '',
+        product_name: p.product_name,
+        bottle_size: p.bottle_size,
+        line_speed: p.line_speed,
+        bottles_per_pack: p.bottles_per_pack,
+        packs_per_pallet: p.packs_per_pallet,
+        total_bottles: p.total_bottles,
+        total_units: p.total_bottles,
+        total_packs: p.total_packs,
+        total_bottles_produced: run.total_bottles_produced,
+        total_physical_boxes: run.total_physical_boxes,
+        efficiency: p.efficiency,
+        avg_efficiency: p.efficiency,
+        syrup_yield: p.syrup_yield,
+        avg_syrup_yield: p.syrup_yield,
+        total_production_time_hrs: p.total_production_hours,
+        production_start_time: run.production_start_time,
+        production_end_time: run.production_end_time,
+        total_downtime_minutes: downtime.total_downtime_minutes,
+        beverage_liters: run.total_beverage_liters,
+        batch_numbers: batches.map(b => b.batch_number).filter(Boolean),
+        batches: idx === 0 ? batches : [],
+        workers,
+        meters_reading: {
+            syrup: { total_syrup_used_l: p.syrup_liters },
+            beverage: { total_beverage_liters: run.total_beverage_liters },
+        },
+        downtime_breakdown: {
+            categories: [
+                { category_name: 'Planned Downtime', total_duration_mins: downtime.total_planned_downtime_mins || 0 },
+                { category_name: 'Mechanical Downtime', total_duration_mins: downtime.total_mechanical_downtime_mins || 0 },
+            ],
+        },
+    }));
+
+    // If there are no product rows but there are batches, still surface them.
+    if (pets.length === 0 && batches.length > 0) {
+        pets.push({
+            pet_id: run.pet_id || 0,
+            pet_name: run.pet_name || '',
+            product_name: batches[0].product_name || '',
+            batches,
+            batch_numbers: batches.map(b => b.batch_number).filter(Boolean),
+            workers,
+            meters_reading: { syrup: {}, beverage: {} },
+        });
+    }
+
+    return {
+        summary,
+        daily_breakdown: [{ date: run.production_start_time || '', pets }],
+        material_consumptions: { materials },
+        meters_reading: meters,
+        downtime_breakdown: {
+            total_downtime_minutes: downtime.total_downtime_minutes,
+            categories: [
+                { category_name: 'Planned Downtime', total_duration_mins: downtime.total_planned_downtime_mins || 0 },
+                { category_name: 'Mechanical Downtime', total_duration_mins: downtime.total_mechanical_downtime_mins || 0 },
+            ],
+        },
+        production_dates: Array.isArray(run.production_dates) ? run.production_dates : [],
+    };
+};
+
 const ProductionRunByPetV2 = () => {
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [pets, setPets] = useState([]);
-    const [shifts, setShifts] = useState([]);
     const storedFilters = getStoredFilters();
     const [selectedPet, setSelectedPet] = useState(storedFilters?.selectedPet || '');
     const [selectedProduct, setSelectedProduct] = useState(storedFilters?.selectedProduct || '');
+    const [shifts, setShifts] = useState([]);
     const [selectedShift, setSelectedShift] = useState(storedFilters?.selectedShift || '');
     const [startDate, setStartDate] = useState(() => {
         if (storedFilters?.startDate) return storedFilters.startDate;
@@ -143,6 +236,44 @@ const ProductionRunByPetV2 = () => {
         fetchShifts();
     }, []);
 
+    // Fetch workers (for the dropdown-independent worker count fallback)
+    const [workers, setWorkers] = useState([]);
+    useEffect(() => {
+        const fetchWorkers = async () => {
+            try {
+                const params = { page_size: 100 };
+                if (selectedPet) params.worker_group = selectedPet;
+                const res = await workersApi.getWorkers(params);
+                const resData = res?.data;
+                const list = Array.isArray(resData?.data) ? resData.data
+                    : Array.isArray(resData?.results) ? resData.results
+                    : Array.isArray(resData) ? resData : [];
+                setWorkers(list);
+            } catch (err) {
+                console.error('Failed to fetch workers:', err);
+            }
+        };
+        fetchWorkers();
+    }, [selectedPet]);
+
+    // Fetch products for fallback lookup
+    const [products, setProducts] = useState([]);
+    // Track which shrink rows are visible: 'printed', 'plain'
+    const [shrinkRows, setShrinkRows] = useState([]);
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                const res = await inventoryApi.getProducts({ page_size: 100 });
+                const productList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                const allProducts = Array.isArray(productList) ? productList : productList.results || [];
+                setProducts(allProducts);
+            } catch (err) {
+                console.error('Failed to fetch products:', err);
+            }
+        };
+        fetchProducts();
+    }, []);
+
     const fetchData = async () => {
         setLoading(true);
         setError(null);
@@ -152,9 +283,10 @@ const ProductionRunByPetV2 = () => {
             if (selectedShift) params.shift = selectedShift;
             if (selectedProduct) params.product = selectedProduct;
             const res = await productionApi.getSignOffProductReport(params);
-            setData(unwrapReport(res));
+            const payload = unwrapReport(res);
+            setData(adaptSignOffToTemplateData(payload));
         } catch (err) {
-            console.error('Failed to fetch product report:', err);
+            console.error('Failed to fetch production data:', err);
             setError(err?.message || 'Failed to fetch data');
         } finally {
             setLoading(false);
@@ -166,73 +298,144 @@ const ProductionRunByPetV2 = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [startDate, endDate, selectedPet, selectedShift, selectedProduct]);
 
-    const selectedPetName = pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '';
-
     const handlePrint = () => {
         const prevTitle = document.title;
-        document.title = `Product Report - ${selectedPetName || 'All Lines'}${selectedProduct ? ` - ${selectedProduct}` : ''} - ${startDate} to ${endDate}`;
+        document.title = `Production Run - ${selectedPetName || 'All Lines'}${selectedProduct ? ` - ${selectedProduct}` : ''} - ${startDate} to ${endDate}`;
         window.print();
         document.title = prevTitle;
     };
 
-    // ---- Bind directly to the dedicated endpoint response structure ----
-    const run = data?.run || {};
-    const products = Array.isArray(data?.products) ? data.products : [];
-    const batches = Array.isArray(data?.batches) ? data.batches : [];
-    const workers = data?.workers || {};
-    const materials = Array.isArray(data?.materials) ? data.materials : [];
-    const meters = data?.meters || {};
-    const co2Meters = meters.co2 || {};
-    const syrupMeters = meters.syrup || {};
-    const productionMeters = meters.production || {};
-    const downtime = data?.downtime || {};
+    // Extract data (identical shape to the v1 template)
+    const summary = data?.summary || {};
+    const dailyBreakdown = data?.daily_breakdown || [];
+    const metersReading = data?.meters_reading || {};
+    const co2Meters = metersReading.co2 || {};
+    const productionMeters = metersReading.production || {};
+    const syrupMeters = metersReading.syrup || {};
+    const selectedPetName = pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '';
 
-    // Product dropdown options come from the returned products list
-    const productNames = [...new Set(products.map(p => p.product_name).filter(Boolean))].sort();
+    // Product names from the breakdown (unfiltered for dropdown)
+    const allPetEntriesUnfiltered = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
+    const productNames = [...new Set(allPetEntriesUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
 
-    // Format number with thousands separators / fixed decimals
+    // Auto-select first product only on initial load (not on every data change)
+    const initialProductSet = useRef(false);
+    useEffect(() => {
+        if (initialProductSet.current) return;
+        if (productNames.length > 0 && (!selectedProduct || !productNames.includes(selectedProduct))) {
+            setSelectedProduct(productNames[0]);
+            initialProductSet.current = true;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [productNames.length]);
+
+    // Filter by selected product
+    const allPetEntries = selectedProduct
+        ? allPetEntriesUnfiltered.filter(p => p.product_name === selectedProduct)
+        : allPetEntriesUnfiltered;
+
+    // Materials: aggregate from filtered pet entries when product is selected, otherwise use top-level
+    const materials = (() => {
+        const top = data?.material_consumptions?.materials || [];
+        if (!selectedProduct) return top;
+        const matMap = {};
+        allPetEntries.forEach(pet => {
+            (pet.material_consumptions || []).forEach(mat => {
+                if (!matMap[mat.material_type]) {
+                    matMap[mat.material_type] = { material_type: mat.material_type, material_type_display: mat.material_type_display, unit: mat.unit, total_used: 0, total_losses: 0, yield_percentage: 0 };
+                }
+                matMap[mat.material_type].total_used += (mat.total_used || 0);
+                matMap[mat.material_type].total_losses += (mat.total_losses || 0);
+            });
+        });
+        // When per-pet materials are unavailable, fall back to the top-level list.
+        if (Object.keys(matMap).length === 0) return top;
+        Object.values(matMap).forEach(m => {
+            m.yield_percentage = m.total_used > 0 ? ((m.total_used - m.total_losses) / m.total_used * 100) : 0;
+        });
+        return Object.values(matMap);
+    })();
+
+    // Production dates that had actual production
+    const productionDates = (() => {
+        if (Array.isArray(data?.production_dates) && data.production_dates.length > 0) {
+            return [...data.production_dates].sort();
+        }
+        const dates = new Set();
+        dailyBreakdown.forEach(day => {
+            const dayDate = day.date || day.production_date;
+            if (!dayDate) return;
+            const dayPets = day.pets || [];
+            const matchingPets = selectedProduct
+                ? dayPets.filter(p => p.product_name === selectedProduct)
+                : dayPets;
+            if (matchingPets.length > 0) dates.add(String(dayDate).split('T')[0]);
+        });
+        return [...dates].sort();
+    })();
+
+    const formatProductionDates = () => {
+        if (productionDates.length === 0) return '';
+        return productionDates.map(d => {
+            const dt = new Date(d);
+            return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }).join(', ');
+    };
+
+    // Derived values from per-pet data
+    const totalProductionHrs = allPetEntries.reduce((sum, p) => sum + (p.total_production_time_hrs || 0), 0)
+        || parseFloat(summary.total_production_time_hrs) || 0;
+    const productionStartTimes = [
+        ...allPetEntries.map(p => p.production_start_time),
+    ].filter(Boolean).sort();
+    const productionEndTimes = [
+        ...allPetEntries.map(p => p.production_end_time),
+    ].filter(Boolean).sort();
+    const batchNumbers = [...new Set([
+        ...allPetEntries.flatMap(p => p.batch_numbers || (p.batches || []).map(b => b.batch_number)),
+        ...(summary.batch_numbers || []),
+    ].filter(Boolean))];
+
+    // Derive totals from filtered allPetEntries so product filter is respected
+    const filteredTotalBottles = allPetEntries.reduce((sum, p) => sum + (p.total_bottles || p.total_units || 0), 0);
+    const filteredTotalPacks = allPetEntries.reduce((sum, p) => sum + (p.total_packs || 0), 0);
+    const filteredAvgEfficiency = allPetEntries.length > 0
+        ? (allPetEntries.reduce((sum, p) => sum + (p.efficiency || p.avg_efficiency || 0), 0) / allPetEntries.length).toFixed(1)
+        : null;
+    const filteredAvgSyrupYield = allPetEntries.length > 0
+        ? (allPetEntries.reduce((sum, p) => sum + (p.syrup_yield || p.avg_syrup_yield || 0), 0) / allPetEntries.length).toFixed(1)
+        : null;
+
+    // Use filtered values when a product filter is active, otherwise fall back to API summary
+    const displayTotalBottles = selectedProduct ? filteredTotalBottles : (summary.total_bottles || filteredTotalBottles);
+    const displayTotalPacks = selectedProduct ? filteredTotalPacks : (summary.total_packs || filteredTotalPacks);
+    const displayAvgEfficiency = selectedProduct ? filteredAvgEfficiency : (summary.avg_efficiency || filteredAvgEfficiency);
+    const displayAvgSyrupYield = selectedProduct ? filteredAvgSyrupYield : (summary.avg_syrup_yield || filteredAvgSyrupYield);
+
+    // Calculate Total Btls/Hr
+    const totalDowntimeHrs = (summary.total_downtime_minutes || 0) / 60;
+    const approxProductionHrs = totalProductionHrs || ((summary.total_reports || 0) * 8 - totalDowntimeHrs);
+    const totalBtlsPerHr = approxProductionHrs > 0 ? Math.round(displayTotalBottles / approxProductionHrs) : 0;
+
+    // Helper to find material by type
+    const getMaterial = (type) => materials.find(m => m.material_type === type) || {};
+
+    // Format number
     const fmt = (val, decimals = 0) => {
-        if (val === null || val === undefined || val === '') return '';
-        const n = Number(val);
-        if (!Number.isFinite(n)) return '';
-        return n.toLocaleString('en-US', {
+        if (val === null || val === undefined) return '';
+        return Number(val).toLocaleString('en-US', {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals
         });
     };
 
-    // Loss% for a material row
-    const lossPct = (mat) => {
-        if (!mat || !mat.total_used) return '';
-        const pct = (mat.total_losses / mat.total_used) * 100;
-        if (!Number.isFinite(pct)) return '';
-        return `${pct.toFixed(1)}%`;
-    };
-
-    // Format the selected filter date range
+    // Format date range display
     const formatDateRange = () => {
         const s = new Date(startDate);
         const e = new Date(endDate);
         const fmtD = (d) => d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
         return `${fmtD(s)} TO ${fmtD(e)}`;
     };
-
-    // Format the production dates returned by the API
-    const formatProductionDates = () => {
-        const dates = Array.isArray(run.production_dates) ? run.production_dates : [];
-        if (dates.length === 0) return '';
-        return dates.map(d => {
-            const dt = new Date(d);
-            return dt.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        }).join(', ');
-    };
-    const productionDates = Array.isArray(run.production_dates) ? run.production_dates : [];
-
-    const shiftLabel = selectedShift
-        ? (shifts.find(s => String(s.id) === String(selectedShift))?.name
-            || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name
-            || 'All Shifts')
-        : 'All Shifts';
 
     return (
         <div className="page-wrapper">
@@ -352,23 +555,22 @@ const ProductionRunByPetV2 = () => {
                             <div className="active-filters-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '6px 10px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontSize: '11px' }}>
                                 <span><strong>Date:</strong> {formatDateRange()}</span>
                                 <span><strong>Line:</strong> {selectedPetName || 'All Lines'}</span>
-                                <span><strong>Shift:</strong> {shiftLabel}</span>
-                                {selectedProduct && <span><strong>Product:</strong> {selectedProduct}</span>}
+                                <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || 'All Shifts') : 'All Shifts'}</span>
                             </div>
 
-                            {/* Row 4-6: Date, Line Speed, Shift, Batches */}
+                            {/* Row 4-6: Date, Shift, Flavor */}
                             <table className="form-table">
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '8%' }}>Date</td>
                                         <td className="input-cell numeric" style={{ width: '25%' }}><EditableField value={formatDateRange()} /></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Line Speed</td>
-                                        <td className="input-cell numeric" style={{ width: '10%' }}><EditableField value={run.line_speed != null ? run.line_speed : ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '10%' }}><EditableField value={allPetEntries.find(p => p.line_speed)?.line_speed || summary.line_speed || ''} /></td>
                                         <td className="label-cell" style={{ width: '10%' }}>Total Units</td>
-                                        <td className="input-cell numeric" style={{ width: '12%' }}><EditableField value={run.total_bottles_produced != null ? fmt(run.total_bottles_produced) : ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '12%' }}><EditableField type="number" value="" /></td>
                                     </tr>
-                                    {/* Production Date(s) returned by the API */}
-                                    {productionDates.length > 0 && (
+                                    {/* Production Date(s) — dates within range when product was actually produced */}
+                                    {selectedProduct && productionDates.length > 0 && (
                                     <tr>
                                         <td className="label-cell">Prod. Date(s)</td>
                                         <td className="input-cell" colSpan={5} style={{ fontSize: '0.8rem' }}>
@@ -392,15 +594,15 @@ const ProductionRunByPetV2 = () => {
                                     )}
                                     <tr>
                                         <td className="label-cell">Shift</td>
-                                        <td className="input-cell"><EditableField value={shiftLabel} /></td>
+                                        <td className="input-cell"><EditableField value={selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || shifts.find(s => String(s.id) === String(selectedShift))?.shift_name || '') : 'All Shifts'} /></td>
                                         <td className="label-cell">Total Batches</td>
-                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={batches.length || ''} /></td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={batchNumbers.length || ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
 
                             {/* Product Details Breakdown */}
-                            {products.length > 0 && (
+                            {allPetEntries.length > 0 && (
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
@@ -415,15 +617,34 @@ const ProductionRunByPetV2 = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {products.map((prod, idx) => (
-                                        <tr key={idx}>
-                                            <td className="label-cell">{prod.product_name}</td>
-                                            <td className="input-cell numeric"><EditableField value={prod.bottle_size != null ? prod.bottle_size : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={prod.line_speed != null ? prod.line_speed : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={prod.bottles_per_pack != null ? prod.bottles_per_pack : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={prod.packs_per_pallet != null ? prod.packs_per_pallet : ''} /></td>
-                                        </tr>
-                                    ))}
+                                    {(() => {
+                                        const uniqueProducts = [];
+                                        const seen = new Set();
+                                        allPetEntries.forEach(pet => {
+                                            const name = pet.product_name;
+                                            if (name && !seen.has(name)) {
+                                                seen.add(name);
+                                                uniqueProducts.push(pet);
+                                            }
+                                        });
+                                        return uniqueProducts.map((petEntry, idx) => {
+                                            const fallback = allPetEntriesUnfiltered.find(p => p.product_name === petEntry.product_name && p.bottle_size) || {};
+                                            const productCatalog = products.find(pr => pr.name === petEntry.product_name) || {};
+                                            const bottleSize = petEntry.bottle_size || fallback.bottle_size || (productCatalog.size ? `${productCatalog.size}ml` : '') || summary.bottle_size || '';
+                                            const lineSpeed = petEntry.line_speed || fallback.line_speed || productCatalog.target_speed_bph || productCatalog.line_speed || summary.line_speed || '';
+                                            const bottlesPerPack = petEntry.bottles_per_pack || fallback.bottles_per_pack || productCatalog.bottles_per_pack || summary.bottles_per_pack || '';
+                                            const packsPerPallet = petEntry.packs_per_pallet || fallback.packs_per_pallet || productCatalog.packs_per_pallet || summary.packs_per_pallet || '';
+                                            return (
+                                                <tr key={idx}>
+                                                    <td className="label-cell">{petEntry.product_name}</td>
+                                                    <td className="input-cell numeric"><EditableField value={bottleSize} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={lineSpeed} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={bottlesPerPack} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={packsPerPallet} /></td>
+                                                </tr>
+                                            );
+                                        });
+                                    })()}
                                 </tbody>
                             </table>
                             )}
@@ -433,9 +654,9 @@ const ProductionRunByPetV2 = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '15%' }}>Total Btls/Hr</td>
-                                        <td className="input-cell numeric" style={{ width: '15%' }}><EditableField value={run.total_bottles_per_hr != null ? fmt(run.total_bottles_per_hr) : ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '15%' }}><EditableField type="number" value={summary.total_bottles_per_hr || totalBtlsPerHr || ''} /></td>
                                         <td className="label-cell" style={{ width: '15%' }}>Efficiency</td>
-                                        <td className="input-cell numeric" style={{ width: '15%' }}><EditableField value={run.avg_efficiency != null ? `${run.avg_efficiency}%` : ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '15%' }}><EditableField value={displayAvgEfficiency ? `${displayAvgEfficiency}%` : ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -450,96 +671,106 @@ const ProductionRunByPetV2 = () => {
                                 <tbody>
                                     <tr>
                                         <td className="label-cell" style={{ width: '10%' }}>Yield</td>
-                                        <td className="input-cell numeric" style={{ width: '40%' }}><EditableField value={run.avg_syrup_yield != null ? `${run.avg_syrup_yield}%` : ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '40%' }}><EditableField value={displayAvgSyrupYield ? `${displayAvgSyrupYield}%` : ''} /></td>
                                         <td className="label-cell" style={{ width: '12%' }}>Total Pack</td>
-                                        <td className="input-cell numeric" style={{ width: '38%' }}><EditableField value={run.total_packs != null ? fmt(run.total_packs) : ''} /></td>
+                                        <td className="input-cell numeric" style={{ width: '38%' }}><EditableField type="number" value={displayTotalPacks || ''} /></td>
                                     </tr>
                                 </tbody>
                             </table>
 
-                            {/* Batch Details Table — from data.batches */}
-                            <table className="form-table section-table">
-                                <thead>
-                                    <tr className="section-header-row">
-                                        <th colSpan={5}>Batch Details</th>
-                                    </tr>
-                                    <tr className="sub-header-row">
-                                        <th style={{ width: '20%' }}>Batch No</th>
-                                        <th style={{ width: '20%' }}>Syrup (Lts)</th>
-                                        <th style={{ width: '20%' }}>Bev (Lts)</th>
-                                        <th style={{ width: '20%' }}>Tank</th>
-                                        <th style={{ width: '20%' }}>Start Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {batches.length > 0 ? batches.map((batch, idx) => (
-                                        <tr key={idx}>
-                                            <td className="label-cell">{batch.batch_number || '—'}</td>
-                                            <td className="input-cell numeric"><EditableField value={batch.syrup_liters != null ? fmt(batch.syrup_liters, 1) : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={batch.beverage_liters != null ? fmt(batch.beverage_liters, 1) : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={batch.tank_number != null ? batch.tank_number : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={batch.start_time != null ? batch.start_time : ''} /></td>
-                                        </tr>
-                                    )) : (
-                                        <tr>
-                                            <td className="input-cell text-center" colSpan={5}>No batch data available</td>
-                                        </tr>
-                                    )}
-                                    {batches.length > 0 && (
-                                    <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
-                                        <td className="label-cell">TOTAL</td>
-                                        <td className="input-cell numeric"><EditableField value={fmt(batches.reduce((s, b) => s + (Number(b.syrup_liters) || 0), 0), 1)} /></td>
-                                        <td className="input-cell numeric"><EditableField value={fmt(batches.reduce((s, b) => s + (Number(b.beverage_liters) || 0), 0), 1)} /></td>
-                                        <td className="input-cell numeric"></td>
-                                        <td className="input-cell numeric"></td>
-                                    </tr>
-                                    )}
-                                </tbody>
-                            </table>
+                            {/* Batch Details Table — from adapted pet.batches */}
+                            {(() => {
+                                const dilutionRatio = parseFloat(syrupMeters.syrup_dilution_ratio) || 0;
+                                const batchMap = {};
+                                const order = [];
+                                const ensureBatch = (bNum) => {
+                                    if (!batchMap[bNum]) {
+                                        batchMap[bNum] = { batch_number: bNum, syrup_liters: 0, beverage_liters: 0 };
+                                        order.push(bNum);
+                                    }
+                                    return batchMap[bNum];
+                                };
+                                allPetEntries.forEach(pet => {
+                                    (pet.batches || []).forEach(batch => {
+                                        const bNum = String(batch.batch_number || '').trim();
+                                        if (!bNum) return;
+                                        const entry = ensureBatch(bNum);
+                                        const syrup = parseFloat(batch.syrup_liters || batch.syrup_used_l || batch.total_syrup_used_l || 0);
+                                        const bev = parseFloat(batch.beverage_liters || batch.bev_liters || batch.total_beverage_liters || 0);
+                                        entry.syrup_liters += syrup;
+                                        entry.beverage_liters += bev > 0 ? bev : (dilutionRatio > 0 && syrup > 0 ? syrup * dilutionRatio : 0);
+                                    });
+                                });
+                                (summary.batch_numbers || []).forEach(bn => {
+                                    const bNum = String(bn || '').trim();
+                                    if (bNum) ensureBatch(bNum);
+                                });
+                                const batchRows = order.map(bNum => batchMap[bNum]);
+
+                                return (
+                                    <table className="form-table section-table">
+                                        <thead>
+                                            <tr className="section-header-row">
+                                                <th colSpan={3}>Batch Details</th>
+                                            </tr>
+                                            <tr className="sub-header-row">
+                                                <th style={{ width: '40%' }}>Batch No</th>
+                                                <th style={{ width: '30%' }}>Syrup (Lts)</th>
+                                                <th style={{ width: '30%' }}>Bev (Lts)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {batchRows.length > 0 ? batchRows.map((batch, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="label-cell">{batch.batch_number}</td>
+                                                    <td className="input-cell numeric"><EditableField value={batch.syrup_liters ? fmt(batch.syrup_liters, 1) : ''} /></td>
+                                                    <td className="input-cell numeric"><EditableField value={batch.beverage_liters ? fmt(batch.beverage_liters, 1) : ''} /></td>
+                                                </tr>
+                                            )) : (
+                                                <tr>
+                                                    <td className="input-cell text-center" colSpan={3}>No batch data available</td>
+                                                </tr>
+                                            )}
+                                            {batchRows.length > 0 && (
+                                            <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
+                                                <td className="label-cell">TOTAL</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(batchRows.reduce((s, b) => s + b.syrup_liters, 0), 1)} /></td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(batchRows.reduce((s, b) => s + b.beverage_liters, 0), 1)} /></td>
+                                            </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                );
+                            })()}
 
                             {/* Time / Workers */}
                             <table className="form-table">
                                 <tbody>
                                     <tr>
                                         <td className="label-cell">Start Up Production</td>
-                                        <td className="input-cell" colSpan={3}><EditableField value={run.production_start_time || ''} /></td>
+                                        <td className="input-cell" colSpan={3}><EditableField value={productionStartTimes[0] || summary.production_start_time || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Shut Down Production</td>
-                                        <td className="input-cell" colSpan={3}><EditableField value={run.production_end_time || ''} /></td>
+                                        <td className="input-cell" colSpan={3}><EditableField value={productionEndTimes[productionEndTimes.length - 1] || summary.production_end_time || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Total Production Hrs</td>
-                                        <td className="input-cell" colSpan={3}><EditableField type="number" step="0.1" value={run.total_production_hours != null ? run.total_production_hours : ''} /></td>
+                                        <td className="input-cell" colSpan={3}><EditableField type="number" step="0.1" value={totalProductionHrs ? totalProductionHrs.toFixed(1) : (summary.total_production_time_hrs || '')} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Cumulative Stoppage Time/min</td>
-                                        <td className="input-cell numeric" colSpan={3}><EditableField value={run.total_downtime_minutes != null ? fmt(run.total_downtime_minutes, 1) : ''} /></td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={selectedProduct ? allPetEntries.reduce((sum, p) => sum + (p.total_downtime_minutes || 0), 0) || '' : (summary.total_downtime_minutes || ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0))) || ''} /></td>
                                     </tr>
                                     <tr>
                                         <td className="label-cell">Workers Count</td>
-                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={workers.worker_count != null ? workers.worker_count : ''} /></td>
+                                        <td className="input-cell numeric" colSpan={3}><EditableField type="number" value={selectedProduct ? allPetEntries.reduce((sum, p) => sum + (p.workers?.worker_count || 0), 0) || '' : (summary.worker_count || workers.length || '')} /></td>
                                     </tr>
-                                    <tr>
-                                        <td className="label-cell">Paid Hours</td>
-                                        <td className="input-cell numeric" colSpan={3}><EditableField value={workers.paid_hours != null ? workers.paid_hours : ''} /></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Overtime Hours</td>
-                                        <td className="input-cell numeric" colSpan={3}><EditableField value={workers.overtime_hours != null ? workers.overtime_hours : ''} /></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Workers</td>
-                                        <td className="input-cell" colSpan={3}><EditableField value={Array.isArray(workers.worker_names) ? workers.worker_names.join(', ') : ''} /></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Absent Workers</td>
-                                        <td className="input-cell" colSpan={3}><EditableField value={Array.isArray(workers.absent_worker_names) && workers.absent_worker_names.length ? workers.absent_worker_names.join(', ') : '—'} /></td>
-                                    </tr>
+
                                 </tbody>
                             </table>
 
-                            {/* Row 36-41: Materials Consumption — from data.materials */}
+                            {/* Row 36-41: Materials Consumption */}
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
@@ -554,26 +785,115 @@ const ProductionRunByPetV2 = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {materials.length > 0 ? materials.map((mat, idx) => (
-                                        <tr key={mat.material_type || idx}>
-                                            <td className="label-cell">{mat.material_type_display || mat.material_type || '—'}</td>
-                                            <td className="unit-cell"><EditableField value={mat.unit || ''} /></td>
-                                            <td className="input-cell numeric"><EditableField type="number" value={mat.expected_usage != null ? mat.expected_usage : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField type="number" value={mat.received != null ? mat.received : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField type="number" value={mat.total_used != null ? mat.total_used : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField type="number" value={mat.returned != null ? mat.returned : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses != null ? mat.total_losses : ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={lossPct(mat)} /></td>
-                                        </tr>
-                                    )) : (
-                                        <tr>
-                                            <td className="input-cell text-center" colSpan={8}>No material data available</td>
-                                        </tr>
+                                    {[
+                                        { type: 'PREFORMS', label: 'Preforms Consumption', defaultUnit: 'Pcs' },
+                                        { type: 'CLOSURES', label: 'Closure Consumption', defaultUnit: 'Pcs' },
+                                        { type: 'LABELS', label: 'Label Consumption', defaultUnit: 'Kg' },
+                                    ].map(({ type, label, defaultUnit }) => {
+                                        const mat = getMaterial(type);
+                                        const lossPercent = mat.total_used
+                                            ? ((mat.total_losses / mat.total_used) * 100).toFixed(1)
+                                            : '';
+                                        return (
+                                            <tr key={type}>
+                                                <td className="label-cell">{label}</td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || defaultUnit} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.expected_usage || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.received || mat.total_received || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.returned || mat.total_returned || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent ? `${lossPercent}%` : ''} /></td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {/* Dynamic Shrink rows */}
+                                    {shrinkRows.includes('printed') && (() => {
+                                        const mat = getMaterial('SHRINK');
+                                        const lossPercent = mat.total_used
+                                            ? ((mat.total_losses / mat.total_used) * 100).toFixed(1)
+                                            : '';
+                                        return (
+                                            <tr>
+                                                <td className="label-cell">
+                                                    Shrink PRINTED
+                                                    <button
+                                                        className="btn btn-link btn-sm p-0 ms-2 no-print text-danger"
+                                                        onClick={() => setShrinkRows(prev => prev.filter(r => r !== 'printed'))}
+                                                        title="Remove Shrink Printed row"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || 'Pcs'} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.expected_usage || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.received || mat.total_received || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.returned || mat.total_returned || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent ? `${lossPercent}%` : ''} /></td>
+                                            </tr>
+                                        );
+                                    })()}
+                                    {shrinkRows.includes('plain') && (() => {
+                                        const mat = getMaterial('STRETCH_FILM');
+                                        const lossPercent = mat.total_used
+                                            ? ((mat.total_losses / mat.total_used) * 100).toFixed(1)
+                                            : '';
+                                        return (
+                                            <tr>
+                                                <td className="label-cell">
+                                                    Shrink Plain
+                                                    <button
+                                                        className="btn btn-link btn-sm p-0 ms-2 no-print text-danger"
+                                                        onClick={() => setShrinkRows(prev => prev.filter(r => r !== 'plain'))}
+                                                        title="Remove Shrink Plain row"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </td>
+                                                <td className="unit-cell"><EditableField value={mat.unit || 'Kg'} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.expected_usage || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.received || mat.total_received || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_used || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.returned || mat.total_returned || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent ? `${lossPercent}%` : ''} /></td>
+                                            </tr>
+                                        );
+                                    })()}
+                                    {/* Add Shrink button row */}
+                                    {(shrinkRows.length < 2) && (
+                                    <tr className="no-print">
+                                        <td colSpan={8} style={{ padding: '4px 8px' }}>
+                                            <div className="d-flex align-items-center gap-2">
+                                                <Plus size={14} className="text-primary" />
+                                                {!shrinkRows.includes('printed') && (
+                                                    <button
+                                                        className="btn btn-outline-primary btn-sm py-0 px-2"
+                                                        style={{ fontSize: '0.75rem' }}
+                                                        onClick={() => setShrinkRows(prev => [...prev, 'printed'])}
+                                                    >
+                                                        + Shrink Printed
+                                                    </button>
+                                                )}
+                                                {!shrinkRows.includes('plain') && (
+                                                    <button
+                                                        className="btn btn-outline-primary btn-sm py-0 px-2"
+                                                        style={{ fontSize: '0.75rem' }}
+                                                        onClick={() => setShrinkRows(prev => [...prev, 'plain'])}
+                                                    >
+                                                        + Shrink Plain
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
                                     )}
                                 </tbody>
                             </table>
 
-                            {/* Row 43-49: Meters Reading — from data.meters */}
+                            {/* Row 43-49: Meters Reading */}
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
@@ -595,7 +915,7 @@ const ProductionRunByPetV2 = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Combi Reading:</span>
-                                                <EditableField value={productionMeters.combi_reading != null ? productionMeters.combi_reading : ''} />
+                                                <EditableField value={productionMeters.combi_reading != null ? productionMeters.combi_reading : (co2Meters.combi_reading != null ? co2Meters.combi_reading : (productionMeters.filler_reading != null ? productionMeters.filler_reading : ''))} />
                                             </div>
                                         </td>
                                         <td></td>
@@ -619,16 +939,10 @@ const ProductionRunByPetV2 = () => {
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">Difference in Balance:</span>
-                                                <EditableField value={co2Meters.difference_in_balance != null ? co2Meters.difference_in_balance : ''} />
+                                                <EditableField value={co2Meters.difference_in_balance != null ? co2Meters.difference_in_balance : (co2Meters.difference_in_balance_kg != null ? co2Meters.difference_in_balance_kg : (co2Meters.start_reading_kg != null && co2Meters.end_reading_kg != null ? (co2Meters.end_reading_kg - co2Meters.start_reading_kg).toFixed(1) : ''))} />
                                             </div>
                                         </td>
-                                        <td>
-                                            <div className="meter-field">
-                                                <span className="meter-label">Filler Reading:</span>
-                                                <EditableField value={productionMeters.filler_reading != null ? productionMeters.filler_reading : ''} />
-                                            </div>
-                                        </td>
-                                        <td></td>
+                                        <td colSpan={2}></td>
                                     </tr>
                                     <tr>
                                         <td>
@@ -637,73 +951,79 @@ const ProductionRunByPetV2 = () => {
                                                 <EditableField value={co2Meters.total_co2_consumed_kg != null ? co2Meters.total_co2_consumed_kg : ''} />
                                             </div>
                                         </td>
-                                        <td>
-                                            <div className="meter-field">
-                                                <span className="meter-label">Syrup Used (L):</span>
-                                                <EditableField value={syrupMeters.total_syrup_used_l != null ? syrupMeters.total_syrup_used_l : ''} />
-                                            </div>
-                                        </td>
-                                        <td></td>
+                                        <td colSpan={2}></td>
                                     </tr>
                                     <tr>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/l:</span>
-                                                <EditableField value={co2Meters.co2_g_per_liter != null ? co2Meters.co2_g_per_liter : ''} />
+                                                <EditableField value={co2Meters.co2_g_per_liter != null ? co2Meters.co2_g_per_liter : (co2Meters.co2_grams_per_liter != null ? co2Meters.co2_grams_per_liter : (co2Meters.total_co2_consumed_kg && summary.total_beverage_liters ? ((co2Meters.total_co2_consumed_kg * 1000) / summary.total_beverage_liters).toFixed(2) : ''))} />
                                             </div>
                                         </td>
-                                        <td>
-                                            <div className="meter-field">
-                                                <span className="meter-label">Dilution Ratio:</span>
-                                                <EditableField value={syrupMeters.syrup_dilution_ratio != null ? syrupMeters.syrup_dilution_ratio : ''} />
-                                            </div>
-                                        </td>
-                                        <td></td>
+                                        <td colSpan={2}></td>
                                     </tr>
                                     <tr>
                                         <td>
                                             <div className="meter-field">
                                                 <span className="meter-label">CO2 g/Btl:</span>
-                                                <EditableField value={co2Meters.co2_g_per_bottle != null ? co2Meters.co2_g_per_bottle : ''} />
+                                                <EditableField value={co2Meters.co2_g_per_bottle != null ? co2Meters.co2_g_per_bottle : (co2Meters.co2_grams_per_bottle != null ? co2Meters.co2_grams_per_bottle : (co2Meters.total_co2_consumed_kg && displayTotalBottles ? ((co2Meters.total_co2_consumed_kg * 1000) / displayTotalBottles).toFixed(2) : ''))} />
                                             </div>
                                         </td>
-                                        <td>
-                                            <div className="meter-field">
-                                                <span className="meter-label">Syrup Yield %:</span>
-                                                <EditableField value={syrupMeters.syrup_yield_percent != null ? `${syrupMeters.syrup_yield_percent}%` : ''} />
-                                            </div>
-                                        </td>
-                                        <td></td>
+                                        <td colSpan={2}></td>
                                     </tr>
                                 </tbody>
                             </table>
 
-                            {/* Downtime Section — from data.downtime */}
-                            <table className="form-table section-table">
-                                <thead>
-                                    <tr className="section-header-row">
-                                        <th colSpan={2}>Downtime</th>
-                                    </tr>
-                                    <tr className="sub-header-row">
-                                        <th style={{ width: '65%' }}>Category</th>
-                                        <th style={{ width: '35%' }}>Duration (min)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td className="label-cell">Total Planned Downtime</td>
-                                        <td className="input-cell numeric"><EditableField value={downtime.total_planned_downtime_mins != null ? fmt(downtime.total_planned_downtime_mins, 1) : ''} /></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="label-cell">Total Mechanical Downtime</td>
-                                        <td className="input-cell numeric"><EditableField value={downtime.total_mechanical_downtime_mins != null ? fmt(downtime.total_mechanical_downtime_mins, 1) : ''} /></td>
-                                    </tr>
-                                    <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
-                                        <td className="label-cell">TOTAL</td>
-                                        <td className="input-cell numeric"><EditableField value={downtime.total_downtime_minutes != null ? fmt(downtime.total_downtime_minutes, 1) : ''} /></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            {/* Downtime Section */}
+                            {(() => {
+                                let totalDowntimeMins = 0;
+                                let plannedDowntimeMins = 0;
+                                let mechanicalDowntimeMins = 0;
+
+                                const dtBreakdown = data?.downtime_breakdown;
+                                if (dtBreakdown?.categories?.length > 0) {
+                                    dtBreakdown.categories.forEach(cat => {
+                                        if (cat.category_name?.toLowerCase().includes('planned')) {
+                                            plannedDowntimeMins += (cat.total_duration_mins || 0);
+                                        } else if (cat.category_name?.toLowerCase().includes('mechanical')) {
+                                            mechanicalDowntimeMins += (cat.total_duration_mins || 0);
+                                        }
+                                    });
+                                    totalDowntimeMins = dtBreakdown.total_downtime_minutes || (plannedDowntimeMins + mechanicalDowntimeMins);
+                                } else {
+                                    plannedDowntimeMins = summary.planned_downtime_mins || 0;
+                                    mechanicalDowntimeMins = summary.mechanical_downtime_mins || 0;
+                                    totalDowntimeMins = summary.total_downtime_minutes || (plannedDowntimeMins + mechanicalDowntimeMins);
+                                }
+
+                                return (
+                                    <table className="form-table section-table">
+                                        <thead>
+                                            <tr className="section-header-row">
+                                                <th colSpan={2}>Downtime</th>
+                                            </tr>
+                                            <tr className="sub-header-row">
+                                                <th style={{ width: '65%' }}>Category</th>
+                                                <th style={{ width: '35%' }}>Duration (min)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td className="label-cell">Total Planned Downtime</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(plannedDowntimeMins, 1)} /></td>
+                                            </tr>
+                                            <tr>
+                                                <td className="label-cell">Total Mechanical Downtime</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(mechanicalDowntimeMins, 1)} /></td>
+                                            </tr>
+                                            <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
+                                                <td className="label-cell">TOTAL</td>
+                                                <td className="input-cell numeric"><EditableField value={fmt(totalDowntimeMins, 1)} /></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                );
+                            })()}
 
                             {/* Row 52-53: Sign Off */}
                             <div className="sign-off-section">
