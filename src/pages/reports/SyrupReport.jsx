@@ -119,25 +119,60 @@ const SyrupReport = () => {
     }, [rawData]);
 
     // Build per-pet syrup yield for the "Syrup Yield by PET Line" chart.
-    // Derived from the SAME rows that populate "Syrup Yield Details" (tableData),
-    // so each bar equals the average of the syrup_yield values shown in the table
-    // for that PET line.
+    // Each line's yield is CUMULATIVE: Σ std syrup / Σ actual syrup × 100 across
+    // all its running reports (not a simple average of percentages). Only running
+    // pets (production activity > 0) are included.
     const syrupByPet = useMemo(() => {
         const petMap = {};
-        defaultPets.forEach(p => { petMap[p] = { pet: p, sum: 0, count: 0, values: [] }; });
+        defaultPets.forEach(p => { petMap[p] = { pet: p, totalStd: 0, totalActual: 0, count: 0, values: [] }; });
 
-        tableData.forEach(row => {
-            const name = row.pet;
-            if (!petMap[name]) petMap[name] = { pet: name, sum: 0, count: 0, values: [] };
-            petMap[name].sum += row.syrup_yield;
-            petMap[name].count += 1;
-            petMap[name].values.push({ date: row.date, shift: row.shift, yield: row.syrup_yield, product: row.product });
+        (rawData?.daily_breakdown || []).forEach(day => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                // Only running pets (had production activity) contribute.
+                const producedOutput = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
+                if (producedOutput <= 0) return;
+
+                const sy = p.syrup_yield;
+                if (sy === null || sy === undefined || sy <= 0) return;
+
+                const name = normalizePet(p.pet_name);
+                if (!petMap[name]) petMap[name] = { pet: name, totalStd: 0, totalActual: 0, count: 0, values: [] };
+
+                const actualSyrup = p.meters_reading?.syrup?.total_syrup_used_l
+                    || p.total_syrup_used_l
+                    || p.syrup_used_liters
+                    || 0;
+                const stdSyrup = p.meters_reading?.syrup?.std_syrup_consumption_l
+                    || p.std_syrup_consumption_l
+                    || 0;
+
+                let addActual = 0;
+                let addStd = 0;
+                if (actualSyrup > 0 && stdSyrup > 0) {
+                    addActual = actualSyrup;
+                    addStd = stdSyrup;
+                } else if (actualSyrup > 0) {
+                    addActual = actualSyrup;
+                    addStd = actualSyrup * (sy / 100);
+                } else {
+                    // Fall back to production volume as the weighting basis.
+                    addActual = producedOutput;
+                    addStd = producedOutput * (sy / 100);
+                }
+
+                petMap[name].totalActual += addActual;
+                petMap[name].totalStd += addStd;
+                petMap[name].count += 1;
+                petMap[name].values.push({ date: day.date, shift: p.shift, yield: sy, product: p.product_name });
+            });
         });
 
         return Object.values(petMap)
             .map(p => ({
                 pet: p.pet,
-                avg_yield: p.count > 0 ? p.sum / p.count : 0,
+                avg_yield: p.totalActual > 0 ? (p.totalStd / p.totalActual) * 100 : 0,
+                totalStd: p.totalStd,
+                totalActual: p.totalActual,
                 count: p.count,
                 values: p.values,
             }))
@@ -146,20 +181,21 @@ const SyrupReport = () => {
                 const bNum = parseInt(b.pet.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
             });
-    }, [tableData]);
+    }, [rawData]);
 
-    // Average syrup yield = simple average of the per-line yields shown on screen,
-    // for lines that are actually running (have at least one report / count > 0).
-    // Derived from syrupByPet so the headline average always matches the per-pet
-    // values displayed in the badges, chart and details table.
+    // Average syrup yield = CUMULATIVE grand total: Σ std / Σ actual × 100 across
+    // all running lines. Derived from syrupByPet so the headline and the per-line
+    // values use the same cumulative method and stay consistent.
     const avgSyrupYield = useMemo(() => {
         const contributors = syrupByPet
-            .filter(p => p.count > 0 && p.avg_yield > 0)
-            .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count }));
-        const value = contributors.length > 0
-            ? contributors.reduce((s, c) => s + c.yield, 0) / contributors.length
+            .filter(p => p.count > 0 && p.totalActual > 0)
+            .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count, totalStd: p.totalStd, totalActual: p.totalActual }));
+        const totalStd = contributors.reduce((s, c) => s + c.totalStd, 0);
+        const totalActual = contributors.reduce((s, c) => s + c.totalActual, 0);
+        const value = totalActual > 0
+            ? (totalStd / totalActual) * 100
             : (rawData?.summary?.avg_syrup_yield || 0);
-        return { value, contributors };
+        return { value, contributors, totalStd, totalActual };
     }, [syrupByPet, rawData]);
 
     // Build daily trend data for line chart
@@ -280,13 +316,13 @@ const SyrupReport = () => {
                                 <span
                                     key={c.pet}
                                     className={`badge bg-${yieldBadge(c.yield)}-subtle text-${yieldBadge(c.yield)} border border-${yieldBadge(c.yield)}-subtle`}
-                                    title={`${c.pet} — average of ${c.count} report${c.count > 1 ? 's' : ''}`}
+                                    title={`${c.pet} — Σstd ${Math.round(c.totalStd).toLocaleString()} / Σactual ${Math.round(c.totalActual).toLocaleString()} L (${c.count} report${c.count > 1 ? 's' : ''})`}
                                 >
                                     {c.pet}: {c.yield.toFixed(1)}%
                                 </span>
                             ))}
                             <span className="text-muted small">
-                                = ({avgSyrupYield.contributors.map(c => c.yield.toFixed(1)).join(' + ')}) ÷ {avgSyrupYield.contributors.length} = {avgSyrupYield.value.toFixed(1)}%
+                                = Σstd {Math.round(avgSyrupYield.totalStd).toLocaleString()} ÷ Σactual {Math.round(avgSyrupYield.totalActual).toLocaleString()} = {avgSyrupYield.value.toFixed(1)}%
                             </span>
                         </div>
                     )}

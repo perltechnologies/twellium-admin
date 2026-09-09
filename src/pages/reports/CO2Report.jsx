@@ -93,6 +93,10 @@ const CO2Report = () => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { pet: name, totalActual: 0, totalStd: 0, count: 0, values: [] };
+                // Only running pets (had production activity) contribute.
+                const producedOutput = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
+                if (producedOutput <= 0) return;
+
                 const cy = p.co2_yield;
                 if (cy !== null && cy !== undefined && cy > 0) {
                     petMap[name].count += 1;
@@ -107,7 +111,7 @@ const CO2Report = () => {
                         petMap[name].totalActual += actualCo2;
                         petMap[name].totalStd += stdCo2;
                     } else {
-                        const weight = actualCo2 > 0 ? actualCo2 : (p.total_bottles_produced || p.total_bottles || p.total_packs || 1);
+                        const weight = actualCo2 > 0 ? actualCo2 : producedOutput;
                         petMap[name].totalActual += weight;
                         petMap[name].totalStd += weight * (cy / 100);
                     }
@@ -119,6 +123,8 @@ const CO2Report = () => {
             .map(p => ({
                 pet: p.pet,
                 avg_yield: p.totalActual > 0 ? (p.totalStd / p.totalActual) * 100 : 0,
+                totalStd: p.totalStd,
+                totalActual: p.totalActual,
                 count: p.count,
             }))
             .sort((a, b) => {
@@ -128,17 +134,19 @@ const CO2Report = () => {
             });
     }, [rawData]);
 
-    // Average CO2 yield = simple average of the per-line yields shown on screen,
-    // for lines that are actually running (count > 0). Derived from co2ByPet so
-    // the headline average always matches the per-pet values displayed.
+    // Average CO2 yield = CUMULATIVE grand total: Σ std / Σ actual × 100 across all
+    // running lines. Derived from co2ByPet so the headline and per-line values use
+    // the same cumulative method and stay consistent.
     const avgCo2Yield = useMemo(() => {
         const contributors = co2ByPet
-            .filter(p => p.count > 0 && p.avg_yield > 0)
-            .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count }));
-        const value = contributors.length > 0
-            ? contributors.reduce((s, c) => s + c.yield, 0) / contributors.length
+            .filter(p => p.count > 0 && p.totalActual > 0)
+            .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count, totalStd: p.totalStd, totalActual: p.totalActual }));
+        const totalStd = contributors.reduce((s, c) => s + c.totalStd, 0);
+        const totalActual = contributors.reduce((s, c) => s + c.totalActual, 0);
+        const value = totalActual > 0
+            ? (totalStd / totalActual) * 100
             : (rawData?.summary?.avg_co2_yield || 0);
-        return { value, contributors };
+        return { value, contributors, totalStd, totalActual };
     }, [co2ByPet, rawData]);
 
     // Build daily trend data
@@ -267,13 +275,13 @@ const CO2Report = () => {
                                 <span
                                     key={c.pet}
                                     className={`badge bg-${yieldBadge(c.yield)}-subtle text-${yieldBadge(c.yield)} border border-${yieldBadge(c.yield)}-subtle`}
-                                    title={`${c.pet} — average of ${c.count} report${c.count > 1 ? 's' : ''}`}
+                                    title={`${c.pet} — Σstd ${Math.round(c.totalStd).toLocaleString()} / Σactual ${Math.round(c.totalActual).toLocaleString()} kg (${c.count} report${c.count > 1 ? 's' : ''})`}
                                 >
                                     {c.pet}: {c.yield.toFixed(1)}%
                                 </span>
                             ))}
                             <span className="text-muted small">
-                                = ({avgCo2Yield.contributors.map(c => c.yield.toFixed(1)).join(' + ')}) ÷ {avgCo2Yield.contributors.length} = {avgCo2Yield.value.toFixed(1)}%
+                                = Σstd {Math.round(avgCo2Yield.totalStd).toLocaleString()} ÷ Σactual {Math.round(avgCo2Yield.totalActual).toLocaleString()} = {avgCo2Yield.value.toFixed(1)}%
                             </span>
                         </div>
                     )}
