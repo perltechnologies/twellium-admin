@@ -91,52 +91,6 @@ const SyrupReport = () => {
         return f.start_date === f.end_date ? f.start_date : `${f.start_date} to ${f.end_date}`;
     }, [rawData]);
 
-    const avgSyrupYield = useMemo(() => {
-        // Cumulative average: Total Std Syrup / Total Actual Syrup × 100
-        // This weights each entry by actual syrup volume rather than simple averaging percentages
-        let totalStdSyrup = 0;
-        let totalActualSyrup = 0;
-
-        (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                const sy = p.syrup_yield;
-                if (sy === null || sy === undefined || sy <= 0) return;
-
-                // Get actual syrup used from meters or direct field
-                const actualSyrup = p.meters_reading?.syrup?.total_syrup_used_l
-                    || p.total_syrup_used_l
-                    || p.syrup_used_liters
-                    || 0;
-                // Get std syrup consumption
-                const stdSyrup = p.meters_reading?.syrup?.std_syrup_consumption_l
-                    || p.std_syrup_consumption_l
-                    || 0;
-
-                if (actualSyrup > 0 && stdSyrup > 0) {
-                    totalActualSyrup += actualSyrup;
-                    totalStdSyrup += stdSyrup;
-                } else if (actualSyrup > 0 && sy > 0) {
-                    // Derive std from yield: std = actual × (yield/100)
-                    totalActualSyrup += actualSyrup;
-                    totalStdSyrup += actualSyrup * (sy / 100);
-                } else {
-                    // Fallback: weight by total_bottles_produced as proxy for production volume
-                    const bottles = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
-                    if (bottles > 0) {
-                        totalActualSyrup += bottles;
-                        totalStdSyrup += bottles * (sy / 100);
-                    }
-                }
-            });
-        });
-
-        if (totalActualSyrup > 0 && totalStdSyrup > 0) {
-            return (totalStdSyrup / totalActualSyrup) * 100;
-        }
-        // Final fallback: use API summary value
-        return rawData?.summary?.avg_syrup_yield || 0;
-    }, [rawData]);
-
     const normalizePet = (name) => {
         const num = (name || '').toLowerCase().match(/pet\s*(\d+)/);
         return num ? `Pet ${num[1]}` : name;
@@ -193,6 +147,20 @@ const SyrupReport = () => {
                 return aNum - bNum;
             });
     }, [tableData]);
+
+    // Average syrup yield = simple average of the per-line yields shown on screen,
+    // for lines that are actually running (have at least one report / count > 0).
+    // Derived from syrupByPet so the headline average always matches the per-pet
+    // values displayed in the badges, chart and details table.
+    const avgSyrupYield = useMemo(() => {
+        const contributors = syrupByPet
+            .filter(p => p.count > 0 && p.avg_yield > 0)
+            .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count }));
+        const value = contributors.length > 0
+            ? contributors.reduce((s, c) => s + c.yield, 0) / contributors.length
+            : (rawData?.summary?.avg_syrup_yield || 0);
+        return { value, contributors };
+    }, [syrupByPet, rawData]);
 
     // Build daily trend data for line chart
     const dailyTrendData = useMemo(() => {
@@ -293,12 +261,35 @@ const SyrupReport = () => {
             <FilterInputs />
 
             {dateRangeLabel && (
-                <div className="alert alert-light d-flex align-items-center mb-3 py-2">
-                    <i className="ti ti-calendar me-2 text-primary"></i>
-                    <span>Period: <strong>{dateRangeLabel}</strong></span>
-                    <span className="ms-3">
-                        Avg Syrup Yield: <strong className={`text-${yieldBadge(avgSyrupYield)}`}>{avgSyrupYield.toFixed(1)}%</strong>
-                    </span>
+                <div className="alert alert-light mb-3 py-2">
+                    <div className="d-flex align-items-center flex-wrap">
+                        <i className="ti ti-calendar me-2 text-primary"></i>
+                        <span>Period: <strong>{dateRangeLabel}</strong></span>
+                        <span className="ms-3">
+                            Avg Syrup Yield: <strong className={`text-${yieldBadge(avgSyrupYield.value)}`}>{avgSyrupYield.value.toFixed(1)}%</strong>
+                        </span>
+                        {avgSyrupYield.contributors?.length > 0 && (
+                            <span className="ms-2 text-muted small">
+                                (avg of {avgSyrupYield.contributors.length} running line{avgSyrupYield.contributors.length > 1 ? 's' : ''})
+                            </span>
+                        )}
+                    </div>
+                    {avgSyrupYield.contributors?.length > 0 && (
+                        <div className="d-flex flex-wrap gap-2 mt-2 align-items-center">
+                            {avgSyrupYield.contributors.map((c) => (
+                                <span
+                                    key={c.pet}
+                                    className={`badge bg-${yieldBadge(c.yield)}-subtle text-${yieldBadge(c.yield)} border border-${yieldBadge(c.yield)}-subtle`}
+                                    title={`${c.pet} — average of ${c.count} report${c.count > 1 ? 's' : ''}`}
+                                >
+                                    {c.pet}: {c.yield.toFixed(1)}%
+                                </span>
+                            ))}
+                            <span className="text-muted small">
+                                = ({avgSyrupYield.contributors.map(c => c.yield.toFixed(1)).join(' + ')}) ÷ {avgSyrupYield.contributors.length} = {avgSyrupYield.value.toFixed(1)}%
+                            </span>
+                        </div>
+                    )}
                 </div>
             )}
 

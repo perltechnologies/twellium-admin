@@ -78,43 +78,6 @@ const CO2Report = () => {
         return f.start_date === f.end_date ? f.start_date : `${f.start_date} to ${f.end_date}`;
     }, [rawData]);
 
-    const avgCo2Yield = useMemo(() => {
-        // Cumulative average: Total Std CO2 / Total Actual CO2 × 100
-        let totalStdCo2 = 0;
-        let totalActualCo2 = 0;
-
-        (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                const cy = p.co2_yield;
-                if (cy === null || cy === undefined || cy <= 0) return;
-
-                const actualCo2 = p.meters_reading?.co2?.total_co2_consumed_kg
-                    || p.total_co2_consumed_kg || 0;
-                const stdCo2 = p.meters_reading?.co2?.std_co2_consumption_kg
-                    || p.std_co2_consumption_kg || 0;
-
-                if (actualCo2 > 0 && stdCo2 > 0) {
-                    totalActualCo2 += actualCo2;
-                    totalStdCo2 += stdCo2;
-                } else if (actualCo2 > 0) {
-                    totalActualCo2 += actualCo2;
-                    totalStdCo2 += actualCo2 * (cy / 100);
-                } else {
-                    const bottles = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
-                    if (bottles > 0) {
-                        totalActualCo2 += bottles;
-                        totalStdCo2 += bottles * (cy / 100);
-                    }
-                }
-            });
-        });
-
-        if (totalActualCo2 > 0 && totalStdCo2 > 0) {
-            return (totalStdCo2 / totalActualCo2) * 100;
-        }
-        return rawData?.summary?.avg_co2_yield || 0;
-    }, [rawData]);
-
     const defaultPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
     const normalizePet = (name) => {
         const num = (name || '').toLowerCase().match(/pet\s*(\d+)/);
@@ -164,6 +127,19 @@ const CO2Report = () => {
                 return aNum - bNum;
             });
     }, [rawData]);
+
+    // Average CO2 yield = simple average of the per-line yields shown on screen,
+    // for lines that are actually running (count > 0). Derived from co2ByPet so
+    // the headline average always matches the per-pet values displayed.
+    const avgCo2Yield = useMemo(() => {
+        const contributors = co2ByPet
+            .filter(p => p.count > 0 && p.avg_yield > 0)
+            .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count }));
+        const value = contributors.length > 0
+            ? contributors.reduce((s, c) => s + c.yield, 0) / contributors.length
+            : (rawData?.summary?.avg_co2_yield || 0);
+        return { value, contributors };
+    }, [co2ByPet, rawData]);
 
     // Build daily trend data
     const dailyTrendData = useMemo(() => {
@@ -272,12 +248,35 @@ const CO2Report = () => {
             <FilterInputs />
 
             {dateRangeLabel && (
-                <div className="alert alert-light d-flex align-items-center mb-3 py-2">
-                    <i className="ti ti-calendar me-2 text-primary"></i>
-                    <span>Period: <strong>{dateRangeLabel}</strong></span>
-                    <span className="ms-3">
-                        Avg CO₂ Yield: <strong className={`text-${yieldBadge(avgCo2Yield)}`}>{avgCo2Yield.toFixed(1)}%</strong>
-                    </span>
+                <div className="alert alert-light mb-3 py-2">
+                    <div className="d-flex align-items-center flex-wrap">
+                        <i className="ti ti-calendar me-2 text-primary"></i>
+                        <span>Period: <strong>{dateRangeLabel}</strong></span>
+                        <span className="ms-3">
+                            Avg CO₂ Yield: <strong className={`text-${yieldBadge(avgCo2Yield.value)}`}>{avgCo2Yield.value.toFixed(1)}%</strong>
+                        </span>
+                        {avgCo2Yield.contributors?.length > 0 && (
+                            <span className="ms-2 text-muted small">
+                                (avg of {avgCo2Yield.contributors.length} running line{avgCo2Yield.contributors.length > 1 ? 's' : ''})
+                            </span>
+                        )}
+                    </div>
+                    {avgCo2Yield.contributors?.length > 0 && (
+                        <div className="d-flex flex-wrap gap-2 mt-2 align-items-center">
+                            {avgCo2Yield.contributors.map((c) => (
+                                <span
+                                    key={c.pet}
+                                    className={`badge bg-${yieldBadge(c.yield)}-subtle text-${yieldBadge(c.yield)} border border-${yieldBadge(c.yield)}-subtle`}
+                                    title={`${c.pet} — average of ${c.count} report${c.count > 1 ? 's' : ''}`}
+                                >
+                                    {c.pet}: {c.yield.toFixed(1)}%
+                                </span>
+                            ))}
+                            <span className="text-muted small">
+                                = ({avgCo2Yield.contributors.map(c => c.yield.toFixed(1)).join(' + ')}) ÷ {avgCo2Yield.contributors.length} = {avgCo2Yield.value.toFixed(1)}%
+                            </span>
+                        </div>
+                    )}
                 </div>
             )}
 
