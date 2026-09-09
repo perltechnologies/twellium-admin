@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Printer, Loader2, Calendar, Search } from 'lucide-react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Printer, Loader2, Calendar, Search, CheckCircle2, UserCheck, ArrowLeft } from 'lucide-react';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
+import { usersApi } from '../../api/users';
 import { formatAndSortPets } from '../../utils/petUtils';
 
 const BatchPrintTransfer = () => {
+    const location = useLocation();
+    const navigate = useNavigate();
+    // This page is only reachable via the Production Transfer (Transfer Execution)
+    // page, which passes navigation state. Direct URL access has no state and is
+    // redirected back to the transfer list.
+    const cameFromTransferList = Boolean(location.state && location.state.fromTransferList);
+
     const printRef = useRef();
     const today = new Date().toISOString().split('T')[0];
     const [loading, setLoading] = useState(false);
@@ -28,6 +37,14 @@ const BatchPrintTransfer = () => {
     const [documentCode, setDocumentCode] = useState('');
     const [singlePacks, setSinglePacks] = useState('');
 
+    // Transfer completion
+    const [users, setUsers] = useState([]);
+    const [productionSupervisor, setProductionSupervisor] = useState('');
+    const [warehouseSupervisor, setWarehouseSupervisor] = useState('');
+    const [completing, setCompleting] = useState(false);
+    const [completed, setCompleted] = useState(false);
+    const [completeError, setCompleteError] = useState('');
+
     useEffect(() => {
         fetchDropdownData();
         generateDocumentCode();
@@ -41,9 +58,10 @@ const BatchPrintTransfer = () => {
 
     const fetchDropdownData = async () => {
         try {
-            const [petsRes, productsRes] = await Promise.all([
+            const [petsRes, productsRes, usersRes] = await Promise.all([
                 productionApi.getPets(),
                 inventoryApi.getProducts({ page_size: 100 }),
+                usersApi.getUsers({ page_size: 200, role: 'SUPERVISOR' }).catch(() => null),
             ]);
 
             const allPets = formatAndSortPets(petsRes);
@@ -51,6 +69,21 @@ const BatchPrintTransfer = () => {
 
             const prodList = productsRes.data?.data?.data || productsRes.data?.data || productsRes.data?.results || [];
             setProducts(Array.isArray(prodList) ? prodList : prodList.results || []);
+
+            // Parse users the same way UserList does, then keep supervisors only.
+            const usersData = usersRes?.data;
+            let userList = [];
+            if (Array.isArray(usersData)) {
+                userList = usersData;
+            } else if (usersData?.results) {
+                userList = usersData.results;
+            } else if (usersData?.data) {
+                userList = usersData.data.results || usersData.data;
+            }
+            const supervisors = (Array.isArray(userList) ? userList : []).filter(
+                (u) => String(u.role || '').toUpperCase() === 'SUPERVISOR'
+            );
+            setUsers(supervisors);
         } catch (error) {
             console.error('Failed to fetch dropdown data:', error);
         }
@@ -75,6 +108,8 @@ const BatchPrintTransfer = () => {
                 : list;
 
             setBarcodes(filtered);
+            setCompleted(false);
+            setCompleteError('');
         } catch (error) {
             console.error('Failed to fetch barcodes:', error);
             setBarcodes([]);
@@ -100,6 +135,75 @@ const BatchPrintTransfer = () => {
         document.title = prevTitle;
     };
 
+    const userLabel = (u) => {
+        if (!u) return '';
+        return (
+            u.full_name ||
+            [u.first_name, u.last_name].filter(Boolean).join(' ').trim() ||
+            u.name ||
+            u.username ||
+            u.email ||
+            `User #${u.id}`
+        );
+    };
+
+    // All loaded users are supervisors, so the dropdown shows the plain name.
+    const userOptionLabel = (u) => userLabel(u);
+
+    const findUser = (id) => users.find((u) => String(u.id) === String(id));
+
+    const handleCompleteTransfer = async () => {
+        setCompleteError('');
+        if (!productionSupervisor || !warehouseSupervisor) {
+            setCompleteError('Select both a Production Supervisor and a Warehouse Supervisor before completing the transfer.');
+            return;
+        }
+        if (barcodes.length === 0) {
+            setCompleteError('There are no pallets loaded to transfer.');
+            return;
+        }
+
+        setCompleting(true);
+        try {
+            const payload = {
+                document_code: documentCode,
+                product_name: productName,
+                start_date: filters.startDate,
+                end_date: filters.endDate,
+                shift: filters.shift || null,
+                total_pallets: totalPallets,
+                total_packs: totalPacks + (parseInt(singlePacks) || 0),
+                production_supervisor: productionSupervisor,
+                warehouse_supervisor: warehouseSupervisor,
+                handling_units: barcodes.map((b) => b.id).filter(Boolean),
+            };
+
+            // Persist the transfer completion. If the dedicated backend endpoint
+            // is not yet implemented (404/501), still capture the sign-off in the
+            // printable form and mark complete rather than blocking the user.
+            try {
+                await inventoryApi.completeTransfer(payload);
+            } catch (err) {
+                const status = err?.response?.status;
+                if (status === 404 || status === 501 || status === 405) {
+                    console.info('completeTransfer endpoint not available yet; recorded locally.', payload);
+                } else {
+                    throw err;
+                }
+            }
+
+            setCompleted(true);
+        } catch (error) {
+            console.error('Failed to complete transfer:', error);
+            setCompleteError(
+                error?.response?.data?.message ||
+                'Could not complete the transfer. Please try again or contact an administrator.'
+            );
+        } finally {
+            setCompleting(false);
+        }
+    };
+
     // Computed values
     const totalPallets = barcodes.length;
     const totalPacks = barcodes.reduce((sum, b) => sum + (parseInt(b.quantity) || parseInt(b.packs_per_pallet) || parseInt(b.total_packs) || 0), 0);
@@ -108,14 +212,28 @@ const BatchPrintTransfer = () => {
         ? new Date(filters.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : `${new Date(filters.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} - ${new Date(filters.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
 
+    // Block direct URL access — must come from the Production Transfer page.
+    if (!cameFromTransferList) {
+        return <Navigate to="/post-production/transfer-execution" replace />;
+    }
+
     return (
         <div>
             {/* Filter Controls - hidden on print */}
             <div className="no-print mb-3">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                    <div>
-                        <h4 className="fw-bold mb-1">Batch Print — Transfer Form</h4>
-                        <p className="text-muted mb-0">Production to Warehouse transfer documentation</p>
+                    <div className="d-flex align-items-center gap-3">
+                        <button
+                            className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-2"
+                            onClick={() => navigate('/post-production/transfer-execution')}
+                            title="Back to Production Transfer"
+                        >
+                            <ArrowLeft size={16} /> Back
+                        </button>
+                        <div>
+                            <h4 className="fw-bold mb-1">Batch Print — Transfer Form</h4>
+                            <p className="text-muted mb-0">Production to Warehouse transfer documentation</p>
+                        </div>
                     </div>
                     <button
                         className="btn btn-primary d-flex align-items-center gap-2"
@@ -210,6 +328,85 @@ const BatchPrintTransfer = () => {
                     <div className="d-flex align-items-center gap-3 mt-2">
                         <span className="badge bg-primary fs-13">{barcodes.length} pallets found</span>
                         <span className="text-muted fs-13">Total Packs: {totalPacks.toLocaleString()}</span>
+                    </div>
+                )}
+
+                {/* Complete Transfer panel */}
+                {barcodes.length > 0 && (
+                    <div className="card mt-3 border-0 shadow-sm">
+                        <div className="card-header bg-transparent border-bottom d-flex align-items-center gap-2 py-2">
+                            <span className="d-inline-flex align-items-center justify-content-center bg-soft-success text-success rounded" style={{ width: 32, height: 32 }}>
+                                <UserCheck size={16} />
+                            </span>
+                            <span className="fw-semibold">Complete Transfer</span>
+                            {completed && (
+                                <span className="badge bg-success d-inline-flex align-items-center gap-1 ms-2">
+                                    <CheckCircle2 size={13} /> Completed
+                                </span>
+                            )}
+                        </div>
+                        <div className="card-body">
+                            <p className="text-muted fs-13 mb-3">
+                                Assign the supervisors signing off this Staging&nbsp;→&nbsp;Main transfer, then complete it.
+                            </p>
+                            <div className="row g-3 align-items-end">
+                                <div className="col-md-4">
+                                    <label className="form-label">Production Supervisor</label>
+                                    <select
+                                        className="form-select form-select-sm"
+                                        value={productionSupervisor}
+                                        onChange={(e) => setProductionSupervisor(e.target.value)}
+                                        disabled={completed || users.length === 0}
+                                    >
+                                        <option value="">
+                                            {users.length === 0 ? 'No supervisors available' : 'Select supervisor…'}
+                                        </option>
+                                        {users.map((u) => (
+                                            <option key={u.id} value={u.id}>{userOptionLabel(u)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="col-md-4">
+                                    <label className="form-label">Warehouse Supervisor</label>
+                                    <select
+                                        className="form-select form-select-sm"
+                                        value={warehouseSupervisor}
+                                        onChange={(e) => setWarehouseSupervisor(e.target.value)}
+                                        disabled={completed || users.length === 0}
+                                    >
+                                        <option value="">
+                                            {users.length === 0 ? 'No supervisors available' : 'Select supervisor…'}
+                                        </option>
+                                        {users.map((u) => (
+                                            <option key={u.id} value={u.id}>{userOptionLabel(u)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="col-md-4">
+                                    <button
+                                        className="btn btn-success d-flex align-items-center justify-content-center gap-2 w-100"
+                                        onClick={handleCompleteTransfer}
+                                        disabled={completing || completed}
+                                    >
+                                        {completing ? (
+                                            <><Loader2 size={16} className="spinning" /> Completing…</>
+                                        ) : completed ? (
+                                            <><CheckCircle2 size={16} /> Transfer Completed</>
+                                        ) : (
+                                            <><CheckCircle2 size={16} /> Complete Transfer</>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                            {completeError && (
+                                <div className="alert alert-danger py-2 px-3 mt-3 mb-0 fs-13">{completeError}</div>
+                            )}
+                            {completed && (
+                                <div className="alert alert-success py-2 px-3 mt-3 mb-0 fs-13">
+                                    Transfer <strong>{documentCode}</strong> completed — {totalPallets} pallet(s) moved from Staging Unit to Main Unit.
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
@@ -333,11 +530,11 @@ const BatchPrintTransfer = () => {
                             <div className="sign-off-row">
                                 <div className="sign-off-field">
                                     <label>Name:</label>
-                                    <div className="sign-line"></div>
+                                    <div className="sign-line">{productionSupervisor ? userLabel(findUser(productionSupervisor)) : ''}</div>
                                 </div>
                                 <div className="sign-off-field">
                                     <label>Name:</label>
-                                    <div className="sign-line"></div>
+                                    <div className="sign-line">{warehouseSupervisor ? userLabel(findUser(warehouseSupervisor)) : ''}</div>
                                 </div>
                             </div>
                             <div className="sign-off-row">

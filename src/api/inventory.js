@@ -20,6 +20,10 @@ export const inventoryApi = {
     lookupUnit: (params) => api.get('/inventory/handling-units/lookup/', { params }),
     printBatch: (data) => api.post('/inventory/handling-units/print_batch/', data),
 
+    // Transfer completion (Staging Unit -> Main Unit). Endpoint may be added
+    // backend-side; kept here so the UI can persist the sign-off when available.
+    completeTransfer: (data) => api.post('/inventory/handling-units/complete-transfer/', data),
+
     // Diagnostic & Management Tools (Redesigned)
     getUnitStatus: (value) => api.get('/inventory/handling-units/get-status/', { params: { value } }),
     getBarcodeByRfid: (rfid_number) => api.get('/inventory/handling-units/get-barcode/', { params: { rfid_number } }),

@@ -336,14 +336,13 @@ const ProductionReportFormV2 = () => {
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={5}>Product Details</th>
+                                        <th colSpan={4}>Product Details</th>
                                     </tr>
                                     <tr className="sub-header-row">
-                                        <th style={{ width: '28%' }}>Product</th>
-                                        <th style={{ width: '18%' }}>Bottle Size</th>
-                                        <th style={{ width: '18%' }}>Bottles/Pack</th>
-                                        <th style={{ width: '18%' }}>Packs/Pallet</th>
-                                        <th style={{ width: '18%' }}>Single Packs</th>
+                                        <th style={{ width: '34%' }}>Product</th>
+                                        <th style={{ width: '22%' }}>Bottle Size</th>
+                                        <th style={{ width: '22%' }}>Bottles/Pack</th>
+                                        <th style={{ width: '22%' }}>Packs/Pallet</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -355,7 +354,6 @@ const ProductionReportFormV2 = () => {
                                                 <td className="input-cell numeric"><EditableField value={line.bottle_size || summary.bottle_size || p?.size || ''} /></td>
                                                 <td className="input-cell numeric"><EditableField value={line.bottles_per_pack || summary.bottles_per_pack || ''} /></td>
                                                 <td className="input-cell numeric"><EditableField value={line.packs_per_pallet || summary.packs_per_pallet || ''} /></td>
-                                                <td className="input-cell numeric"><EditableField value={line.single_packs != null ? line.single_packs : ''} /></td>
                                             </tr>
                                         );
                                     }) : (
@@ -364,7 +362,6 @@ const ProductionReportFormV2 = () => {
                                             <td className="input-cell numeric"><EditableField value={summary.bottle_size || ''} /></td>
                                             <td className="input-cell numeric"><EditableField value={summary.bottles_per_pack || ''} /></td>
                                             <td className="input-cell numeric"><EditableField value={summary.packs_per_pallet || ''} /></td>
-                                            <td className="input-cell numeric"><EditableField value={summary.single_packs != null ? summary.single_packs : ''} /></td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -547,7 +544,7 @@ const ProductionReportFormV2 = () => {
                                         <th>Unit</th>
                                         <th>Used</th>
                                         <th>Losses</th>
-                                        <th>Yield%</th>
+                                        <th>Loss%</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -562,13 +559,28 @@ const ProductionReportFormV2 = () => {
                                         { type: 'GLUE', label: 'Glue Consumption', defaultUnit: 'Kg' },
                                     ].map(({ type, label, defaultUnit }) => {
                                         const mat = getMaterial(type);
+                                        // Loss% = losses / used * 100. Falls back to (100 - yield%) when
+                                        // used/losses are unavailable but a yield percentage exists.
+                                        // When both Used and Losses are 0/empty, Loss% is left blank.
+                                        const usedNum = Number(mat.total_used);
+                                        const lossesNum = Number(mat.total_losses);
+                                        const hasUsed = mat.total_used != null && mat.total_used !== '' && usedNum > 0;
+                                        const hasLosses = mat.total_losses != null && mat.total_losses !== '' && lossesNum > 0;
+                                        let lossPercent = '';
+                                        if (!hasUsed && !hasLosses) {
+                                            lossPercent = '';
+                                        } else if (hasUsed) {
+                                            lossPercent = (lossesNum || 0) / usedNum * 100;
+                                        } else if (mat.yield_percentage != null && mat.yield_percentage !== '') {
+                                            lossPercent = 100 - Number(mat.yield_percentage);
+                                        }
                                         return (
                                             <tr key={type}>
                                                 <td className="label-cell" colSpan={2}>{mat.material_type_display || label}</td>
                                                 <td className="unit-cell"><EditableField value={mat.unit || defaultUnit} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={mat.total_used != null ? mat.total_used : ''} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses != null ? mat.total_losses : ''} /></td>
-                                                <td className="input-cell numeric"><EditableField value={mat.yield_percentage != null && mat.yield_percentage !== '' ? `${Number(mat.yield_percentage).toFixed(2)}%` : ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={lossPercent !== '' ? `${Number(lossPercent).toFixed(2)}%` : ''} /></td>
                                             </tr>
                                         );
                                     })}

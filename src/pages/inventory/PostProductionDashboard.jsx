@@ -179,7 +179,7 @@ const PostProductionDashboard = () => {
             items: [
                 { title: 'Production Mode', desc: 'Create handling units & auto-generate barcode labels', icon: Package, path: '/post-production/production', badge: 'Active' },
                 { title: 'Bulk Barcodes', desc: 'Batch generate & export PDF pallet barcode labels', icon: QrCode, path: '/post-production/analytics/bulk-barcodes', badge: 'Export PDF' },
-                { title: 'Transfer Form', desc: 'Official production-to-warehouse dispatch form', icon: FileText, path: '/post-production/batch-print-transfer', badge: 'Printable' },
+                { title: 'Transfer Form', desc: 'Official production-to-warehouse dispatch form', icon: FileText, path: '/post-production/transfer-execution', badge: 'Printable' },
                 { title: 'Batch Scan', desc: 'High-speed multi-barcode scanner & stage check-in', icon: ScanLine, path: '/post-production/batch-scan', badge: 'Scanner' },
             ]
         },

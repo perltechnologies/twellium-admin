@@ -2,7 +2,7 @@ import api from './axios';
 import { withEndpointFallbacks } from './fallbacks';
 
 export const usersApi = {
-    getUsers: () => api.get('/core/users/'),
+    getUsers: (params) => api.get('/core/users/', { params }),
     createUser: (data) => api.post('/core/users/', data),
 
     updateUser: (id, data) => api.patch(`/core/users/${id}/`, data),

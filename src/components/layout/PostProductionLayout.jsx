@@ -17,6 +17,7 @@ const postProductionNav = [
         items: [
             { name: 'Production Mode', icon: 'ti-building-factory', path: '/post-production/production' },
             { name: 'Bulk Barcodes', icon: 'ti-barcode', path: '/post-production/analytics/bulk-barcodes' },
+            { name: 'Production Transfer', icon: 'ti-transfer', path: '/post-production/transfer-execution' },
             { name: 'Warehouse Flow', icon: 'ti-building-warehouse', path: '/post-production/warehouse' },
         ],
     },
@@ -45,7 +46,7 @@ const postProductionNav = [
             { name: 'Activity Logs', icon: 'ti-clipboard-list', path: '/post-production/activity-logs' },
             { name: 'Reprint Labels', icon: 'ti-printer', path: '/post-production/reprint' },
             { name: 'Batch Scan', icon: 'ti-scan', path: '/post-production/batch-scan' },
-            { name: 'Transfer Form', icon: 'ti-transfer-out', path: '/post-production/batch-print-transfer' },
+            { name: 'Transfer Form', icon: 'ti-transfer-out', path: '/post-production/transfer-execution' },
             { name: 'Unit Lookup', icon: 'ti-search', path: '/post-production/lookup' },
             { name: 'Manage Stages', icon: 'ti-settings', path: '/post-production/manage-stages' },
         ],
