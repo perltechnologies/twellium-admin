@@ -119,9 +119,11 @@ const SyrupReport = () => {
     }, [rawData]);
 
     // Build per-pet syrup yield for the "Syrup Yield by PET Line" chart.
-    // Each line's yield is CUMULATIVE: Σ std syrup / Σ actual syrup × 100 across
-    // all its running reports (not a simple average of percentages). Only running
-    // pets (production activity > 0) are included.
+    // Each line's yield is CUMULATIVE: Σ standard / Σ actual × 100 across its
+    // running reports. Standard comes from the syrup meter reading; ACTUAL is
+    // derived as standard / (row yield%/100), because the raw total_syrup_used_l
+    // meter field is unreliable for some lines while std + yield% are consistent
+    // (this reproduces the plant's per-shift Standard/Actual/Yield table exactly).
     const syrupByPet = useMemo(() => {
         const petMap = {};
         defaultPets.forEach(p => { petMap[p] = { pet: p, totalStd: 0, totalActual: 0, count: 0, values: [] }; });
@@ -132,38 +134,22 @@ const SyrupReport = () => {
                 const producedOutput = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
                 if (producedOutput <= 0) return;
 
-                const sy = p.syrup_yield;
-                if (sy === null || sy === undefined || sy <= 0) return;
+                const syr = p.meters_reading?.syrup || {};
+                const stdSyrup = syr.std_syrup_consumption_l || 0;
+                // Per-row yield% from the meter reading (authoritative), fall back to pet.syrup_yield.
+                const rowYield = syr.syrup_yield_percent || p.syrup_yield || 0;
+                if (stdSyrup <= 0 || rowYield <= 0) return;
+
+                // Actual = standard / (yield/100). Reliable pairing, no fallbacks to bottles.
+                const actualSyrup = stdSyrup / (rowYield / 100);
 
                 const name = normalizePet(p.pet_name);
                 if (!petMap[name]) petMap[name] = { pet: name, totalStd: 0, totalActual: 0, count: 0, values: [] };
 
-                const actualSyrup = p.meters_reading?.syrup?.total_syrup_used_l
-                    || p.total_syrup_used_l
-                    || p.syrup_used_liters
-                    || 0;
-                const stdSyrup = p.meters_reading?.syrup?.std_syrup_consumption_l
-                    || p.std_syrup_consumption_l
-                    || 0;
-
-                let addActual = 0;
-                let addStd = 0;
-                if (actualSyrup > 0 && stdSyrup > 0) {
-                    addActual = actualSyrup;
-                    addStd = stdSyrup;
-                } else if (actualSyrup > 0) {
-                    addActual = actualSyrup;
-                    addStd = actualSyrup * (sy / 100);
-                } else {
-                    // Fall back to production volume as the weighting basis.
-                    addActual = producedOutput;
-                    addStd = producedOutput * (sy / 100);
-                }
-
-                petMap[name].totalActual += addActual;
-                petMap[name].totalStd += addStd;
+                petMap[name].totalActual += actualSyrup;
+                petMap[name].totalStd += stdSyrup;
                 petMap[name].count += 1;
-                petMap[name].values.push({ date: day.date, shift: p.shift, yield: sy, product: p.product_name });
+                petMap[name].values.push({ date: day.date, shift: p.shift, yield: rowYield, product: p.product_name });
             });
         });
 
@@ -183,20 +169,18 @@ const SyrupReport = () => {
             });
     }, [rawData]);
 
-    // Average syrup yield = CUMULATIVE grand total: Σ std / Σ actual × 100 across
-    // all running lines. Derived from syrupByPet so the headline and the per-line
-    // values use the same cumulative method and stay consistent.
+    // Headline Avg Syrup Yield = CUMULATIVE Σ standard / Σ actual × 100 across all
+    // running lines, using the same std + derived-actual as the per-line badges.
+    // This matches the plant's official per-shift Standard/Actual/Yield totals.
     const avgSyrupYield = useMemo(() => {
         const contributors = syrupByPet
             .filter(p => p.count > 0 && p.totalActual > 0)
             .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count, totalStd: p.totalStd, totalActual: p.totalActual }));
         const totalStd = contributors.reduce((s, c) => s + c.totalStd, 0);
         const totalActual = contributors.reduce((s, c) => s + c.totalActual, 0);
-        const value = totalActual > 0
-            ? (totalStd / totalActual) * 100
-            : (rawData?.summary?.avg_syrup_yield || 0);
+        const value = totalActual > 0 ? (totalStd / totalActual) * 100 : 0;
         return { value, contributors, totalStd, totalActual };
-    }, [syrupByPet, rawData]);
+    }, [syrupByPet]);
 
     // Build daily trend data for line chart
     const dailyTrendData = useMemo(() => {
@@ -304,9 +288,9 @@ const SyrupReport = () => {
                         <span className="ms-3">
                             Avg Syrup Yield: <strong className={`text-${yieldBadge(avgSyrupYield.value)}`}>{avgSyrupYield.value.toFixed(1)}%</strong>
                         </span>
-                        {avgSyrupYield.contributors?.length > 0 && (
+                        {avgSyrupYield.value > 0 && (
                             <span className="ms-2 text-muted small">
-                                (avg of {avgSyrupYield.contributors.length} running line{avgSyrupYield.contributors.length > 1 ? 's' : ''})
+                                (Σstandard ÷ Σactual, {avgSyrupYield.contributors.length} running line{avgSyrupYield.contributors.length > 1 ? 's' : ''})
                             </span>
                         )}
                     </div>

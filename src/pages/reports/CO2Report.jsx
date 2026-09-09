@@ -97,25 +97,19 @@ const CO2Report = () => {
                 const producedOutput = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
                 if (producedOutput <= 0) return;
 
-                const cy = p.co2_yield;
-                if (cy !== null && cy !== undefined && cy > 0) {
-                    petMap[name].count += 1;
-                    petMap[name].values.push({ date: day.date, shift: p.shift, yield: cy, product: p.product_name });
+                const co2 = p.meters_reading?.co2 || {};
+                const stdCo2 = co2.std_co2_consumption_kg || 0;
+                // Per-row yield% from the meter reading (authoritative), fall back to pet.co2_yield.
+                const rowYield = co2.co2_yield_percent || p.co2_yield || 0;
+                if (stdCo2 <= 0 || rowYield <= 0) return;
 
-                    // Cumulative weighting by CO2 volume
-                    const actualCo2 = p.meters_reading?.co2?.total_co2_consumed_kg
-                        || p.total_co2_consumed_kg || 0;
-                    const stdCo2 = p.meters_reading?.co2?.std_co2_consumption_kg
-                        || p.std_co2_consumption_kg || 0;
-                    if (actualCo2 > 0 && stdCo2 > 0) {
-                        petMap[name].totalActual += actualCo2;
-                        petMap[name].totalStd += stdCo2;
-                    } else {
-                        const weight = actualCo2 > 0 ? actualCo2 : producedOutput;
-                        petMap[name].totalActual += weight;
-                        petMap[name].totalStd += weight * (cy / 100);
-                    }
-                }
+                // Actual = standard / (yield/100), consistent with the syrup method.
+                const actualCo2 = stdCo2 / (rowYield / 100);
+
+                petMap[name].count += 1;
+                petMap[name].values.push({ date: day.date, shift: p.shift, yield: rowYield, product: p.product_name });
+                petMap[name].totalActual += actualCo2;
+                petMap[name].totalStd += stdCo2;
             });
         });
 
@@ -134,20 +128,17 @@ const CO2Report = () => {
             });
     }, [rawData]);
 
-    // Average CO2 yield = CUMULATIVE grand total: Σ std / Σ actual × 100 across all
-    // running lines. Derived from co2ByPet so the headline and per-line values use
-    // the same cumulative method and stay consistent.
+    // Headline Avg CO2 Yield = CUMULATIVE Σ standard / Σ actual × 100 across all
+    // running lines, using the same std + derived-actual as the per-line badges.
     const avgCo2Yield = useMemo(() => {
         const contributors = co2ByPet
             .filter(p => p.count > 0 && p.totalActual > 0)
             .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count, totalStd: p.totalStd, totalActual: p.totalActual }));
         const totalStd = contributors.reduce((s, c) => s + c.totalStd, 0);
         const totalActual = contributors.reduce((s, c) => s + c.totalActual, 0);
-        const value = totalActual > 0
-            ? (totalStd / totalActual) * 100
-            : (rawData?.summary?.avg_co2_yield || 0);
+        const value = totalActual > 0 ? (totalStd / totalActual) * 100 : 0;
         return { value, contributors, totalStd, totalActual };
-    }, [co2ByPet, rawData]);
+    }, [co2ByPet]);
 
     // Build daily trend data
     const dailyTrendData = useMemo(() => {
@@ -263,9 +254,9 @@ const CO2Report = () => {
                         <span className="ms-3">
                             Avg CO₂ Yield: <strong className={`text-${yieldBadge(avgCo2Yield.value)}`}>{avgCo2Yield.value.toFixed(1)}%</strong>
                         </span>
-                        {avgCo2Yield.contributors?.length > 0 && (
+                        {avgCo2Yield.value > 0 && (
                             <span className="ms-2 text-muted small">
-                                (avg of {avgCo2Yield.contributors.length} running line{avgCo2Yield.contributors.length > 1 ? 's' : ''})
+                                (Σstandard ÷ Σactual, {avgCo2Yield.contributors.length} running line{avgCo2Yield.contributors.length > 1 ? 's' : ''})
                             </span>
                         )}
                     </div>
