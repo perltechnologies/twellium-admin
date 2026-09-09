@@ -161,6 +161,37 @@ const ProductionReportFormV2 = () => {
                 && (('status_code' in envelope) || ('message' in envelope))) {
                 envelope = envelope.data;
             }
+
+            // The sign-off endpoint does not return line_speed. Enrich it from the
+            // production_summary endpoint (which carries per-line line_speed), matching
+            // on pet_name + shift so the Product Details "Line Speed (BPH)" column fills.
+            try {
+                const summaryRes = await productionApi.getProductionSummary(params);
+                const sEnv = summaryRes?.data?.data?.data ?? summaryRes?.data?.data ?? summaryRes?.data ?? {};
+                const speedByPetShift = {};
+                let summaryLineSpeed = sEnv?.summary?.line_speed || null;
+                (sEnv?.daily_breakdown || []).forEach(day => {
+                    (day.pets || []).forEach(pt => {
+                        if (pt?.line_speed != null) {
+                            const key = `${(pt.pet_name || '').toLowerCase().trim()}||${pt.shift || ''}`;
+                            speedByPetShift[key] = pt.line_speed;
+                        }
+                    });
+                });
+                if (envelope && Array.isArray(envelope.lines)) {
+                    envelope.lines = envelope.lines.map(l => {
+                        if (l.line_speed != null) return l;
+                        const key = `${(l.pet_name || '').toLowerCase().trim()}||${l.shift || ''}`;
+                        return { ...l, line_speed: speedByPetShift[key] ?? null };
+                    });
+                }
+                if (envelope?.summary && envelope.summary.line_speed == null && summaryLineSpeed != null) {
+                    envelope.summary = { ...envelope.summary, line_speed: summaryLineSpeed };
+                }
+            } catch (enrichErr) {
+                console.warn('Line speed enrichment skipped:', enrichErr?.message || enrichErr);
+            }
+
             setData(envelope || {});
         } catch (err) {
             console.error('Failed to fetch production report:', err);
@@ -336,13 +367,14 @@ const ProductionReportFormV2 = () => {
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={4}>Product Details</th>
+                                        <th colSpan={5}>Product Details</th>
                                     </tr>
                                     <tr className="sub-header-row">
-                                        <th style={{ width: '34%' }}>Product</th>
-                                        <th style={{ width: '22%' }}>Bottle Size</th>
-                                        <th style={{ width: '22%' }}>Bottles/Pack</th>
-                                        <th style={{ width: '22%' }}>Packs/Pallet</th>
+                                        <th style={{ width: '28%' }}>Product</th>
+                                        <th style={{ width: '18%' }}>Bottle Size</th>
+                                        <th style={{ width: '18%' }}>Line Speed (BPH)</th>
+                                        <th style={{ width: '18%' }}>Bottles/Pack</th>
+                                        <th style={{ width: '18%' }}>Packs/Pallet</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -352,6 +384,7 @@ const ProductionReportFormV2 = () => {
                                             <tr key={idx}>
                                                 <td className="label-cell">{line.product_name}</td>
                                                 <td className="input-cell numeric"><EditableField value={line.bottle_size || summary.bottle_size || p?.size || ''} /></td>
+                                                <td className="input-cell numeric"><EditableField value={line.line_speed || p?.target_speed_bph || p?.line_speed || summary.line_speed || ''} /></td>
                                                 <td className="input-cell numeric"><EditableField value={line.bottles_per_pack || summary.bottles_per_pack || ''} /></td>
                                                 <td className="input-cell numeric"><EditableField value={line.packs_per_pallet || summary.packs_per_pallet || ''} /></td>
                                             </tr>
@@ -360,6 +393,7 @@ const ProductionReportFormV2 = () => {
                                         <tr>
                                             <td className="label-cell">{selectedProduct || '—'}</td>
                                             <td className="input-cell numeric"><EditableField value={summary.bottle_size || ''} /></td>
+                                            <td className="input-cell numeric"><EditableField value={summary.line_speed || ''} /></td>
                                             <td className="input-cell numeric"><EditableField value={summary.bottles_per_pack || ''} /></td>
                                             <td className="input-cell numeric"><EditableField value={summary.packs_per_pallet || ''} /></td>
                                         </tr>
