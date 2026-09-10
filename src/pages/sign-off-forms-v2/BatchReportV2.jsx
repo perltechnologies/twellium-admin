@@ -202,8 +202,10 @@ const BatchReportV2 = () => {
             };
         })
         .sort((a, b) => {
-            if ((a.date || '') !== (b.date || '')) return (a.date || '').localeCompare(b.date || '');
-            return compareBatchNumbers(a.batch_number, b.batch_number);
+            // Order by batch number ascending (lowest to highest); date as tie-breaker.
+            const byBatch = compareBatchNumbers(a.batch_number, b.batch_number);
+            if (byBatch !== 0) return byBatch;
+            return (a.date || '').localeCompare(b.date || '');
         });
 
     // Summary: consolidate per product, de-duplicating shift-split entries so each
