@@ -281,7 +281,11 @@ const ProductionRunByPetV2 = () => {
             const params = { start_date: startDate, end_date: endDate };
             if (selectedPet) params.pet = selectedPet;
             if (selectedShift) params.shift = selectedShift;
-            if (selectedProduct) params.product = selectedProduct;
+            // NOTE: product is intentionally NOT sent to the API. Sending a product
+            // that isn't part of the current pet/date/shift selection makes the
+            // endpoint return an empty report ("no data" even though data exists).
+            // We fetch the full product set for the selection and filter by product
+            // client-side (see allPetEntries), keeping the dropdown always valid.
             const res = await productionApi.getSignOffProductReport(params);
             const payload = unwrapReport(res);
             setData(adaptSignOffToTemplateData(payload));
@@ -296,7 +300,7 @@ const ProductionRunByPetV2 = () => {
     useEffect(() => {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [startDate, endDate, selectedPet, selectedShift, selectedProduct]);
+    }, [startDate, endDate, selectedPet, selectedShift]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -318,16 +322,16 @@ const ProductionRunByPetV2 = () => {
     const allPetEntriesUnfiltered = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
     const productNames = [...new Set(allPetEntriesUnfiltered.map(p => p.product_name).filter(Boolean))].sort();
 
-    // Auto-select first product only on initial load (not on every data change)
-    const initialProductSet = useRef(false);
+    // Keep the selected product valid for the current data. If the current
+    // selection isn't among the available products (e.g. after changing pet/date),
+    // reset to the first available so the report doesn't appear empty.
     useEffect(() => {
-        if (initialProductSet.current) return;
-        if (productNames.length > 0 && (!selectedProduct || !productNames.includes(selectedProduct))) {
+        if (productNames.length === 0) return;
+        if (!selectedProduct || !productNames.includes(selectedProduct)) {
             setSelectedProduct(productNames[0]);
-            initialProductSet.current = true;
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [productNames.length]);
+    }, [productNames.join('|')]);
 
     // Filter by selected product
     const allPetEntries = selectedProduct
