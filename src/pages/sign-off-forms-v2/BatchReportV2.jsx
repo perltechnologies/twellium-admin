@@ -445,7 +445,7 @@ const BatchReportV2 = () => {
                                     <tr className="sub-header-row">
                                         <th style={{ width: '13%' }}>Date</th>
                                         <th style={{ width: '12%' }}>Batch</th>
-                                        <th style={{ width: '32%' }}>Liters (Time)</th>
+                                        <th style={{ width: '32%' }}>Production details</th>
                                         <th style={{ width: '13%' }}>Total</th>
                                         <th style={{ width: '13%' }}>Tank</th>
                                         <th style={{ width: '17%' }}>Pet</th>
