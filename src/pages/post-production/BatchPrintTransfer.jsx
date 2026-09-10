@@ -165,31 +165,39 @@ const BatchPrintTransfer = () => {
 
         setCompleting(true);
         try {
-            const payload = {
-                document_code: documentCode,
-                product_name: productName,
-                start_date: filters.startDate,
-                end_date: filters.endDate,
-                shift: filters.shift || null,
-                total_pallets: totalPallets,
-                total_packs: totalPacks + (parseInt(singlePacks) || 0),
-                production_supervisor: productionSupervisor,
-                warehouse_supervisor: warehouseSupervisor,
-                handling_units: barcodes.map((b) => b.id).filter(Boolean),
-            };
+            // The transfer is completed by moving every pallet (handling unit)
+            // to the WAREHOUSE ("Main Unit") stage via the batch scan endpoint.
+            // scan_values are barcodes / RFID numbers, not the internal UUIDs.
+            const scanValues = barcodes
+                .map((b) => b.current_barcode || b.barcode || b.rfid_number)
+                .filter(Boolean);
 
-            // Persist the transfer completion. If the dedicated backend endpoint
-            // is not yet implemented (404/501), still capture the sign-off in the
-            // printable form and mark complete rather than blocking the user.
-            try {
-                await inventoryApi.completeTransfer(payload);
-            } catch (err) {
-                const status = err?.response?.status;
-                if (status === 404 || status === 501 || status === 405) {
-                    console.info('completeTransfer endpoint not available yet; recorded locally.', payload);
-                } else {
-                    throw err;
-                }
+            if (scanValues.length === 0) {
+                setCompleteError('Could not resolve barcodes for the loaded pallets; cannot complete the transfer.');
+                setCompleting(false);
+                return;
+            }
+
+            const res = await inventoryApi.completeTransfer({
+                scan_values: scanValues,
+                target_stage: 'WAREHOUSE',
+            });
+
+            // BatchScanResponse: { success, total_processed, results: [{ scan_value,
+            // success, error, ... }], message }. A per-unit failure has success=false.
+            const result = res?.data?.data ?? res?.data ?? {};
+            const results = Array.isArray(result.results) ? result.results : [];
+            const failed = results.filter((r) => r && r.success === false);
+            if (failed.length > 0) {
+                const firstError = failed.find((f) => f.error)?.error;
+                setCompleteError(
+                    `${failed.length} of ${scanValues.length} pallet(s) could not be transferred${firstError ? `: ${firstError}` : ''}. Please review and retry.`
+                );
+                return;
+            }
+            if (result.success === false) {
+                setCompleteError(result.message || 'The transfer could not be completed. Please try again.');
+                return;
             }
 
             setCompleted(true);

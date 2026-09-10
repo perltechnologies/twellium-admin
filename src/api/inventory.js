@@ -20,9 +20,17 @@ export const inventoryApi = {
     lookupUnit: (params) => api.get('/inventory/handling-units/lookup/', { params }),
     printBatch: (data) => api.post('/inventory/handling-units/print_batch/', data),
 
-    // Transfer completion (Staging Unit -> Main Unit). Endpoint may be added
-    // backend-side; kept here so the UI can persist the sign-off when available.
-    completeTransfer: (data) => api.post('/inventory/handling-units/complete-transfer/', data),
+    // Transfer completion (Production/Staging -> Warehouse "Main Unit").
+    // Backend has no dedicated "complete-transfer" route; the canonical way to
+    // move handling units to a new stage in batch is the scan endpoint
+    // (POST /inventory/handling-units/scan/ — "move multiple handling units to a
+    // new stage in batch"). scan_values are barcodes/RFIDs; target_stage=WAREHOUSE.
+    completeTransfer: ({ scan_values, target_stage = 'WAREHOUSE', location = null } = {}) =>
+        api.post('/inventory/handling-units/scan/', {
+            scan_values,
+            target_stage,
+            ...(location ? { location } : {}),
+        }),
 
     // Diagnostic & Management Tools (Redesigned)
     getUnitStatus: (value) => api.get('/inventory/handling-units/get-status/', { params: { value } }),
