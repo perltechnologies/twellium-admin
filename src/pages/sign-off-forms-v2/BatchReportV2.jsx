@@ -440,14 +440,15 @@ const BatchReportV2 = () => {
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={5}>Details</th>
+                                        <th colSpan={6}>Details</th>
                                     </tr>
                                     <tr className="sub-header-row">
-                                        <th style={{ width: '15%' }}>Date</th>
-                                        <th style={{ width: '15%' }}>Batch</th>
-                                        <th style={{ width: '35%' }}>Liters (Time)</th>
-                                        <th style={{ width: '15%' }}>Tank</th>
-                                        <th style={{ width: '20%' }}>Pet</th>
+                                        <th style={{ width: '13%' }}>Date</th>
+                                        <th style={{ width: '12%' }}>Batch</th>
+                                        <th style={{ width: '32%' }}>Liters (Time)</th>
+                                        <th style={{ width: '13%' }}>Total</th>
+                                        <th style={{ width: '13%' }}>Tank</th>
+                                        <th style={{ width: '17%' }}>Pet</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -456,19 +457,21 @@ const BatchReportV2 = () => {
                                             <td className="input-cell numeric">{row.date || ''}</td>
                                             <td className="input-cell numeric">{row.batch_number || ''}</td>
                                             <td className="input-cell" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{row.liters_display}</td>
+                                            <td className="input-cell numeric">{fmt(row.total_liters)}</td>
                                             <td className="input-cell numeric">{row.tank_display}</td>
                                             <td className="input-cell">{row.pet_display}</td>
                                         </tr>
                                     )) : (
                                         <tr>
-                                            <td colSpan={5} className="input-cell text-center">No batch details available</td>
+                                            <td colSpan={6} className="input-cell text-center">No batch details available</td>
                                         </tr>
                                     )}
                                     {detailRows.length > 0 && (
                                         <tr className="fw-bold">
                                             <td className="label-cell" colSpan={2}>TOTAL</td>
-                                            <td className="input-cell numeric">{fmt(totals.total_liters ?? totalLiters)} liters</td>
-                                            <td className="input-cell numeric" colSpan={2}>{fmt(distinctBatchCount)} batches</td>
+                                            <td className="input-cell numeric">{fmt(distinctBatchCount)} batches</td>
+                                            <td className="input-cell numeric">{fmt(totals.total_liters ?? totalLiters)}</td>
+                                            <td className="input-cell numeric" colSpan={2}></td>
                                         </tr>
                                     )}
                                 </tbody>
