@@ -82,6 +82,13 @@ const BatchReportV2 = () => {
 
     // Fetch batch report from the dedicated sign-off endpoint
     useEffect(() => {
+        // Guard: do not query when the range is invalid (start after end).
+        if (startDate && endDate && startDate > endDate) {
+            setReportData({});
+            setLoading(false);
+            setError('Invalid date range: start date must be on or before the end date.');
+            return;
+        }
         const fetchData = async () => {
             setLoading(true);
             setError(null);
@@ -133,13 +140,114 @@ const BatchReportV2 = () => {
         });
     };
 
-    // Bind directly to the response structure
-    const summaryRows = Array.isArray(reportData?.summary_by_product) ? reportData.summary_by_product : [];
-    const batches = Array.isArray(reportData?.batches) ? reportData.batches : [];
+    // Raw batch rows from the response are the authoritative per-batch data.
+    const rawBatches = Array.isArray(reportData?.batches) ? reportData.batches : [];
     const totals = reportData?.totals || {};
+
+    // Numeric-aware comparator for batch numbers (e.g. "53" < "54" < "060").
+    const compareBatchNumbers = (a, b) => {
+        const na = parseInt(String(a).match(/\d+/)?.[0] ?? '', 10);
+        const nb = parseInt(String(b).match(/\d+/)?.[0] ?? '', 10);
+        if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+        return String(a).localeCompare(String(b), undefined, { numeric: true });
+    };
+
+    // Detail rows: sort sequentially by batch number (feedback #1).
+    const batches = [...rawBatches].sort((a, b) => {
+        const byBatch = compareBatchNumbers(a.batch_number, b.batch_number);
+        if (byBatch !== 0) return byBatch;
+        // Stable tie-breaker for identical batch numbers split across shifts.
+        if ((a.date || '') !== (b.date || '')) return (a.date || '').localeCompare(b.date || '');
+        return (a.start_time || '').localeCompare(b.start_time || '');
+    });
+
+    // Details: consolidate rows sharing the same date + batch number so the batch
+    // appears once per date. The Liters cell lists each contributing entry as
+    // "liters (time)", e.g. "11,000 (10:23), 3,000 (14:10)".
+    const detailGroups = {};
+    batches.forEach(b => {
+        const date = b.date || '';
+        const batchNo = b.batch_number != null ? String(b.batch_number) : '';
+        const key = `${date}||${batchNo}`;
+        if (!detailGroups[key]) {
+            detailGroups[key] = {
+                date,
+                batch_number: batchNo,
+                entries: [],   // { liters, time }
+                tanks: new Set(),
+                pets: new Set(),
+                total_liters: 0,
+            };
+        }
+        const g = detailGroups[key];
+        const liters = parseFloat(b.syrup_liters) || 0;
+        g.entries.push({ liters, time: b.start_time || '' });
+        g.total_liters += liters;
+        if (b.tank_number) g.tanks.add(b.tank_number);
+        if (b.pet_name) g.pets.add(b.pet_name);
+    });
+    const detailRows = Object.values(detailGroups)
+        .map(g => {
+            // Order the entries chronologically by time.
+            const entries = [...g.entries].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+            return {
+                date: g.date,
+                batch_number: g.batch_number,
+                liters_display: entries
+                    .map(e => `${fmt(e.liters)}${e.time ? ` (${e.time})` : ''}`)
+                    .join(', '),
+                tank_display: [...g.tanks].join(', '),
+                pet_display: [...g.pets].join(', '),
+                total_liters: g.total_liters,
+            };
+        })
+        .sort((a, b) => {
+            if ((a.date || '') !== (b.date || '')) return (a.date || '').localeCompare(b.date || '');
+            return compareBatchNumbers(a.batch_number, b.batch_number);
+        });
+
+    // Summary: consolidate per product, de-duplicating shift-split entries so each
+    // batch number appears once and its liters are summed (feedback #2, #3).
+    const summaryByProduct = {};
+    rawBatches.forEach(b => {
+        const product = b.product_name || 'Unknown';
+        if (!summaryByProduct[product]) {
+            summaryByProduct[product] = {
+                product_name: product,
+                batchLiters: {}, // batch_number -> summed liters
+                pets: new Set(),
+            };
+        }
+        const key = b.batch_number != null ? String(b.batch_number) : '';
+        if (key) {
+            summaryByProduct[product].batchLiters[key] =
+                (summaryByProduct[product].batchLiters[key] || 0) + (parseFloat(b.syrup_liters) || 0);
+        }
+        if (b.pet_name) summaryByProduct[product].pets.add(b.pet_name);
+    });
+    const summaryRows = Object.values(summaryByProduct).map(row => {
+        const batch_numbers = Object.keys(row.batchLiters).sort(compareBatchNumbers);
+        return {
+            product_name: row.product_name,
+            batch_numbers,
+            total_liters: batch_numbers.reduce((sum, k) => sum + row.batchLiters[k], 0),
+            pet_names: [...row.pets].sort(),
+        };
+    }).sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''));
+
+    // Total batches = count of distinct batch numbers across all rows (feedback #4).
+    const distinctBatchCount = new Set(
+        rawBatches.map(b => (b.batch_number != null ? String(b.batch_number) : '')).filter(Boolean)
+    ).size;
+
+    // Total liters across all batch rows (sum of every shift entry).
+    const totalLiters = rawBatches.reduce((sum, b) => sum + (parseFloat(b.syrup_liters) || 0), 0);
 
     // Product list for the filter dropdown, derived from the returned summary
     const reportProducts = [...new Set(summaryRows.map(r => r.product_name).filter(Boolean))].sort();
+
+    // Whether the current start/end selection forms an invalid range.
+    const dateRangeInvalid = Boolean(startDate && endDate && startDate > endDate);
 
     return (
         <div className="page-wrapper">
@@ -179,16 +287,18 @@ const BatchReportV2 = () => {
                             <Calendar size={18} className="text-muted" />
                             <input
                                 type="date"
-                                className="form-control form-control-sm"
+                                className={`form-control form-control-sm${dateRangeInvalid ? ' is-invalid' : ''}`}
                                 value={startDate}
+                                max={endDate || undefined}
                                 onChange={(e) => setStartDate(e.target.value)}
                                 style={{ width: '140px' }}
                             />
                             <span className="text-muted">to</span>
                             <input
                                 type="date"
-                                className="form-control form-control-sm"
+                                className={`form-control form-control-sm${dateRangeInvalid ? ' is-invalid' : ''}`}
                                 value={endDate}
+                                min={startDate || undefined}
                                 onChange={(e) => setEndDate(e.target.value)}
                                 style={{ width: '140px' }}
                             />
@@ -242,7 +352,7 @@ const BatchReportV2 = () => {
                         <button
                             className="btn btn-primary d-flex align-items-center gap-2"
                             onClick={handlePrint}
-                            disabled={loading}
+                            disabled={loading || dateRangeInvalid}
                         >
                             <Printer size={18} />
                             Print
@@ -330,37 +440,35 @@ const BatchReportV2 = () => {
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={6}>Details</th>
+                                        <th colSpan={5}>Details</th>
                                     </tr>
                                     <tr className="sub-header-row">
-                                        <th style={{ width: '12%' }}>Time</th>
                                         <th style={{ width: '15%' }}>Date</th>
-                                        <th style={{ width: '18%' }}>Batch</th>
-                                        <th style={{ width: '15%' }}>Liters</th>
+                                        <th style={{ width: '15%' }}>Batch</th>
+                                        <th style={{ width: '35%' }}>Liters (Time)</th>
                                         <th style={{ width: '15%' }}>Tank</th>
-                                        <th style={{ width: '25%' }}>Pet</th>
+                                        <th style={{ width: '20%' }}>Pet</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {batches.length > 0 ? batches.map((row, idx) => (
+                                    {detailRows.length > 0 ? detailRows.map((row, idx) => (
                                         <tr key={idx}>
-                                            <td className="input-cell numeric">{row.start_time || ''}</td>
                                             <td className="input-cell numeric">{row.date || ''}</td>
                                             <td className="input-cell numeric">{row.batch_number || ''}</td>
-                                            <td className="input-cell numeric">{fmt(row.syrup_liters)}</td>
-                                            <td className="input-cell numeric">{row.tank_number || ''}</td>
-                                            <td className="input-cell">{row.pet_name || ''}</td>
+                                            <td className="input-cell" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{row.liters_display}</td>
+                                            <td className="input-cell numeric">{row.tank_display}</td>
+                                            <td className="input-cell">{row.pet_display}</td>
                                         </tr>
                                     )) : (
                                         <tr>
-                                            <td colSpan={6} className="input-cell text-center">No batch details available</td>
+                                            <td colSpan={5} className="input-cell text-center">No batch details available</td>
                                         </tr>
                                     )}
-                                    {batches.length > 0 && (
+                                    {detailRows.length > 0 && (
                                         <tr className="fw-bold">
-                                            <td className="label-cell" colSpan={3}>TOTAL</td>
-                                            <td className="input-cell numeric">{fmt(totals.total_liters)} liters</td>
-                                            <td className="input-cell numeric" colSpan={2}>{fmt(totals.total_batches ?? batches.length)} batches</td>
+                                            <td className="label-cell" colSpan={2}>TOTAL</td>
+                                            <td className="input-cell numeric">{fmt(totals.total_liters ?? totalLiters)} liters</td>
+                                            <td className="input-cell numeric" colSpan={2}>{fmt(distinctBatchCount)} batches</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -375,7 +483,7 @@ const BatchReportV2 = () => {
                                         <td className="label-cell" style={{ width: '15%' }}>Total Reports</td>
                                         <td className="input-cell numeric" style={{ width: '15%' }}>{fmt(totals.total_reports)}</td>
                                         <td className="label-cell" style={{ width: '15%' }}>Total Batches</td>
-                                        <td className="input-cell numeric" style={{ width: '25%' }}>{fmt(totals.total_batches)}</td>
+                                        <td className="input-cell numeric" style={{ width: '25%' }}>{fmt(distinctBatchCount)}</td>
                                     </tr>
                                 </tbody>
                             </table>
