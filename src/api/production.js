@@ -16,15 +16,17 @@ export const productionApi = {
                     const md = m.data?.data ?? m.data ?? {};
                     return {
                         ...r,
-                        availability: md.availability || 0,
-                        performance: md.efficiency || 0,
-                        quality: md.quality || 0,
-                        oee: md.oee || 0,
+                        availability: md.availability ?? 0,
+                        efficiency: md.efficiency ?? 0,
+                        performance: md.performance ?? 0,
+                        quality: md.quality ?? 0,
+                        oee: md.oee ?? 0,
                         metrics: {
-                            availability: md.availability || 0,
-                            performance: md.efficiency || 0,
-                            quality: md.quality || 0,
-                            oee: md.oee || 0,
+                            availability: md.availability ?? 0,
+                            efficiency: md.efficiency ?? 0,
+                            performance: md.performance ?? 0,
+                            quality: md.quality ?? 0,
+                            oee: md.oee ?? 0,
                             details: md.details || {}
                         }
                     };

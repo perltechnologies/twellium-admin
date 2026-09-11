@@ -10,6 +10,8 @@ import {
 } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
 
+const DOWNTIME_COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#06b6d4', '#ec4899', '#6b7280'];
+
 const DetailRow = ({ label, value }) => (
     <div className="py-2 border-bottom">
         <small className="text-muted d-block text-uppercase">{label}</small>
@@ -508,7 +510,42 @@ const ReportDetails = () => {
             try {
                 const res = await productionApi.getReport(id);
                 const data = res.data.data;
-                setReport(data);
+
+                let productionSummary = null;
+                if (data.production_date) {
+                    const summaryParams = {
+                        start_date: data.production_date,
+                        end_date: data.production_date,
+                    };
+                    if (data.pet) summaryParams.pet = data.pet;
+                    if (data.shift) summaryParams.shift = data.shift;
+                    if (data.product_name) summaryParams.product = data.product_name;
+
+                    try {
+                        const summaryRes = await productionApi.getProductionSummary(summaryParams);
+                        productionSummary = summaryRes?.data?.data?.data ?? summaryRes?.data?.data ?? summaryRes?.data ?? null;
+                    } catch (err) {
+                        console.warn('Failed to load production summary; using report data fallbacks.', err);
+                    }
+                }
+
+                const summary = productionSummary?.summary;
+                const metrics = summary ? {
+                    oee: summary.oee,
+                    efficiency: summary.avg_efficiency,
+                    availability: summary.avg_availability,
+                    performance: summary.avg_performance,
+                    quality: summary.avg_quality,
+                    details: {
+                        ...(data.metrics?.details || {}),
+                        total_output_pcs: summary.total_bottles_produced ?? summary.total_bottles ?? summary.total_output,
+                        total_downtime_mins: summary.total_downtime_minutes,
+                        planned_downtime_mins: summary.planned_downtime_mins,
+                        mechanical_downtime_mins: summary.mechanical_downtime_mins,
+                    }
+                } : data.metrics;
+
+                setReport({ ...data, metrics, productionSummary });
                 if (data.shift) {
                     const shiftRes = await productionApi.getShift(data.shift);
                     setShiftData(shiftRes.data.data || shiftRes.data);
@@ -544,7 +581,7 @@ const ReportDetails = () => {
                     totalEfficiency += eff;
                     logCount++;
                 }
-                const minutes = log.downtime_minutes || 0;
+                const minutes = Number(log.downtime_minutes) || 0;
                 // Accumulate sum for average calculation
                 totalDowntimeSum += minutes;
 
@@ -576,12 +613,14 @@ const ReportDetails = () => {
                         if (!categoryMap[catName]) categoryMap[catName] = 0;
                         categoryMap[catName] += durationMinutes;
 
-                        // Check for Planned Downtime
-                        if (catName.toLowerCase().includes('planned')) {
+                        const categoryType = inc.downtime_category_type?.toUpperCase();
+
+                        // The API exposes the category type explicitly. Name matching is
+                        // retained only for older report payloads which predate that field.
+                        if (categoryType === 'PLANNED' || (!categoryType && catName.toLowerCase().includes('planned'))) {
                             plannedDowntime += durationMinutes;
                         }
-                        // Check for Mechanical Downtime
-                        if (catName.toLowerCase().includes('mechanical')) {
+                        if (categoryType === 'MECHANICAL' || (!categoryType && catName.toLowerCase().includes('mechanical'))) {
                             mechanicalDowntime += durationMinutes;
                         }
                     });
@@ -600,15 +639,20 @@ const ReportDetails = () => {
         const avgEff = logCount > 0 ? totalEfficiency / logCount : 0;
         const effVal = Math.min(Math.max(avgEff, 0), 100);
 
-        // Use API OEE when available, fall back to averaged stoppage efficiency
-        const apiOee = report.metrics?.oee;
-        const parsedEff = parseFloat(report.efficiency);
-        const oeeVal = apiOee != null ? apiOee : !isNaN(parsedEff) ? parsedEff : effVal;
-        const clampedOee = Math.min(Math.max(oeeVal || 0, 0), 100);
+        // OEE is authoritative API data; never derive it from hourly efficiency.
+        const apiMetrics = report.metrics || {};
+        const apiDetails = apiMetrics.details || {};
+        const numericOr = (value, fallback) => {
+            if (value === null || value === undefined || value === '') return fallback;
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        };
+        const apiOee = numericOr(apiMetrics.oee, null);
+        const clampedOee = apiOee === null ? null : Math.min(Math.max(apiOee, 0), 100);
 
         let productionTime = 0;
-        if (report.metrics?.details?.planned_time_mins > 0) {
-            productionTime = (report.metrics.details.planned_time_mins / 60).toFixed(1);
+        if (Number(apiDetails.planned_time_mins) > 0) {
+            productionTime = Number((Number(apiDetails.planned_time_mins) / 60).toFixed(1));
         } else if (shiftData?.start_time && shiftData?.end_time) {
             const [sh, sm] = shiftData.start_time.slice(0, 5).split(':').map(Number);
             const [eh, em] = shiftData.end_time.slice(0, 5).split(':').map(Number);
@@ -628,15 +672,32 @@ const ReportDetails = () => {
             if (diffMs > 0) productionTime = (diffMs / (1000 * 60 * 60)).toFixed(1);
         }
 
-        const efficiencyData = [
+        const efficiencyData = clampedOee === null ? [] : [
             { name: 'OEE', value: Number(clampedOee.toFixed(1)) },
             { name: 'Loss', value: Number((100 - clampedOee).toFixed(1)) }
         ];
 
-        const downtimeData = Object.keys(categoryMap).map(key => ({
+        const localDowntimeTotal = Object.values(categoryMap).reduce((sum, value) => sum + value, 0);
+        const localDowntimeData = Object.keys(categoryMap).map((key, index) => ({
             name: key,
-            minutes: categoryMap[key]
+            minutes: categoryMap[key],
+            percentage: localDowntimeTotal > 0 ? (categoryMap[key] / localDowntimeTotal) * 100 : 0,
+            color: DOWNTIME_COLORS[index % DOWNTIME_COLORS.length],
         })).sort((a, b) => b.minutes - a.minutes);
+
+        const summaryDowntimeCategories = report.productionSummary?.downtime_breakdown?.categories;
+        const downtimeData = Array.isArray(summaryDowntimeCategories) && summaryDowntimeCategories.length > 0
+            ? summaryDowntimeCategories
+                .map((category, index) => ({
+                    name: category.category_name || 'Uncategorized',
+                    minutes: Number(category.total_duration_mins) || 0,
+                    percentage: Number(category.percentage_of_total) || 0,
+                    incidentCount: Number(category.incident_count) || 0,
+                    color: category.color || DOWNTIME_COLORS[index % DOWNTIME_COLORS.length],
+                }))
+                .filter(category => category.minutes > 0)
+                .sort((a, b) => b.minutes - a.minutes)
+            : localDowntimeData;
 
         // --- OEE CALCULATIONS (per /dashboard/formulas) ---
         
@@ -683,23 +744,25 @@ const ReportDetails = () => {
         const perfVal = perfDenominator > 0 ? (perfNumerator / perfDenominator) * 100 : 0;
 
         // Prefer API-provided metrics when available, fall back to manual calculation
-        const apiMetrics = report.metrics || {};
         const oeeMetrics = {
-            availability: (apiMetrics.availability != null ? apiMetrics.availability : Math.min(Math.max(availVal || 0, 0), 100)).toFixed(1),
-            quality: (apiMetrics.quality != null ? apiMetrics.quality : Math.min(Math.max(qualVal || 0, 0), 100)).toFixed(1),
-            performance: (apiMetrics.performance != null ? apiMetrics.performance : Math.min(Math.max(perfVal || 0, 0), 100)).toFixed(1)
+            availability: numericOr(apiMetrics.availability, Math.min(Math.max(availVal || 0, 0), 100)).toFixed(1),
+            quality: numericOr(apiMetrics.quality, Math.min(Math.max(qualVal || 0, 0), 100)).toFixed(1),
+            performance: numericOr(apiMetrics.performance, Math.min(Math.max(perfVal || 0, 0), 100)).toFixed(1)
         };
+
+        const fallbackOutput = totalOutput || report.total_bottles_produced || 0;
+        const fallbackDowntime = totalDowntime || report.total_downtime_minutes || 0;
 
         return {
             efficiencyData,
             downtimeData,
-            totalOutput: totalOutput || report.total_bottles_produced || 0,
-            totalDowntime: totalDowntime || report.total_downtime_minutes || 0,
-            efficiency: Number(clampedOee.toFixed(1)),
+            totalOutput: numericOr(apiDetails.total_output_pcs, fallbackOutput),
+            totalDowntime: numericOr(apiDetails.total_downtime_mins, fallbackDowntime),
+            efficiency: Number(numericOr(apiMetrics.efficiency, effVal).toFixed(1)),
             productionTime: productionTime || report.total_production_time_hours || 0,
             oeeMetrics,
-            plannedDowntime,
-            mechanicalDowntime
+            plannedDowntime: numericOr(apiDetails.planned_downtime_mins, plannedDowntime),
+            mechanicalDowntime: numericOr(apiDetails.mechanical_downtime_mins, mechanicalDowntime)
         };
     };
 
@@ -715,6 +778,7 @@ const ReportDetails = () => {
         efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }, plannedDowntime: 0, mechanicalDowntime: 0
     };
     const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = stats;
+    const chartDowntimeTotal = downtimeData.reduce((sum, category) => sum + category.minutes, 0);
 
     if (loading) return <div className="p-4 text-center text-muted">Loading details...</div>;
     if (!report) return <div className="p-4 text-center text-danger">Report not found</div>;
@@ -989,12 +1053,17 @@ const ReportDetails = () => {
 
             {/* Production Performance Analysis */}
             <div className="card shadow-sm mb-4 border-0">
-                <div className="card-header border-bottom py-3">
-                    <h6 className="mb-0 fw-semibold d-flex align-items-center gap-2">
-                        <i className="ti ti-chart-bar fs-5 text-primary"></i>
-                        Production Performance Analysis
-                    </h6>
-                    <small className="text-muted">Efficiency and downtime metrics overview</small>
+                <div className="card-header border-bottom py-3 d-flex align-items-center justify-content-between gap-3 flex-wrap">
+                    <div>
+                        <h6 className="mb-0 fw-semibold d-flex align-items-center gap-2">
+                            <i className="ti ti-chart-bar fs-5 text-primary"></i>
+                            Production Performance Analysis
+                        </h6>
+                        <small className="text-muted">OEE health and the losses affecting this production run</small>
+                    </div>
+                    <span className="badge rounded-pill bg-soft-primary text-primary px-3 py-2">
+                        <i className="ti ti-cloud-data-connection me-1"></i> API sourced
+                    </span>
                 </div>
                 <div className="card-body p-4">
                     <div className="row g-4">
@@ -1003,8 +1072,7 @@ const ReportDetails = () => {
                             <div className="card h-100 border shadow-sm" style={{ overflow: 'hidden' }}>
                                 <div className="card-header border-bottom py-3">
                                     <h6 className="mb-0 d-flex align-items-center gap-2 fw-semibold">
-                                        <Activity className="h-4 w-4 text-success" />
-                                        OEE Analysis
+                                        <Activity className="h-4 w-4 text-success" /> OEE Analysis
                                     </h6>
                                 </div>
                                 <div className="card-body p-4">
@@ -1034,10 +1102,13 @@ const ReportDetails = () => {
                                                         </PieChart>
                                                     </ResponsiveContainer>
                                                     <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                        <h1 className={`mb-0 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 60 ? 'text-warning' : 'text-danger'}`} style={{ fontSize: '3.5rem' }}>
+                                                        <h1
+                                                            className={`mb-1 fw-bold ${efficiencyData[0]?.value >= 80 ? 'text-success' : efficiencyData[0]?.value >= 60 ? 'text-warning' : 'text-danger'}`}
+                                                            style={{ fontSize: '2.75rem', lineHeight: 1, whiteSpace: 'nowrap' }}
+                                                        >
                                                             {efficiencyData[0]?.value}%
                                                         </h1>
-                                                        <small className="text-secondary text-uppercase fw-semibold" style={{ letterSpacing: '0.5px' }}>OEE Score</small>
+                                                        <small className="text-secondary text-uppercase fw-semibold d-block" style={{ letterSpacing: '0.4px', fontSize: '0.65rem' }}>OEE Score</small>
                                                     </div>
                                                 </>
                                             ) : (
@@ -1076,7 +1147,7 @@ const ReportDetails = () => {
                                                             </PieChart>
                                                         </ResponsiveContainer>
                                                         <div className="position-absolute top-50 start-50 translate-middle text-center">
-                                                            <div className="fw-bold" style={{ fontSize: '1.5rem', color }}>{(value || 0).toFixed(1)}%</div>
+                                                            <div className="fw-bold" style={{ fontSize: '1.05rem', lineHeight: 1, whiteSpace: 'nowrap', color }}>{(value || 0).toFixed(1)}%</div>
                                                         </div>
                                                     </div>
                                                     <div>
@@ -1093,11 +1164,13 @@ const ReportDetails = () => {
                         {/* Downtime Analysis Chart */}
                         <div className="col-lg-6">
                             <div className="card h-100 border shadow-sm" style={{ overflow: 'hidden' }}>
-                                <div className="card-header border-bottom py-3">
+                                <div className="card-header border-bottom py-3 d-flex align-items-center justify-content-between gap-2">
                                     <h6 className="mb-0 d-flex align-items-center gap-2 fw-semibold">
-                                        <AlertTriangle className="h-4 w-4 text-warning" />
-                                        Downtime Breakdown
+                                        <AlertTriangle className="h-4 w-4 text-warning" /> Downtime Breakdown
                                     </h6>
+                                    <span className="badge bg-soft-warning text-warning rounded-pill px-3 py-2">
+                                        {Number(chartDowntimeTotal).toFixed(0)} min total
+                                    </span>
                                 </div>
                                 <div className="card-body p-4">
                                     <div style={{ height: '300px', width: '100%' }}>
@@ -1122,15 +1195,20 @@ const ReportDetails = () => {
                                             />
                                             <RechartsTooltip
                                                 cursor={{ fill: isDark ? '#1e293b' : '#f3f4f6', opacity: 0.5 }}
-                                                contentStyle={{
-                                                    backgroundColor: tooltipBg,
-                                                    borderRadius: '8px',
-                                                    border: `1px solid ${tooltipBorder}`,
-                                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                                                    padding: '10px 14px'
+                                                content={({ active, payload }) => {
+                                                    if (!active || !payload?.length) return null;
+                                                    const item = payload[0].payload;
+                                                    return (
+                                                        <div style={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, padding: '10px 14px', boxShadow: '0 4px 12px rgba(0,0,0,.15)', color: tooltipText }}>
+                                                            <div className="fw-semibold mb-1">{item.name}</div>
+                                                            <div>{Number(item.minutes).toFixed(1)} minutes</div>
+                                                            <small style={{ opacity: 0.75 }}>
+                                                                {Number(item.percentage).toFixed(1)}% of total
+                                                                {item.incidentCount ? ` • ${item.incidentCount} incident${item.incidentCount === 1 ? '' : 's'}` : ''}
+                                                            </small>
+                                                        </div>
+                                                    );
                                                 }}
-                                                labelStyle={{ fontWeight: '600', color: tooltipText, fontSize: '13px', marginBottom: '4px' }}
-                                                formatter={(value) => [`${Number(value).toFixed(1)} min`, 'Duration']}
                                             />
                                             <Bar
                                                 dataKey="minutes"
@@ -1145,7 +1223,7 @@ const ReportDetails = () => {
                                                 }}
                                             >
                                                 {downtimeData.map((entry, index) => (
-                                                    <Cell key={`cell-${index}`} fill={['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#06b6d4', '#ec4899', '#6b7280'][index % 8]} />
+                                                    <Cell key={`cell-${index}`} fill={entry.color || DOWNTIME_COLORS[index % DOWNTIME_COLORS.length]} />
                                                 ))}
                                             </Bar>
                                         </BarChart>
