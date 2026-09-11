@@ -26,6 +26,7 @@ const PostProductionLayout = React.lazy(() => import('../components/layout/PostP
 const PostProduction = React.lazy(() => import('../pages/post-production/Production'));
 const BulkBarcodePrinting = React.lazy(() => import('../pages/post-production/BulkBarcodePrinting'));
 const BatchPrintTransfer = React.lazy(() => import('../pages/post-production/BatchPrintTransfer'));
+const StagingWarehouse = React.lazy(() => import('../pages/post-production/StagingWarehouse'));
 const BatchTraceability = React.lazy(() => import('../pages/post-production/BatchTraceability'));
 const ProductAnalysis = React.lazy(() => import('../pages/post-production/ProductAnalysis'));
 const PetPerformance = React.lazy(() => import('../pages/post-production/PetPerformance'));
@@ -131,6 +132,7 @@ export const AppRouter = () => {
                             <Route path="reprint" element={<ReprintLabels />} />
                             <Route path="batch-scan" element={<BatchScan />} />
                             <Route path="batch-print-transfer" element={<BatchPrintTransfer />} />
+                            <Route path="staging-warehouse" element={<StagingWarehouse />} />
                             <Route path="analytics">
                                 <Route path="plant-overview" element={<PlantOverview />} />
                                 <Route path="bulk-barcodes" element={<BulkBarcodePrinting />} />

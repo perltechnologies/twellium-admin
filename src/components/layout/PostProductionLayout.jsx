@@ -17,6 +17,7 @@ const postProductionNav = [
         items: [
             { name: 'Production Mode', icon: 'ti-building-factory', path: '/post-production/production' },
             { name: 'Bulk Barcodes', icon: 'ti-barcode', path: '/post-production/analytics/bulk-barcodes' },
+            { name: 'Staging Warehouse', icon: 'ti-building-warehouse', path: '/post-production/staging-warehouse' },
             { name: 'Warehouse Flow', icon: 'ti-building-warehouse', path: '/post-production/warehouse' },
         ],
     },
