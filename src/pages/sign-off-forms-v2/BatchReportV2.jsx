@@ -140,6 +140,15 @@ const BatchReportV2 = () => {
         });
     };
 
+    // Display production times at minute precision (e.g. 10:23, not 10:23:00).
+    const formatProductionTime = (value) => {
+        if (!value) return '';
+        const text = String(value).trim();
+        const timeMatch = text.match(/(?:^|T|\s)(\d{1,2}):(\d{2})/);
+        if (!timeMatch) return text;
+        return `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
+    };
+
     // Raw batch rows from the response are the authoritative per-batch data.
     const rawBatches = Array.isArray(reportData?.batches) ? reportData.batches : [];
     const totals = reportData?.totals || {};
@@ -194,7 +203,7 @@ const BatchReportV2 = () => {
                 date: g.date,
                 batch_number: g.batch_number,
                 liters_display: entries
-                    .map(e => `${fmt(e.liters)}${e.time ? ` (${e.time})` : ''}`)
+                    .map(e => `${fmt(e.liters)}${e.time ? ` (${formatProductionTime(e.time)})` : ''}`)
                     .join(', '),
                 tank_display: [...g.tanks].join(', '),
                 pet_display: [...g.pets].join(', '),
@@ -425,7 +434,7 @@ const BatchReportV2 = () => {
                                         return (
                                             <tr key={idx}>
                                                 <td className="input-cell">{row.product_name}</td>
-                                                <td className="input-cell" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{batchNums.join(', ')} <span style={{ fontSize: '9px', color: '#666' }}>({batchNums.length})</span></td>
+                                                <td className="input-cell" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{batchNums.join(', ')}</td>
                                                 <td className="input-cell numeric">{fmt(row.total_liters)} liters</td>
                                                 <td className="input-cell">{petNames.join(', ')}</td>
                                             </tr>
@@ -438,11 +447,11 @@ const BatchReportV2 = () => {
                                 </tbody>
                             </table>
 
-                            {/* Details Section */}
+                            {/* Production Details Section */}
                             <table className="form-table section-table">
                                 <thead>
                                     <tr className="section-header-row">
-                                        <th colSpan={6}>Details</th>
+                                        <th colSpan={6}>Production Details</th>
                                     </tr>
                                     <tr className="sub-header-row">
                                         <th style={{ width: '13%' }}>Date</th>
