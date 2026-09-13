@@ -777,7 +777,7 @@ const ReportDetails = () => {
     const stats = report ? calculateStats() : {
         efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }, plannedDowntime: 0, mechanicalDowntime: 0
     };
-    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = stats;
+    const { efficiencyData, downtimeData, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = stats;
     const chartDowntimeTotal = downtimeData.reduce((sum, category) => sum + category.minutes, 0);
 
     if (loading) return <div className="p-4 text-center text-muted">Loading details...</div>;
@@ -785,6 +785,7 @@ const ReportDetails = () => {
 
     const catalogProduct = products.find(p => p.name === report.product_name || String(p.id) === String(report.product));
     const bottleSize = report.bottle_size || (catalogProduct?.size ? `${catalogProduct.size}ml` : null);
+    const totalBottlesProduced = Number(report.total_bottles_produced) || 0;
 
     const tabs = [
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
@@ -861,7 +862,7 @@ const ReportDetails = () => {
                             </h6>
                         </div>
                         <div className="card-body">
-                            <DetailRow label="Total Bottles" value={report.total_bottles_produced?.toLocaleString()} />
+                            <DetailRow label="Total Bottles" value={totalBottlesProduced.toLocaleString()} />
                             <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
                             <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
                             <DetailRow label="Line Speed" value={report.line_speed} />
@@ -905,7 +906,7 @@ const ReportDetails = () => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Total Output</small>
-                                        <h6 className="mb-0 text-primary fw-bold">{totalOutput.toLocaleString()}</h6>
+                                        <h6 className="mb-0 text-primary fw-bold">{totalBottlesProduced.toLocaleString()}</h6>
                                     </div>
                                 </div>
                             </div>

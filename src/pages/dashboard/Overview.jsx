@@ -5,6 +5,7 @@ import StoppageIncidentsChart from '../../components/charts/StoppageIncidentsCha
 import DowntimeTimeline from '../../components/charts/DowntimeTimeline';
 import ProductionSummary from '../../components/production/ProductionSummary';
 import { useApiWithFilters } from '../../utils/useApiWithFilters';
+import { toLocalDateStr } from '../../utils/filterParams';
 import { useFilters } from '../../context/FilterContext';
 import ChartErrorBoundary from '../../components/ui/ChartErrorBoundary';
 import {
@@ -789,9 +790,11 @@ const Overview = () => {
                     <button 
                         onClick={() => {
                             const today = new Date();
+                            const weekStart = new Date(today);
+                            weekStart.setDate(weekStart.getDate() - 6);
                             updateFilters({ 
-                                start_date: today.toISOString().split('T')[0], 
-                                end_date: today.toISOString().split('T')[0], 
+                                start_date: toLocalDateStr(weekStart),
+                                end_date: toLocalDateStr(today),
                                 log_date: null 
                             });
                         }}

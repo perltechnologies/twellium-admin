@@ -85,10 +85,13 @@ const SIMILARITY_THRESHOLD = 0.72;
  */
 const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange, petFilter, onPetChange }) => {
     const navigate = useNavigate();
-    const [useRange, setUseRange] = useState(false);
-    const [singleDate, setSingleDate] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const filterLogDate = dateFilter?.log_date || '';
+    const filterStartDate = dateFilter?.start_date || '';
+    const filterEndDate = dateFilter?.end_date || '';
+    const [useRange, setUseRange] = useState(() => Boolean(filterStartDate && filterEndDate));
+    const [singleDate, setSingleDate] = useState(() => filterLogDate);
+    const [startDate, setStartDate] = useState(() => filterStartDate);
+    const [endDate, setEndDate] = useState(() => filterEndDate);
     const [selectedSubCategory, setSelectedSubCategory] = useState('');
     const [selectedPet, setSelectedPet] = useState('');
     const [stoppages, setStoppages] = useState([]);
@@ -99,13 +102,13 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange, 
 
     useEffect(() => {
         if (dateFilter) {
-            const hasRange = Boolean(dateFilter.start_date && dateFilter.end_date);
+            const hasRange = Boolean(filterStartDate && filterEndDate);
             setUseRange(hasRange);
-            setSingleDate(dateFilter.log_date || '');
-            setStartDate(dateFilter.start_date || '');
-            setEndDate(dateFilter.end_date || '');
+            setSingleDate(filterLogDate);
+            setStartDate(filterStartDate);
+            setEndDate(filterEndDate);
         }
-    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date]);
+    }, [dateFilter, filterLogDate, filterStartDate, filterEndDate]);
 
     useEffect(() => {
         if (subCategoryFilter) {
@@ -124,20 +127,17 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange, 
     }, [petFilter, selectedPet]);
 
     useEffect(() => {
+        let cancelled = false;
+
         const fetchData = async () => {
             setLoading(true);
             try {
-                const effectiveUseRange = dateFilter ? Boolean(dateFilter.start_date && dateFilter.end_date) : useRange;
-                const effectiveSingleDate = dateFilter ? (dateFilter.log_date || '') : singleDate;
-                const effectiveStartDate = dateFilter ? (dateFilter.start_date || '') : startDate;
-                const effectiveEndDate = dateFilter ? (dateFilter.end_date || '') : endDate;
-
                 const params = { page_size: 1000, ordering: '-log_date' };
-                if (effectiveUseRange && effectiveStartDate && effectiveEndDate) {
-                    params.start_date = effectiveStartDate;
-                    params.end_date = effectiveEndDate;
-                } else if (effectiveSingleDate) {
-                    params.log_date = effectiveSingleDate;
+                if (useRange && startDate && endDate) {
+                    params.start_datetime = `${startDate}T00:00:00Z`;
+                    params.end_datetime = `${endDate}T23:59:59Z`;
+                } else if (singleDate) {
+                    params.log_date = singleDate;
                 } else {
                     const now = new Date();
                     const currentTime = now.toTimeString().slice(0, 5);
@@ -153,16 +153,38 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange, 
                     : Array.isArray(d?.data) ? d.data
                     : Array.isArray(d?.data?.results) ? d.data.results
                     : [];
-                setStoppages(list.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+
+                const selectedStart = useRange ? startDate : (singleDate || params.log_date);
+                const selectedEnd = useRange ? endDate : (singleDate || params.log_date);
+                const dateFilteredList = list.filter((row) => {
+                    const rowDate = String(
+                        row.log_date
+                        || row.production_date
+                        || row.datetime_start_time
+                        || row.created_at
+                        || ''
+                    ).slice(0, 10);
+
+                    if (!rowDate || !selectedStart || !selectedEnd) return true;
+                    return rowDate >= selectedStart && rowDate <= selectedEnd;
+                });
+
+                if (!cancelled) {
+                    setStoppages(dateFilteredList.filter(r => !r.pet_name?.toLowerCase().includes('can')));
+                }
             } catch (err) {
                 console.error('Failed to fetch stoppages for timeline:', err);
-                setStoppages([]);
+                if (!cancelled) setStoppages([]);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
         fetchData();
-    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date, useRange, singleDate, startDate, endDate, fetchKey]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [useRange, singleDate, startDate, endDate, fetchKey]);
 
     const effectiveSelectedSubCategory = subCategoryFilter || selectedSubCategory;
     const effectiveSelectedPet = petFilter || selectedPet;
