@@ -878,6 +878,7 @@ const ReportDetails = () => {
                             </h6>
                         </div>
                         <div className="card-body">
+                            <DetailRow label="Total Output" value={totalOutput.toLocaleString()} />
                             <DetailRow label="Total Bottles" value={totalBottlesProduced.toLocaleString()} />
                             <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
                             <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
