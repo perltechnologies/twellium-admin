@@ -530,6 +530,18 @@ const ReportDetails = () => {
                 }
 
                 const summary = productionSummary?.summary;
+                const matchingPetEntries = (productionSummary?.daily_breakdown || [])
+                    .flatMap(day => day.pets || [])
+                    .filter(entry => {
+                        const samePet = !data.pet || String(entry.pet_id) === String(data.pet);
+                        const sameShift = !data.shift_name || entry.shift === data.shift_name;
+                        const sameProduct = !data.product_name || entry.product_name === data.product_name;
+                        return samePet && sameShift && sameProduct;
+                    });
+                const cumulativeHourlyOutput = matchingPetEntries.reduce((total, entry) => {
+                    const value = entry.total_bottles ?? entry.total_output ?? entry.total_units;
+                    return total + (Number(value) || 0);
+                }, 0);
                 const metrics = summary ? {
                     oee: summary.oee,
                     efficiency: summary.avg_efficiency,
@@ -538,7 +550,11 @@ const ReportDetails = () => {
                     quality: summary.avg_quality,
                     details: {
                         ...(data.metrics?.details || {}),
-                        total_output_pcs: summary.total_bottles_produced ?? summary.total_bottles ?? summary.total_output,
+                        // `total_bottles` is the cumulative hourly-entry output. Some
+                        // summary payloads expose it only on the matching PET row.
+                        total_output_pcs: cumulativeHourlyOutput ||
+                            Number(summary.total_bottles ?? summary.total_output) ||
+                            summary.total_bottles_produced,
                         total_downtime_mins: summary.total_downtime_minutes,
                         planned_downtime_mins: summary.planned_downtime_mins,
                         mechanical_downtime_mins: summary.mechanical_downtime_mins,
@@ -777,7 +793,7 @@ const ReportDetails = () => {
     const stats = report ? calculateStats() : {
         efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }, plannedDowntime: 0, mechanicalDowntime: 0
     };
-    const { efficiencyData, downtimeData, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = stats;
+    const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = stats;
     const chartDowntimeTotal = downtimeData.reduce((sum, category) => sum + category.minutes, 0);
 
     if (loading) return <div className="p-4 text-center text-muted">Loading details...</div>;
@@ -906,7 +922,7 @@ const ReportDetails = () => {
                                     </div>
                                     <div className="flex-grow-1">
                                         <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Total Output</small>
-                                        <h6 className="mb-0 text-primary fw-bold">{totalBottlesProduced.toLocaleString()}</h6>
+                                        <h6 className="mb-0 text-primary fw-bold">{totalOutput.toLocaleString()}</h6>
                                     </div>
                                 </div>
                             </div>
