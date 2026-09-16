@@ -3,26 +3,42 @@ import { productionApi } from '../../api/production';
 import FilterInputs from '../../components/FilterInputs';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, ReferenceLine } from 'recharts';
 import { exportToExcel } from '../../utils/exportUtils';
+import {
+    buildCO2ExportRows,
+    CO2_CONSUMPTION_UNIT,
+    resolveCO2Consumption,
+    summarizeCO2Consumption,
+} from '../../utils/co2Consumption';
 import { useFilters } from '../../context/FilterContext';
 
 const PET_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 const TARGET_YIELD = 95;
+const DEFAULT_PETS = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
+const normalizePet = (name) => {
+    const num = (name || '').toLowerCase().match(/pet\s*(\d+)/);
+    return num ? `Pet ${num[1]}` : name;
+};
+const formatConsumption = (value) => Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+});
 
 const yieldColor = (v) => {
-    if (!v || v === 0) return '#94a3b8';
+    if (v === null || v === undefined || !Number.isFinite(v)) return '#94a3b8';
     return v >= 95 ? '#16a34a' : v >= 90 ? '#d97706' : '#dc2626';
 };
 const yieldBadge = (v) => {
-    if (!v || v === 0) return 'secondary';
+    if (v === null || v === undefined || !Number.isFinite(v)) return 'secondary';
     return v >= 95 ? 'success' : v >= 90 ? 'warning' : 'danger';
 };
 
 const CO2Report = () => {
-    const { filters } = useFilters();
+    const { filters, updateFilters } = useFilters();
     const [rawData, setRawData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [timeRange, setTimeRange] = useState('week');
     const [viewMode, setViewMode] = useState('chart');
+    const [activeProductTab, setActiveProductTab] = useState(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -78,45 +94,87 @@ const CO2Report = () => {
         return f.start_date === f.end_date ? f.start_date : `${f.start_date} to ${f.end_date}`;
     }, [rawData]);
 
-    const defaultPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
-    const normalizePet = (name) => {
-        const num = (name || '').toLowerCase().match(/pet\s*(\d+)/);
-        return num ? `Pet ${num[1]}` : name;
-    };
+    const productFilterOptions = useMemo(() => {
+        const names = new Set();
+        (rawData?.daily_breakdown || []).forEach((day) => {
+            (day.pets || []).forEach((pet) => {
+                if (!(pet.pet_name || '').toLowerCase().includes('can') && pet.product_name) {
+                    names.add(pet.product_name);
+                }
+            });
+        });
+        return [...names].sort((a, b) => a.localeCompare(b));
+    }, [rawData]);
 
-    // Build per-pet CO2 yield data
-    const co2ByPet = useMemo(() => {
-        const petMap = {};
-        defaultPets.forEach(p => { petMap[p] = { pet: p, totalActual: 0, totalStd: 0, count: 0, values: [] }; });
+    useEffect(() => {
+        if (rawData && filters.product && !productFilterOptions.includes(filters.product)) {
+            updateFilters({ product: null });
+        }
+    }, [filters.product, productFilterOptions, rawData, updateFilters]);
 
+    // Single source of truth for cards, trends, detail rows, and exports.
+    const tableData = useMemo(() => {
+        const rows = [];
         (rawData?.daily_breakdown || []).forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                const name = normalizePet(p.pet_name);
-                if (!petMap[name]) petMap[name] = { pet: name, totalActual: 0, totalStd: 0, count: 0, values: [] };
-                // Only running pets (had production activity) contribute.
-                const producedOutput = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
-                if (producedOutput <= 0) return;
-
-                const co2 = p.meters_reading?.co2 || {};
-                const stdCo2 = co2.std_co2_consumption_kg || 0;
-                // Per-row yield% from the meter reading (authoritative), fall back to pet.co2_yield.
-                const rowYield = co2.co2_yield_percent || p.co2_yield || 0;
-                if (stdCo2 <= 0 || rowYield <= 0) return;
-
-                // Actual = standard / (yield/100), consistent with the syrup method.
-                const actualCo2 = stdCo2 / (rowYield / 100);
-
-                petMap[name].count += 1;
-                petMap[name].values.push({ date: day.date, shift: p.shift, yield: rowYield, product: p.product_name });
-                petMap[name].totalActual += actualCo2;
-                petMap[name].totalStd += stdCo2;
+                if (filters.product && p.product_name !== filters.product) return;
+                const consumption = resolveCO2Consumption(p);
+                if (!consumption.qualifies) return;
+                rows.push({
+                    date: day.date,
+                    pet: normalizePet(p.pet_name),
+                    product: p.product_name || '-',
+                    shift: p.shift || '-',
+                    co2_yield: consumption.yieldPercent,
+                    standard_consumption: consumption.standard,
+                    actual_consumption: consumption.actual,
+                    consumption_unit: consumption.unit,
+                    actual_source: consumption.actualSource,
+                    total_bottles_produced: consumption.output,
+                });
             });
+        });
+        return rows.sort((a, b) => a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet));
+    }, [rawData, filters.product]);
+
+    // Distinct products present in the qualifying detail rows, for the detail tabs.
+    const products = useMemo(() => {
+        const set = new Set();
+        tableData.forEach(r => set.add(r.product || '-'));
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [tableData]);
+
+    // Keep the active product tab pointed at a product that exists in the current
+    // dataset. Default to the first product; reset if it disappears after a filter change.
+    useEffect(() => {
+        if (!products.length) {
+            if (activeProductTab !== null) setActiveProductTab(null);
+            return;
+        }
+        if (!products.includes(activeProductTab)) setActiveProductTab(products[0]);
+    }, [products, activeProductTab]);
+
+    // Rows for the currently active product tab.
+    const productTabRows = useMemo(
+        () => tableData.filter(r => (r.product || '-') === activeProductTab),
+        [tableData, activeProductTab]
+    );
+
+    // Build cumulative per-PET CO2 values from the same qualifying detail rows.
+    const co2ByPet = useMemo(() => {
+        const petMap = {};
+        DEFAULT_PETS.forEach(p => { petMap[p] = { pet: p, totalActual: 0, totalStd: 0, count: 0 }; });
+        tableData.forEach(row => {
+            if (!petMap[row.pet]) petMap[row.pet] = { pet: row.pet, totalActual: 0, totalStd: 0, count: 0 };
+            petMap[row.pet].count += 1;
+            petMap[row.pet].totalActual += row.actual_consumption;
+            petMap[row.pet].totalStd += row.standard_consumption;
         });
 
         return Object.values(petMap)
             .map(p => ({
                 pet: p.pet,
-                avg_yield: p.totalActual > 0 ? (p.totalStd / p.totalActual) * 100 : 0,
+                avg_yield: p.count > 0 && p.totalActual > 0 ? (p.totalStd / p.totalActual) * 100 : null,
                 totalStd: p.totalStd,
                 totalActual: p.totalActual,
                 count: p.count,
@@ -126,7 +184,7 @@ const CO2Report = () => {
                 const bNum = parseInt(b.pet.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
             });
-    }, [rawData]);
+    }, [tableData]);
 
     // Headline Avg CO2 Yield = CUMULATIVE Σ standard / Σ actual × 100 across all
     // running lines, using the same std + derived-actual as the per-line badges.
@@ -134,62 +192,37 @@ const CO2Report = () => {
         const contributors = co2ByPet
             .filter(p => p.count > 0 && p.totalActual > 0)
             .map(p => ({ pet: p.pet, yield: p.avg_yield, count: p.count, totalStd: p.totalStd, totalActual: p.totalActual }));
-        const totalStd = contributors.reduce((s, c) => s + c.totalStd, 0);
-        const totalActual = contributors.reduce((s, c) => s + c.totalActual, 0);
-        const value = totalActual > 0 ? (totalStd / totalActual) * 100 : 0;
-        return { value, contributors, totalStd, totalActual };
-    }, [co2ByPet]);
+        const cumulative = summarizeCO2Consumption(tableData);
+        return {
+            value: cumulative.yieldPercent,
+            contributors,
+            totalStd: cumulative.totalStandard,
+            totalActual: cumulative.totalActual,
+            recordCount: cumulative.recordCount,
+        };
+    }, [co2ByPet, tableData]);
 
     // Build daily trend data
     const dailyTrendData = useMemo(() => {
-        const days = rawData?.daily_breakdown || [];
-        return days.map(day => {
-            const row = { date: day.date.slice(5) };
-            const petYields = {};
-            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                const name = normalizePet(p.pet_name);
-                if (p.co2_yield !== null && p.co2_yield !== undefined && p.co2_yield > 0) {
-                    if (!petYields[name]) petYields[name] = { sum: 0, count: 0 };
-                    petYields[name].sum += p.co2_yield;
-                    petYields[name].count += 1;
-                }
-            });
-            defaultPets.forEach(pet => {
-                row[pet] = petYields[pet] ? parseFloat((petYields[pet].sum / petYields[pet].count).toFixed(1)) : null;
+        const dayMap = {};
+        tableData.forEach(record => {
+            const key = record.date;
+            if (!dayMap[key]) dayMap[key] = {};
+            if (!dayMap[key][record.pet]) dayMap[key][record.pet] = { standard: 0, actual: 0 };
+            dayMap[key][record.pet].standard += record.standard_consumption;
+            dayMap[key][record.pet].actual += record.actual_consumption;
+        });
+        return Object.entries(dayMap).sort(([a], [b]) => a.localeCompare(b)).map(([date, pets]) => {
+            const row = { date: date.slice(5) };
+            DEFAULT_PETS.forEach(pet => {
+                row[pet] = pets[pet]?.actual > 0 ? Number(((pets[pet].standard / pets[pet].actual) * 100).toFixed(1)) : null;
             });
             return row;
         });
-    }, [rawData]);
-
-    // Build detailed table
-    const tableData = useMemo(() => {
-        const rows = [];
-        (rawData?.daily_breakdown || []).forEach(day => {
-            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                if (p.co2_yield !== null && p.co2_yield !== undefined && p.co2_yield > 0) {
-                    rows.push({
-                        date: day.date,
-                        pet: normalizePet(p.pet_name),
-                        product: p.product_name || '-',
-                        shift: p.shift || '-',
-                        co2_yield: p.co2_yield,
-                        total_bottles_produced: p.total_bottles_produced || 0,
-                    });
-                }
-            });
-        });
-        return rows.sort((a, b) => a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet));
-    }, [rawData]);
+    }, [tableData]);
 
     const handleExport = () => {
-        const exportData = tableData.map(d => ({
-            'Date': d.date,
-            'PET Line': d.pet,
-            'Product': d.product,
-            'Shift': d.shift,
-            'CO2 Yield %': d.co2_yield,
-            'Total Output': d.total_bottles_produced,
-        }));
+        const exportData = buildCO2ExportRows(tableData);
         exportToExcel(exportData, `CO2_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`);
     };
 
@@ -244,21 +277,39 @@ const CO2Report = () => {
                 </div>
             </div>
 
-            <FilterInputs />
+            <FilterInputs showProduct productOptions={productFilterOptions} />
 
             {dateRangeLabel && (
-                <div className="alert alert-light mb-3 py-2">
-                    <div className="d-flex align-items-center flex-wrap">
-                        <i className="ti ti-calendar me-2 text-primary"></i>
-                        <span>Period: <strong>{dateRangeLabel}</strong></span>
-                        <span className="ms-3">
-                            Avg CO₂ Yield: <strong className={`text-${yieldBadge(avgCo2Yield.value)}`}>{avgCo2Yield.value.toFixed(1)}%</strong>
-                        </span>
-                        {avgCo2Yield.value > 0 && (
-                            <span className="ms-2 text-muted small">
-                                (Σstandard ÷ Σactual, {avgCo2Yield.contributors.length} running line{avgCo2Yield.contributors.length > 1 ? 's' : ''})
-                            </span>
-                        )}
+                <div className="alert alert-light border mb-3">
+                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <span><i className="ti ti-calendar me-2 text-primary"></i>Period: <strong>{dateRangeLabel}</strong></span>
+                        <small className="text-muted">Cumulative standard ÷ cumulative actual × 100</small>
+                    </div>
+                    <div className="row g-2 mt-1">
+                        <div className="col-md-4">
+                            <div className="bg-white border rounded-3 px-3 py-2 h-100">
+                                <small className="text-muted d-block">Average CO₂ Yield</small>
+                                <strong className={`fs-5 text-${yieldBadge(avgCo2Yield.value)}`}>
+                                    {avgCo2Yield.value !== null ? `${avgCo2Yield.value.toFixed(1)}%` : 'No data'}
+                                </strong>
+                            </div>
+                        </div>
+                        <div className="col-md-4">
+                            <div className="bg-white border rounded-3 px-3 py-2 h-100">
+                                <small className="text-muted d-block">Cumulative Standard</small>
+                                <strong className="fs-5">
+                                    {avgCo2Yield.recordCount > 0 ? `${formatConsumption(avgCo2Yield.totalStd)} ${CO2_CONSUMPTION_UNIT}` : 'No data'}
+                                </strong>
+                            </div>
+                        </div>
+                        <div className="col-md-4">
+                            <div className="bg-white border rounded-3 px-3 py-2 h-100">
+                                <small className="text-muted d-block">Cumulative Actual</small>
+                                <strong className="fs-5">
+                                    {avgCo2Yield.recordCount > 0 ? `${formatConsumption(avgCo2Yield.totalActual)} ${CO2_CONSUMPTION_UNIT}` : 'No data'}
+                                </strong>
+                            </div>
+                        </div>
                     </div>
                     {avgCo2Yield.contributors?.length > 0 && (
                         <div className="d-flex flex-wrap gap-2 mt-2 align-items-center">
@@ -295,10 +346,29 @@ const CO2Report = () => {
                                 <div className="card border-0 shadow-sm h-100">
                                     <div className="card-body text-center py-3">
                                         <small className="text-muted d-block mb-1">{p.pet}</small>
-                                        <h5 className="mb-0 fw-bold" style={{ color: yieldColor(p.avg_yield) }}>
-                                            {p.avg_yield > 0 ? `${p.avg_yield.toFixed(1)}%` : '-'}
-                                        </h5>
-                                        <small className="text-muted">{p.count} report{p.count !== 1 ? 's' : ''}</small>
+                                        {p.count > 0 ? (
+                                            <>
+                                                <h5 className="mb-2 fw-bold" style={{ color: yieldColor(p.avg_yield) }}>
+                                                    {p.avg_yield.toFixed(1)}%
+                                                </h5>
+                                                <div className="border-top pt-2 text-start small">
+                                                    <div className="d-flex justify-content-between gap-2">
+                                                        <span className="text-muted">Standard</span>
+                                                        <strong>{formatConsumption(p.totalStd)} {CO2_CONSUMPTION_UNIT}</strong>
+                                                    </div>
+                                                    <div className="d-flex justify-content-between gap-2 mt-1">
+                                                        <span className="text-muted">Actual</span>
+                                                        <strong>{formatConsumption(p.totalActual)} {CO2_CONSUMPTION_UNIT}</strong>
+                                                    </div>
+                                                </div>
+                                                <small className="text-muted d-block mt-2">{p.count} report{p.count !== 1 ? 's' : ''}</small>
+                                            </>
+                                        ) : (
+                                            <div className="py-3 text-muted">
+                                                <i className="ti ti-database-off d-block fs-4 mb-1"></i>
+                                                <small>No qualifying data</small>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -351,7 +421,7 @@ const CO2Report = () => {
                                                         <Tooltip content={<CustomTooltip />} />
                                                         <Legend />
                                                         <ReferenceLine y={TARGET_YIELD} stroke="#16a34a" strokeDasharray="5 5" />
-                                                        {defaultPets.map((pet, idx) => (
+                                                        {DEFAULT_PETS.map((pet, idx) => (
                                                             <Line
                                                                 key={pet}
                                                                 type="monotone"
@@ -370,11 +440,45 @@ const CO2Report = () => {
                                 </div>
                             </div>
 
-                            {/* Detail Table */}
+                            {/* Detail Table - one tab per product */}
                             <div className="card">
                                 <div className="card-header">
-                                    <h6 className="mb-0">CO₂ Yield Details</h6>
-                                    <small className="text-muted">{tableData.length} records</small>
+                                    <div className="d-flex align-items-center justify-content-between mb-2">
+                                        <div>
+                                            <h6 className="mb-0">CO₂ Yield Details</h6>
+                                            <small className="text-muted">{productTabRows.length} of {tableData.length} records</small>
+                                        </div>
+                                    </div>
+                                    <ul className="nav nav-pills card-header-pills gap-2 flex-wrap" role="tablist">
+                                        {products.map((product, idx) => {
+                                            const isActive = product === activeProductTab;
+                                            const color = PET_COLORS[idx % PET_COLORS.length];
+                                            const count = tableData.filter(r => (r.product || '-') === product).length;
+                                            return (
+                                                <li className="nav-item" key={product} role="presentation">
+                                                    <button
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-selected={isActive}
+                                                        className={`btn btn-sm d-flex align-items-center gap-2 ${isActive ? 'text-white' : 'btn-outline-secondary'}`}
+                                                        style={isActive ? { backgroundColor: color, borderColor: color } : undefined}
+                                                        onClick={() => setActiveProductTab(product)}
+                                                    >
+                                                        <span
+                                                            style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: isActive ? '#fff' : color, display: 'inline-block' }}
+                                                        ></span>
+                                                        {product}
+                                                        <span
+                                                            className={`badge ${isActive ? 'bg-white' : 'bg-secondary-subtle text-secondary'}`}
+                                                            style={isActive ? { color } : undefined}
+                                                        >
+                                                            {count}
+                                                        </span>
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
                                 </div>
                                 <div className="card-body p-0">
                                     <div className="table-responsive" style={{ maxHeight: 400 }}>
@@ -383,25 +487,29 @@ const CO2Report = () => {
                                                 <tr>
                                                     <th>Date</th>
                                                     <th>PET Line</th>
-                                                    <th>Product</th>
                                                     <th>Shift</th>
                                                     <th className="text-end">CO₂ Yield</th>
+                                                    <th className="text-end">Standard ({CO2_CONSUMPTION_UNIT})</th>
+                                                    <th className="text-end">Actual ({CO2_CONSUMPTION_UNIT})</th>
                                                     <th className="text-end">Output</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {tableData.length === 0 ? (
-                                                    <tr><td colSpan={6} className="text-center text-muted py-4">No CO₂ yield data</td></tr>
-                                                ) : tableData.map((row, idx) => (
+                                                {productTabRows.length === 0 ? (
+                                                    <tr><td colSpan={7} className="text-center text-muted py-4">No qualifying CO₂ consumption data</td></tr>
+                                                ) : productTabRows.map((row, idx) => (
                                                     <tr key={idx}>
                                                         <td>{row.date}</td>
                                                         <td className="fw-medium">{row.pet}</td>
-                                                        <td className="text-muted">{row.product}</td>
                                                         <td><span className="badge bg-secondary-subtle text-secondary">{row.shift}</span></td>
                                                         <td className="text-end">
                                                             <span className={`badge bg-${yieldBadge(row.co2_yield)}-subtle text-${yieldBadge(row.co2_yield)} fw-bold`}>
                                                                 {row.co2_yield.toFixed(1)}%
                                                             </span>
+                                                        </td>
+                                                        <td className="text-end">{formatConsumption(row.standard_consumption)}</td>
+                                                        <td className="text-end" title={row.actual_source === 'derived' ? 'Derived from standard consumption and reported yield' : 'Authoritative API value'}>
+                                                            {formatConsumption(row.actual_consumption)}
                                                         </td>
                                                         <td className="text-end">{(row.total_bottles_produced || 0).toLocaleString()}</td>
                                                     </tr>
@@ -431,13 +539,15 @@ const CO2Report = () => {
                                                 <th>Product</th>
                                                 <th>Shift</th>
                                                 <th className="text-end">CO₂ Yield %</th>
+                                                <th className="text-end">Standard ({CO2_CONSUMPTION_UNIT})</th>
+                                                <th className="text-end">Actual ({CO2_CONSUMPTION_UNIT})</th>
                                                 <th className="text-end">Total Output</th>
                                                 <th className="text-end">Status</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {tableData.length === 0 ? (
-                                                <tr><td colSpan={7} className="text-center text-muted py-4">No data available</td></tr>
+                                                <tr><td colSpan={9} className="text-center text-muted py-4">No qualifying CO₂ consumption data</td></tr>
                                             ) : tableData.map((row, idx) => (
                                                 <tr key={idx}>
                                                     <td className="fw-medium">{row.date}</td>
@@ -446,6 +556,10 @@ const CO2Report = () => {
                                                     <td><span className="badge bg-secondary-subtle text-secondary">{row.shift}</span></td>
                                                     <td className="text-end fw-bold" style={{ color: yieldColor(row.co2_yield) }}>
                                                         {row.co2_yield.toFixed(1)}%
+                                                    </td>
+                                                    <td className="text-end">{formatConsumption(row.standard_consumption)}</td>
+                                                    <td className="text-end" title={row.actual_source === 'derived' ? 'Derived from standard consumption and reported yield' : 'Authoritative API value'}>
+                                                        {formatConsumption(row.actual_consumption)}
                                                     </td>
                                                     <td className="text-end">{(row.total_bottles_produced || 0).toLocaleString()}</td>
                                                     <td className="text-end">
