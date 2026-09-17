@@ -3,16 +3,14 @@ import { Link } from 'react-router-dom';
 import {useAuth} from "../../context/AuthContext";
 import {useTheme} from "../../context/ThemeContext";
 import RefreshSettings from '../ui/RefreshSettings';
+import { canAccessPath, firstAccessiblePath } from '../../config/pagePrivileges';
 
 const TopBar = () => {
     const { user, logout } = useAuth();
     const { theme, toggleTheme } = useTheme();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [ setOpenSubmenus] = useState({ production: true, configs: false, definitions: false });
-
-    const toggleSubmenu = (key) => {
-        setOpenSubmenus(prev => ({ ...prev, [key]: !prev[key] }));
-    };
+    const permitted = (path) => canAccessPath(user, path);
+    const homePath = firstAccessiblePath(user);
 
     return (
         <header className="navbar-header">
@@ -20,7 +18,7 @@ const TopBar = () => {
                 <div className="d-flex align-items-center gap-2">
 
 
-                    <Link to="/dashboard" className="logo">
+                    <Link to={homePath} className="logo">
 
                         <span className="logo-light">
                             <span className="logo-lg"><img src="/assets/img/logo.svg" alt="logo"/></span>
@@ -96,7 +94,7 @@ const TopBar = () => {
                                 <i className="ti ti-layout-grid-add"></i>
                             </button>
                             <div className="dropdown-menu dropdown-menu-end dropdown-menu-md p-2">
-                                <Link to="/dashboard" className="dropdown-item">
+                                {permitted('/dashboard') && <Link to="/dashboard" className="dropdown-item">
                                     <div className="d-flex align-items-center justify-content-between">
                                         <div>
                                             <span className="d-flex mb-1 fw-semibold text-dark">Overview</span>
@@ -104,8 +102,8 @@ const TopBar = () => {
                                         </div>
                                         <i className="ti ti-chevron-right-pipe text-dark"></i>
                                     </div>
-                                </Link>
-                                <Link to="/dashboard/production" className="dropdown-item">
+                                </Link>}
+                                {permitted('/dashboard/production') && <Link to="/dashboard/production" className="dropdown-item">
                                     <div className="d-flex align-items-center justify-content-between">
                                         <div>
                                             <span className="d-flex mb-1 fw-semibold text-dark">Production</span>
@@ -113,8 +111,8 @@ const TopBar = () => {
                                         </div>
                                         <i className="ti ti-chevron-right-pipe text-dark"></i>
                                     </div>
-                                </Link>
-                                <Link to="/dashboard/production/stoppages" className="dropdown-item">
+                                </Link>}
+                                {permitted('/dashboard/production/stoppages') && <Link to="/dashboard/production/stoppages" className="dropdown-item">
                                     <div className="d-flex align-items-center justify-content-between">
                                         <div>
                                             <span className="d-flex mb-1 fw-semibold text-dark">Stoppages</span>
@@ -122,8 +120,8 @@ const TopBar = () => {
                                         </div>
                                         <i className="ti ti-chevron-right-pipe text-dark"></i>
                                     </div>
-                                </Link>
-                                <Link to="/dashboard/inventory/products" className="dropdown-item">
+                                </Link>}
+                                {permitted('/dashboard/inventory/products') && <Link to="/dashboard/inventory/products" className="dropdown-item">
                                     <div className="d-flex align-items-center justify-content-between">
                                         <div>
                                             <span className="d-flex mb-1 fw-semibold text-dark">Inventory</span>
@@ -131,28 +129,28 @@ const TopBar = () => {
                                         </div>
                                         <i className="ti ti-chevron-right-pipe text-dark"></i>
                                     </div>
-                                </Link>
+                                </Link>}
                             </div>
                         </div>
                     </div>
 
                     {/* Users */}
-                    <div className="header-item d-none d-sm-flex">
+                    {permitted('/dashboard/users') && <div className="header-item d-none d-sm-flex">
                         <div className="dropdown me-2">
                             <Link to="/dashboard/users" className="btn topbar-link topbar-indigo-link">
                                 <i className="ti ti-users"></i>
                             </Link>
                         </div>
-                    </div>
+                    </div>}
 
                     {/* Formulas */}
-                    <div className="header-item d-none d-sm-flex">
+                    {permitted('/dashboard/formulas') && <div className="header-item d-none d-sm-flex">
                         <div className="dropdown me-2">
                             <Link to="/dashboard/formulas" className="btn topbar-link topbar-warning-link">
                                 <i className="ti ti-calculator"></i>
                             </Link>
                         </div>
-                    </div>
+                    </div>}
 
                     <div className="header-line"></div>
 
@@ -194,7 +192,7 @@ const TopBar = () => {
                                     </span>
                                 <div className="ms-2">
                                     <p className="fw-medium text-dark mb-0">{user?.username || 'Admin'}</p>
-                                    <span className="d-block fs-13">Administrator</span>
+                                    <span className="d-block fs-13">{user?.role?.replaceAll('_', ' ') || 'User'}</span>
                                 </div>
                             </div>
 

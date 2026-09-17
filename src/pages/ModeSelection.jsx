@@ -1,9 +1,14 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Factory, Truck, ArrowRight, Building2 } from 'lucide-react';
+import { Factory, Truck, ArrowRight } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { canAccessMode, firstAccessiblePath } from '../config/pagePrivileges';
 
 const ModeSelection = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const canUsePreProduction = canAccessMode(user, 'pre-production');
+    const canUsePostProduction = canAccessMode(user, 'post-production');
 
     return (
         <div className="d-flex align-items-center justify-content-center min-vh-100 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -26,11 +31,11 @@ const ModeSelection = () => {
                 <div className="row g-4">
 
                     {/* Pre Production */}
-                    <div className="col-md-6">
+                    {canUsePreProduction && <div className="col-md-6">
                         <div
                             className="card border-0 h-100 shadow-sm mode-card cursor-pointer animate__animated animate__fadeInLeft"
                             role="button"
-                            onClick={() => navigate('/dashboard')}
+                            onClick={() => navigate(firstAccessiblePath(user, 'pre-production'))}
                             style={{
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                                 borderRadius: '16px'
@@ -56,14 +61,14 @@ const ModeSelection = () => {
                                 </span>
                             </div>
                         </div>
-                    </div>
+                    </div>}
 
                     {/* Post Production */}
-                    <div className="col-md-6">
+                    {canUsePostProduction && <div className="col-md-6">
                         <div
                             className="card border-0 h-100 shadow-sm mode-card cursor-pointer animate__animated animate__fadeInRight"
                             role="button"
-                            onClick={() => navigate('/post-production/production')}
+                            onClick={() => navigate(firstAccessiblePath(user, 'post-production'))}
                             style={{
                                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                                 borderRadius: '16px'
@@ -89,7 +94,16 @@ const ModeSelection = () => {
                                 </span>
                             </div>
                         </div>
-                    </div>
+                    </div>}
+
+                    {!canUsePreProduction && !canUsePostProduction && (
+                        <div className="col-12">
+                            <div className="alert alert-warning text-center py-4 mb-0">
+                                <i className="ti ti-lock-access fs-2 d-block mb-2"></i>
+                                No application pages have been assigned to your account. Contact an administrator.
+                            </div>
+                        </div>
+                    )}
 
                 </div>
 

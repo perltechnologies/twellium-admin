@@ -16,7 +16,11 @@ import {
     Clock3,
     X,
     AlertCircle,
+    Warehouse,
+    CheckCircle2,
+    ArrowRightLeft,
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { inventoryApi } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { formatAndSortPets } from '../../utils/petUtils';
@@ -36,6 +40,15 @@ import './StagingWarehouse.css';
  */
 
 const WAREHOUSE_STAGE = 'WAREHOUSE';
+
+// The "main warehouse" (off the production floor) is modelled as the
+// EXTERNAL_WAREHOUSE stage. Pallets in the on-site staging WAREHOUSE stage are
+// transferred here.
+const MAIN_WAREHOUSE_STAGE = 'EXTERNAL_WAREHOUSE';
+const MAIN_WAREHOUSE_LABEL = 'Main Warehouse';
+
+// Resolve the value to send to the scan endpoint (barcode preferred, RFID fallback).
+const getScanValue = (u) => u.current_barcode || u.barcode || u.rfid_number || null;
 
 // Handling-unit records use varied field shapes across the API.
 const getBarcode = (u) => u.current_barcode || u.barcode || '—';
@@ -104,6 +117,16 @@ const StagingWarehouse = () => {
     // Pagination for the drill-down records view.
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
+
+    // ----- Transfer to Main Warehouse -----
+    // Set of scan values (barcodes/RFIDs) selected in the drill-down view.
+    const [selected, setSelected] = useState(() => new Set());
+    // Units queued for transfer once the confirmation modal is open.
+    const [transferUnits, setTransferUnits] = useState([]);
+    const [transferModalOpen, setTransferModalOpen] = useState(false);
+    const [transferring, setTransferring] = useState(false);
+    const [transferError, setTransferError] = useState('');
+    const [transferResult, setTransferResult] = useState(null);
 
     useEffect(() => {
         fetchDropdownData();
@@ -225,6 +248,115 @@ const StagingWarehouse = () => {
     const openGroup = (key) => {
         setSelectedGroupKey(key);
         setPage(1);
+        setSelected(new Set());
+    };
+
+    // ----- Selection helpers (drill-down) -----
+    const toggleSelect = (scanValue) => {
+        if (!scanValue) return;
+        setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(scanValue)) next.delete(scanValue);
+            else next.add(scanValue);
+            return next;
+        });
+    };
+
+    const selectableValues = useMemo(
+        () => (selectedGroup ? selectedGroup.units.map(getScanValue).filter(Boolean) : []),
+        [selectedGroup]
+    );
+
+    const allSelected = selectableValues.length > 0 && selectableValues.every((v) => selected.has(v));
+
+    const toggleSelectAll = () => {
+        setSelected((prev) => {
+            if (selectableValues.every((v) => prev.has(v))) return new Set();
+            return new Set(selectableValues);
+        });
+    };
+
+    // ----- Transfer to Main Warehouse -----
+    // Open the confirmation modal for an explicit list of units, or the current
+    // drill-down selection when no list is provided.
+    const openTransferModal = (units) => {
+        const source =
+            units && units.length
+                ? units
+                : (selectedGroup ? selectedGroup.units.filter((u) => selected.has(getScanValue(u))) : []);
+        const valid = source.filter((u) => getScanValue(u));
+        if (valid.length === 0) {
+            toast.error('Select at least one pallet with a barcode to transfer.');
+            return;
+        }
+        setTransferUnits(valid);
+        setTransferError('');
+        setTransferResult(null);
+        setTransferModalOpen(true);
+    };
+
+    const closeTransferModal = () => {
+        if (transferring) return;
+        setTransferModalOpen(false);
+        setTransferUnits([]);
+        setTransferError('');
+        setTransferResult(null);
+    };
+
+    const transferPacks = useMemo(
+        () => transferUnits.reduce((s, u) => s + getQuantity(u), 0),
+        [transferUnits]
+    );
+
+    const handleConfirmTransfer = async () => {
+        setTransferError('');
+        const scanValues = transferUnits.map(getScanValue).filter(Boolean);
+        if (scanValues.length === 0) {
+            setTransferError('Could not resolve barcodes for the selected pallets.');
+            return;
+        }
+
+        setTransferring(true);
+        try {
+            const res = await inventoryApi.transferToMainWarehouse({
+                scan_values: scanValues,
+                target_stage: MAIN_WAREHOUSE_STAGE,
+            });
+
+            // BatchScanResponse: { success, total_processed, results: [{ scan_value,
+            // success, error }], message }.
+            const result = res?.data?.data ?? res?.data ?? {};
+            const results = Array.isArray(result.results) ? result.results : [];
+            const failed = results.filter((r) => r && r.success === false);
+            const succeeded = scanValues.length - failed.length;
+
+            setTransferResult({
+                total: scanValues.length,
+                succeeded,
+                failed: failed.length,
+                errors: failed.map((f) => ({ scan_value: f.scan_value, error: f.error })),
+            });
+
+            if (failed.length === 0 && result.success !== false) {
+                toast.success(`Transferred ${succeeded} pallet(s) to ${MAIN_WAREHOUSE_LABEL}.`);
+            } else if (succeeded > 0) {
+                toast(`${succeeded} transferred, ${failed.length} failed.`, { icon: '⚠️' });
+            } else {
+                toast.error(result.message || 'Transfer failed for all selected pallets.');
+            }
+
+            // Refresh underlying data so moved pallets leave the staging view.
+            setSelected(new Set());
+            await fetchUnits();
+        } catch (err) {
+            console.error('Transfer to main warehouse failed:', err);
+            setTransferError(
+                err?.response?.data?.message ||
+                'Could not complete the transfer. Please try again or contact an administrator.'
+            );
+        } finally {
+            setTransferring(false);
+        }
     };
 
     const activeFilterCount =
@@ -248,10 +380,121 @@ const StagingWarehouse = () => {
         }
     };
 
+    // ----- Transfer confirmation modal (shared by both views) -----
+    const renderTransferModal = () => {
+        if (!transferModalOpen) return null;
+        const done = !!transferResult;
+        const fullSuccess = done && transferResult.failed === 0;
+        return (
+            <div className="warehouse-modal-backdrop" role="dialog" aria-modal="true" onClick={closeTransferModal}>
+                <div className="warehouse-modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="warehouse-modal__header">
+                        <span className="warehouse-modal__icon">
+                            {done ? <CheckCircle2 size={20} /> : <Warehouse size={20} />}
+                        </span>
+                        <div className="flex-grow-1">
+                            <h5 className="mb-0">
+                                {done ? 'Transfer complete' : `Transfer to ${MAIN_WAREHOUSE_LABEL}`}
+                            </h5>
+                            <span className="text-muted fs-13">
+                                {done
+                                    ? `${transferResult.succeeded} of ${transferResult.total} pallet(s) moved`
+                                    : `Move the selected pallets out of staging into the ${MAIN_WAREHOUSE_LABEL}.`}
+                            </span>
+                        </div>
+                        <button className="warehouse-modal__close" onClick={closeTransferModal} aria-label="Close" disabled={transferring}>
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="warehouse-modal__body">
+                        {!done && (
+                            <>
+                                <div className="warehouse-transfer-route">
+                                    <span className="warehouse-transfer-node">
+                                        <Building2 size={15} /> Staging Warehouse
+                                    </span>
+                                    <ArrowRight size={16} className="text-muted" />
+                                    <span className="warehouse-transfer-node warehouse-transfer-node--target">
+                                        <Warehouse size={15} /> {MAIN_WAREHOUSE_LABEL}
+                                    </span>
+                                </div>
+                                <div className="warehouse-transfer-summary">
+                                    <div>
+                                        <span>Pallets</span>
+                                        <strong>{transferUnits.length.toLocaleString()}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Total packs</span>
+                                        <strong>{transferPacks.toLocaleString()}</strong>
+                                    </div>
+                                    <div>
+                                        <span>Target stage</span>
+                                        <strong>{MAIN_WAREHOUSE_STAGE}</strong>
+                                    </div>
+                                </div>
+                                {transferError && (
+                                    <div className="warehouse-modal__error">
+                                        <AlertCircle size={16} /> <span>{transferError}</span>
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {done && (
+                            <div className="warehouse-transfer-result">
+                                <div className={`warehouse-result-badge ${fullSuccess ? 'is-success' : (transferResult.succeeded > 0 ? 'is-partial' : 'is-error')}`}>
+                                    {fullSuccess
+                                        ? <>All {transferResult.total} pallet(s) transferred successfully.</>
+                                        : transferResult.succeeded > 0
+                                            ? <>{transferResult.succeeded} transferred, {transferResult.failed} failed.</>
+                                            : <>None of the {transferResult.total} pallet(s) could be transferred.</>}
+                                </div>
+                                {transferResult.errors.length > 0 && (
+                                    <div className="warehouse-result-errors">
+                                        <span className="fw-semibold fs-13 text-muted">Failed pallets</span>
+                                        <ul>
+                                            {transferResult.errors.slice(0, 8).map((e, i) => (
+                                                <li key={i}>
+                                                    <code>{e.scan_value || '—'}</code>
+                                                    <span>{e.error || 'Unknown error'}</span>
+                                                </li>
+                                            ))}
+                                            {transferResult.errors.length > 8 && (
+                                                <li className="text-muted">…and {transferResult.errors.length - 8} more</li>
+                                            )}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="warehouse-modal__footer">
+                        {!done ? (
+                            <>
+                                <button className="btn btn-outline-secondary" onClick={closeTransferModal} disabled={transferring}>
+                                    Cancel
+                                </button>
+                                <button className="btn btn-primary d-flex align-items-center gap-2" onClick={handleConfirmTransfer} disabled={transferring}>
+                                    {transferring ? <Loader2 size={16} className="spinning" /> : <Warehouse size={16} />}
+                                    {transferring ? 'Transferring…' : `Confirm transfer (${transferUnits.length})`}
+                                </button>
+                            </>
+                        ) : (
+                            <button className="btn btn-primary" onClick={closeTransferModal}>Done</button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // ----- Drill-down: individual records for the selected group -----
     if (selectedGroup) {
         return (
             <div className="staging-warehouse-page">
+                {renderTransferModal()}
                 <div className="warehouse-detail-header mb-4">
                     <div className="d-flex align-items-center gap-3 min-w-0">
                         <button
@@ -278,6 +521,42 @@ const StagingWarehouse = () => {
                         <span className="warehouse-stat-pill warehouse-stat-pill--green">
                             <Boxes size={13} /> {selectedGroup.totalPacks.toLocaleString()} packs
                         </span>
+                        <button
+                            className="btn btn-primary d-flex align-items-center gap-2"
+                            onClick={() => openTransferModal(selectedGroup.units)}
+                            title={`Transfer all pallets in this group to the ${MAIN_WAREHOUSE_LABEL}`}
+                        >
+                            <Warehouse size={16} /> Transfer to Main Warehouse
+                        </button>
+                    </div>
+                </div>
+
+                {/* Selection action bar */}
+                <div className="warehouse-select-bar mb-3">
+                    <div className="d-flex align-items-center gap-2">
+                        <ArrowRightLeft size={15} className="text-primary" />
+                        <span className="fw-semibold">
+                            {selected.size > 0
+                                ? `${selected.size} pallet(s) selected`
+                                : 'Select pallets to transfer to the Main Warehouse'}
+                        </span>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                        {selected.size > 0 && (
+                            <button
+                                className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+                                onClick={() => setSelected(new Set())}
+                            >
+                                <X size={14} /> Clear
+                            </button>
+                        )}
+                        <button
+                            className="btn btn-primary btn-sm d-flex align-items-center gap-2"
+                            onClick={() => openTransferModal()}
+                            disabled={selected.size === 0}
+                        >
+                            <Warehouse size={15} /> Transfer selected ({selected.size})
+                        </button>
                     </div>
                 </div>
 
@@ -293,6 +572,15 @@ const StagingWarehouse = () => {
                             <table className="table warehouse-table table-hover mb-0 align-middle">
                                 <thead>
                                     <tr>
+                                        <th style={{ width: 44 }}>
+                                            <input
+                                                type="checkbox"
+                                                className="form-check-input"
+                                                aria-label="Select all pallets"
+                                                checked={allSelected}
+                                                onChange={toggleSelectAll}
+                                            />
+                                        </th>
                                         <th>#</th>
                                         <th>Barcode</th>
                                         <th>RFID</th>
@@ -303,24 +591,62 @@ const StagingWarehouse = () => {
                                 <tbody>
                                     {paginatedRecords.map((u, idx) => {
                                         const barcode = getBarcode(u);
+                                        const scanValue = getScanValue(u);
+                                        const isSelected = scanValue ? selected.has(scanValue) : false;
                                         return (
                                             <tr
                                                 key={u.id || barcode || idx}
-                                                onClick={() => handleRowClick(barcode)}
-                                                style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
+                                                className={isSelected ? 'warehouse-row--selected' : ''}
                                             >
-                                                <td className="text-muted">{(page - 1) * pageSize + idx + 1}</td>
-                                                <td><code className="warehouse-barcode">{barcode}</code></td>
-                                                <td>{u.rfid_number || '—'}</td>
-                                                <td className="text-end">{getQuantity(u).toLocaleString()}</td>
-                                                <td>{formatDateTime(getTimestamp(u))}</td>
+                                                <td onClick={(e) => e.stopPropagation()}>
+                                                    <input
+                                                        type="checkbox"
+                                                        className="form-check-input"
+                                                        aria-label={`Select pallet ${barcode}`}
+                                                        checked={isSelected}
+                                                        disabled={!scanValue}
+                                                        onChange={() => toggleSelect(scanValue)}
+                                                    />
+                                                </td>
+                                                <td
+                                                    className="text-muted"
+                                                    onClick={() => handleRowClick(barcode)}
+                                                    style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
+                                                >
+                                                    {(page - 1) * pageSize + idx + 1}
+                                                </td>
+                                                <td
+                                                    onClick={() => handleRowClick(barcode)}
+                                                    style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
+                                                >
+                                                    <code className="warehouse-barcode">{barcode}</code>
+                                                </td>
+                                                <td
+                                                    onClick={() => handleRowClick(barcode)}
+                                                    style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
+                                                >
+                                                    {u.rfid_number || '—'}
+                                                </td>
+                                                <td
+                                                    className="text-end"
+                                                    onClick={() => handleRowClick(barcode)}
+                                                    style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
+                                                >
+                                                    {getQuantity(u).toLocaleString()}
+                                                </td>
+                                                <td
+                                                    onClick={() => handleRowClick(barcode)}
+                                                    style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
+                                                >
+                                                    {formatDateTime(getTimestamp(u))}
+                                                </td>
                                             </tr>
                                         );
                                     })}
                                 </tbody>
                                 <tfoot>
                                     <tr className="fw-bold border-top">
-                                        <td colSpan={3}>TOTAL</td>
+                                        <td colSpan={4}>TOTAL</td>
                                         <td className="text-end">{selectedGroup.totalPacks.toLocaleString()}</td>
                                         <td>{selectedGroup.totalPallets.toLocaleString()} pallets</td>
                                     </tr>
@@ -351,6 +677,7 @@ const StagingWarehouse = () => {
     // ----- Card grid view -----
     return (
         <div className="staging-warehouse-page">
+            {renderTransferModal()}
             {/* Header */}
             <div className="warehouse-hero mb-4">
                 <div className="warehouse-hero__content">
@@ -359,7 +686,7 @@ const StagingWarehouse = () => {
                     <span className="warehouse-eyebrow">Post-production inventory</span>
                     <h3 className="fw-bold mb-1">Staging Warehouse</h3>
                     <p className="text-muted mb-0">
-                        Track pallets in the Main Unit stage, grouped by production date, product and PET line.
+                        Track pallets in the Main Unit stage, grouped by production date, product and PET line — and transfer stock to the Main Warehouse.
                     </p>
                     </div>
                 </div>
@@ -577,7 +904,20 @@ const StagingWarehouse = () => {
                                             <span className="warehouse-pallet-count">{g.totalPallets}</span>
                                         </div>
                                     </div>
-                                    <div className="warehouse-card-link mt-3">View pallet records <ArrowRight size={15} /></div>
+                                    <div className="warehouse-card-actions mt-3">
+                                        <span className="warehouse-card-link">View pallet records <ArrowRight size={15} /></span>
+                                        <button
+                                            type="button"
+                                            className="warehouse-card-transfer"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                openTransferModal(g.units);
+                                            }}
+                                            title={`Transfer all ${g.totalPallets} pallet(s) to the ${MAIN_WAREHOUSE_LABEL}`}
+                                        >
+                                            <Warehouse size={14} /> To Main WH
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

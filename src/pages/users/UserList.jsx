@@ -1,14 +1,15 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../../api/users';
+import { getPagePrivileges, hasExplicitPagePrivileges } from '../../config/pagePrivileges';
 
-const UserList = () => {
+const UserList = ({ embedded = false, initialRole = '' }) => {
     const navigate = useNavigate();
     const [users, setUsers] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [filters, setFilters] = React.useState({
         search: '',
-        role: '',
+        role: initialRole,
         page: 1,
         page_size: 10
     });
@@ -20,11 +21,10 @@ const UserList = () => {
     const fetchUsers = async () => {
         setLoading(true);
         try {
+            const requiresClientFiltering = Boolean(filters.role || filters.search.trim());
             const params = {
-                search: filters.search,
-                role: filters.role,
-                page: filters.page,
-                page_size: filters.page_size
+                page: requiresClientFiltering ? 1 : filters.page,
+                page_size: requiresClientFiltering ? 1000 : filters.page_size
             };
             const res = await usersApi.getUsers(params);
             const responseData = res.data;
@@ -40,6 +40,22 @@ const UserList = () => {
             } else if (responseData.data) {
                 listData = responseData.data.results || responseData.data;
                 count = responseData.data.count || responseData.count || listData.length;
+            }
+
+            if (requiresClientFiltering) {
+                const searchTerm = filters.search.trim().toLowerCase();
+                const filteredUsers = listData.filter((user) => {
+                    const matchesRole = !filters.role || user.role === filters.role;
+                    const searchableText = [user.username, user.full_name, user.email, user.company_name]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase();
+                    const matchesSearch = !searchTerm || searchableText.includes(searchTerm);
+                    return matchesRole && matchesSearch;
+                });
+                count = filteredUsers.length;
+                const startIndex = (filters.page - 1) * filters.page_size;
+                listData = filteredUsers.slice(startIndex, startIndex + filters.page_size);
             }
 
             setUsers(listData);
@@ -89,14 +105,17 @@ const UserList = () => {
             'SUPERVISOR': 'warning',
             'OPERATOR': 'primary',
             'QUALITY_CONTROL': 'info',
-            'LOGISTICS_MANAGER': 'success'
+            'WAREHOUSE_CLERK': 'success',
+            'DRIVER': 'dark',
+            'DISPATCHER': 'success',
+            'VIEWER': 'secondary'
         };
         return roleMap[role] || 'secondary';
     };
 
     return (
         <>
-            <div className="d-flex align-items-center justify-content-between mb-4">
+            {!embedded && <div className="d-flex align-items-center justify-content-between mb-4">
                 <div>
                     <h4 className="mb-1">User Management</h4>
                     <p className="text-muted mb-0">Manage system users and their permissions</p>
@@ -105,7 +124,7 @@ const UserList = () => {
                     <i className="ti ti-plus me-2"></i>
                     Add New User
                 </button>
-            </div>
+            </div>}
 
             <div className="card mb-4">
                 <div className="card-body">
@@ -137,7 +156,10 @@ const UserList = () => {
                                 <option value="SUPERVISOR">Supervisor</option>
                                 <option value="OPERATOR">Operator</option>
                                 <option value="QUALITY_CONTROL">Quality Control</option>
-                                <option value="LOGISTICS_MANAGER">Logistics Manager</option>
+                                <option value="WAREHOUSE_CLERK">Warehouse Clerk</option>
+                                <option value="DRIVER">Driver</option>
+                                <option value="DISPATCHER">Dispatcher</option>
+                                <option value="VIEWER">Viewer</option>
                             </select>
                         </div>
                         <div className="col-md-3 d-flex align-items-end gap-2">
@@ -181,6 +203,7 @@ const UserList = () => {
                                         <th>Email</th>
                                         <th>Role</th>
                                         <th>Company</th>
+                                        <th>Page Access</th>
                                         <th className="text-end">Actions</th>
                                     </tr>
                                 </thead>
@@ -196,6 +219,17 @@ const UserList = () => {
                                                 </span>
                                             </td>
                                             <td>{row.company_name || '-'}</td>
+                                            <td>
+                                                {row.role === 'ADMIN' ? (
+                                                    <span className="badge bg-danger-subtle text-danger">All pages</span>
+                                                ) : hasExplicitPagePrivileges(row) ? (
+                                                    <span className="badge bg-primary-subtle text-primary">
+                                                        {getPagePrivileges(row).length} assigned
+                                                    </span>
+                                                ) : (
+                                                    <span className="badge bg-warning-subtle text-warning">Legacy rules</span>
+                                                )}
+                                            </td>
                                             <td className="text-end">
                                                 <div className="btn-group btn-group-sm">
                                                     <button

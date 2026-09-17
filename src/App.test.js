@@ -1,8 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+jest.mock('./routes/AppRouter', () => ({
+  AppRouter: () => <div>Application router</div>,
+}));
+
+test('renders the application router', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByText('Application router')).toBeInTheDocument();
 });

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import TopBar from './TopBar';
 import Sidebar from './Sidebar';
+import PageAccessBoundary from '../auth/PageAccessBoundary';
 
 const postProductionNav = [
     {
@@ -69,7 +70,9 @@ const PostProductionLayout = () => {
                             </div>
                         </div>
                     }>
-                        <Outlet />
+                        <PageAccessBoundary>
+                            <Outlet />
+                        </PageAccessBoundary>
                     </React.Suspense>
                 </div>
 

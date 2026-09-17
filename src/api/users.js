@@ -3,6 +3,7 @@ import { withEndpointFallbacks } from './fallbacks';
 
 export const usersApi = {
     getUsers: (params) => api.get('/core/users/', { params }),
+    getUser: (id) => api.get(`/core/users/${id}/`),
     createUser: (data) => api.post('/core/users/', data),
 
     updateUser: (id, data) => api.patch(`/core/users/${id}/`, data),

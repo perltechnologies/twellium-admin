@@ -79,7 +79,7 @@ const CageQuantities = React.lazy(() => import('../pages/definitions/CageQuantit
 const CapBoxQuantities = React.lazy(() => import('../pages/definitions/CapBoxQuantities'));
 const DowntimeSubCategoryList = React.lazy(() => import('../pages/production/DowntimeSubCategoryList'));
 const DowntimeBreakdown = React.lazy(() => import('../pages/production/DowntimeBreakdown'));
-const UserList = React.lazy(() => import('../pages/users/UserList'));
+const UserManagement = React.lazy(() => import('../pages/users/UserManagement'));
 const UserForm = React.lazy(() => import('../pages/users/UserForm'));
 const ProductList = React.lazy(() => import('../pages/inventory/ProductList'));
 const ProductForm = React.lazy(() => import('../pages/inventory/ProductForm'));
@@ -436,7 +436,7 @@ export const AppRouter = () => {
                             </Route>
 
                             {/* User Management */}
-                            <Route path="users" element={<UserList />} />
+                            <Route path="users" element={<UserManagement />} />
                             <Route path="users/new" element={<UserForm />} />
                             <Route path="users/:id/edit" element={<UserForm />} />
 

@@ -32,6 +32,18 @@ export const inventoryApi = {
             ...(location ? { location } : {}),
         }),
 
+    // Staging Warehouse -> Main Warehouse transfer.
+    // Moves the given pallets (handling units) out of the on-site staging
+    // WAREHOUSE stage into the main storage warehouse via the batch scan
+    // endpoint. scan_values are barcodes / RFID numbers (not internal UUIDs).
+    // The main warehouse maps to the EXTERNAL_WAREHOUSE stage in this system.
+    transferToMainWarehouse: ({ scan_values, target_stage = 'EXTERNAL_WAREHOUSE', location = null } = {}) =>
+        api.post('/inventory/handling-units/scan/', {
+            scan_values,
+            target_stage,
+            ...(location ? { location } : {}),
+        }),
+
     // Diagnostic & Management Tools (Redesigned)
     getUnitStatus: (value) => api.get('/inventory/handling-units/get-status/', { params: { value } }),
     getBarcodeByRfid: (rfid_number) => api.get('/inventory/handling-units/get-barcode/', { params: { rfid_number } }),

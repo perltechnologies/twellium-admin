@@ -15,6 +15,12 @@ const normalizePet = (name) => {
     return num ? `Pet ${num[1]}` : name;
 };
 
+const unwrapProductionSummary = (response) => response?.data?.data?.data ?? response?.data?.data ?? response?.data ?? {};
+const apiMetric = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const getStatusConfig = (value) => {
     if (value >= OEE_TARGET) return { color: 'success', bgClass: 'bg-success-subtle', textClass: 'text-success', label: 'World Class' };
     if (value >= 70) return { color: 'warning', bgClass: 'bg-warning-subtle', textClass: 'text-warning', label: 'Typical' };
@@ -71,8 +77,35 @@ const OeeAnalytics = () => {
             }
 
             const res = await productionApi.getProductionSummary(params);
-            const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
-            setRawData(envelope);
+            const envelope = unwrapProductionSummary(res);
+            const petsById = new Map();
+            (envelope.daily_breakdown || []).forEach(day => {
+                (day.pets || []).forEach(pet => {
+                    if (pet.pet_id && !pet.pet_name?.toLowerCase().includes('can')) {
+                        petsById.set(String(pet.pet_id), { id: pet.pet_id, name: normalizePet(pet.pet_name) });
+                    }
+                });
+            });
+
+            let petSummaries = [];
+            if (params.pet) {
+                const selectedPet = petsById.get(String(params.pet));
+                petSummaries = selectedPet ? [{ ...selectedPet, summary: envelope.summary || {} }] : [];
+            } else {
+                petSummaries = (await Promise.all(
+                    Array.from(petsById.values()).map(async pet => {
+                        try {
+                            const petRes = await productionApi.getProductionSummary({ ...params, pet: pet.id });
+                            return { ...pet, summary: unwrapProductionSummary(petRes).summary || {} };
+                        } catch (err) {
+                            console.warn(`Failed to load production summary for ${pet.name}`, err);
+                            return null;
+                        }
+                    })
+                )).filter(Boolean);
+            }
+
+            setRawData({ ...envelope, pet_summaries: petSummaries });
         } catch (err) {
             console.error('Failed to fetch OEE analytics:', err);
             setRawData(null);
@@ -99,40 +132,27 @@ const OeeAnalytics = () => {
 
     // OEE components from summary
     const oeeComponents = useMemo(() => ({
-        oee: summaryData.oee || summaryData.avg_efficiency || 0,
-        availability: summaryData.avg_availability || 0,
-        performance: summaryData.avg_performance || 0,
-        quality: summaryData.avg_quality || 0,
+        oee: apiMetric(summaryData.oee),
+        availability: apiMetric(summaryData.avg_availability),
+        performance: apiMetric(summaryData.avg_performance),
+        quality: apiMetric(summaryData.avg_quality),
     }), [summaryData]);
 
-    // OEE by PET
+    // Range-level OEE by PET comes from PET-filtered production_summary calls.
     const oeeByPet = useMemo(() => {
-        const petMap = {};
-        defaultPets.forEach(p => { petMap[p] = { oee: 0, avail: 0, perf: 0, qual: 0, count: 0 }; });
-        dailyBreakdown.forEach(day => {
-            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
-                const name = normalizePet(p.pet_name);
-                if (!petMap[name]) petMap[name] = { oee: 0, avail: 0, perf: 0, qual: 0, count: 0 };
-                petMap[name].oee += p.oee || p.efficiency || 0;
-                petMap[name].avail += p.availability || 0;
-                petMap[name].perf += p.performance || 0;
-                petMap[name].qual += p.quality || 0;
-                petMap[name].count += 1;
-            });
-        });
-        return Object.entries(petMap).map(([name, v]) => ({
+        return (rawData?.pet_summaries || []).map(({ name, summary }) => ({
             pet: name,
-            oee: v.count > 0 ? v.oee / v.count : 0,
-            availability: v.count > 0 ? v.avail / v.count : 0,
-            performance: v.count > 0 ? v.perf / v.count : 0,
-            quality: v.count > 0 ? v.qual / v.count : 0,
-            count: v.count,
+            oee: apiMetric(summary.oee),
+            availability: apiMetric(summary.avg_availability),
+            performance: apiMetric(summary.avg_performance),
+            quality: apiMetric(summary.avg_quality),
+            count: Number(summary.total_reports) || 0,
         })).sort((a, b) => {
             const aNum = parseInt(a.pet.match(/(\d+)/)?.[0] || '999');
             const bNum = parseInt(b.pet.match(/(\d+)/)?.[0] || '999');
             return aNum - bNum;
         });
-    }, [dailyBreakdown]);
+    }, [rawData]);
 
     // Daily OEE trend (all dates in range)
     const dailyOeeTrend = useMemo(() => {
@@ -153,10 +173,10 @@ const OeeAnalytics = () => {
             const label = `${date.slice(5)} ${dayNames[d.getDay()]}`;
             return {
                 date: label,
-                oee: day?.oee || day?.avg_efficiency || 0,
-                availability: day?.avg_availability || 0,
-                performance: day?.avg_performance || 0,
-                quality: day?.avg_quality || 0,
+                oee: apiMetric(day?.oee),
+                availability: apiMetric(day?.avg_availability),
+                performance: apiMetric(day?.avg_performance),
+                quality: apiMetric(day?.avg_quality),
             };
         });
     }, [dailyBreakdown, rawData]);
@@ -179,15 +199,10 @@ const OeeAnalytics = () => {
             const d = new Date(date);
             const row = { date: `${date.slice(5)} ${dayNames[d.getDay()]}` };
             if (day?.pets) {
-                const petOee = {};
+                defaultPets.forEach(pet => { row[pet] = null; });
                 day.pets.forEach(p => {
                     const name = normalizePet(p.pet_name);
-                    if (!petOee[name]) petOee[name] = { sum: 0, count: 0 };
-                    petOee[name].sum += p.oee || p.efficiency || 0;
-                    petOee[name].count += 1;
-                });
-                defaultPets.forEach(pet => {
-                    row[pet] = petOee[pet] ? parseFloat((petOee[pet].sum / petOee[pet].count).toFixed(1)) : null;
+                    if (defaultPets.includes(name)) row[name] = apiMetric(p.oee);
                 });
             } else {
                 defaultPets.forEach(pet => { row[pet] = null; });
@@ -507,13 +522,10 @@ const OeeAnalytics = () => {
                                             <th className="text-center">Performance</th>
                                             <th className="text-center">Quality</th>
                                             <th className="text-center">Reports</th>
-                                            <th className="text-center">Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {oeeByPet.map(pet => {
-                                            const status = getStatusConfig(pet.oee);
-                                            return (
+                                        {oeeByPet.map(pet => (
                                                 <tr key={pet.pet}>
                                                     <td className="fw-medium">{pet.pet}</td>
                                                     <td className="text-center fw-bold" style={{ color: pet.oee >= 85 ? '#22c55e' : pet.oee >= 70 ? '#d97706' : '#dc2626' }}>{pet.oee.toFixed(1)}%</td>
@@ -521,10 +533,8 @@ const OeeAnalytics = () => {
                                                     <td className="text-center">{pet.performance.toFixed(1)}%</td>
                                                     <td className="text-center">{pet.quality.toFixed(1)}%</td>
                                                     <td className="text-center">{pet.count}</td>
-                                                    <td className="text-center"><span className={`badge ${status.bgClass} ${status.textClass}`}>{status.label}</span></td>
                                                 </tr>
-                                            );
-                                        })}
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>

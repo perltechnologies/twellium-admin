@@ -52,5 +52,6 @@ export const DEFAULT_FILTERS = {
   start_date: toLocalDateStr(_rangeStart),
   end_date: toLocalDateStr(_today),
   pet: null,
+  product: null,
   sub_category: null
 };

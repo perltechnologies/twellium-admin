@@ -2,11 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useFilters } from '../context/FilterContext';
 import { productionApi } from '../api/production';
 
-const FilterInputs = ({ showPageSize = false, showPetLine = true }) => {
+const FilterInputs = ({ showPageSize = false, showPetLine = true, showProduct = false, productOptions = [] }) => {
   const { filters, updateFilters } = useFilters();
   const [pets, setPets] = useState([]);
   const [useRange, setUseRange] = useState(false);
-  const dateColumnClass = showPageSize
+  const dateColumnClass = showPageSize || showProduct
     ? "col-md-3"
     : showPetLine
       ? "col-md-4"
@@ -77,7 +77,7 @@ const FilterInputs = ({ showPageSize = false, showPetLine = true }) => {
         )}
       </div>
       {showPetLine && (
-      <div className={showPageSize ? "col-md-3" : "col-md-4"}>
+      <div className={showPageSize || showProduct ? "col-md-3" : "col-md-4"}>
         <label className="form-label fw-semibold">PET Line</label>
         <select
           className="form-select"
@@ -94,6 +94,23 @@ const FilterInputs = ({ showPageSize = false, showPetLine = true }) => {
           ))}
         </select>
       </div>
+      )}
+      {showProduct && (
+        <div className="col-md-3">
+          <label className="form-label fw-semibold">Product</label>
+          <select
+            className="form-select"
+            value={filters.product || ''}
+            onChange={(e) => updateFilters({ product: e.target.value || null })}
+          >
+            <option value="">All Products</option>
+            {productOptions.map((product) => {
+              const value = typeof product === 'string' ? product : product.value ?? product.id;
+              const label = typeof product === 'string' ? product : product.label ?? product.name;
+              return <option key={value} value={value}>{label}</option>;
+            })}
+          </select>
+        </div>
       )}
       {showPageSize && (
         <div className="col-md-3">

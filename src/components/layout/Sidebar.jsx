@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { canAccessMode, canAccessPath, firstAccessiblePath } from '../../config/pagePrivileges';
 
 const navigation = [
         {
@@ -92,7 +94,7 @@ const navigation = [
                 { name: 'Products', icon: 'ti-package', path: '/dashboard/inventory/products' },
             ],
         },
-        {
+       /* {
             section: 'Sign Off Forms',
             items: [
                 {
@@ -106,12 +108,12 @@ const navigation = [
                     ],
                 },
             ],
-        },
+        },*/
         {
-            section: 'Sign Off v2',
+            section: 'Sign Offs',
             items: [
                 {
-                    name: 'Sign Off v2',
+                    name: 'Sign Off Reports',
                     icon: 'ti-clipboard-check',
                     key: 'sign-off-forms-v2',
                     submenu: [
@@ -132,7 +134,20 @@ const navigation = [
     ];
 
 const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
-    const nav = navProp || navigation;
+    const { user } = useAuth();
+    const sourceNavigation = navProp || navigation;
+    const nav = useMemo(() => sourceNavigation.map((section) => ({
+        ...section,
+        items: section.items.reduce((items, item) => {
+            if (item.submenu) {
+                const submenu = item.submenu.filter((sub) => canAccessPath(user, sub.path));
+                if (submenu.length) items.push({ ...item, submenu });
+            } else if (canAccessPath(user, item.path)) {
+                items.push(item);
+            }
+            return items;
+        }, []),
+    })).filter((section) => section.items.length > 0), [sourceNavigation, user]);
     const location = useLocation();
     const navigate = useNavigate();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -168,15 +183,15 @@ const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
 
                 <div className="sidebar-logo">
                     <div>
-                        <Link to={logoLink} className="logo logo-normal">
+                        <Link to={canAccessPath(user, logoLink) ? logoLink : firstAccessiblePath(user)} className="logo logo-normal">
 
                             <img src="/logo.jpeg" width={100} alt="Logo" />
                         </Link>
 
-                        <Link to={logoLink} className="logo-small">
+                        <Link to={canAccessPath(user, logoLink) ? logoLink : firstAccessiblePath(user)} className="logo-small">
                             <img src="/logo.jpeg" width={100} alt="Logo" />
                         </Link>
-                        <Link to={logoLink} className="dark-logo">
+                        <Link to={canAccessPath(user, logoLink) ? logoLink : firstAccessiblePath(user)} className="dark-logo">
                             <img src="/logo.jpeg" width={100} alt="Logo" />
                         </Link>
                     </div>
@@ -190,9 +205,9 @@ const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
                 <div className="sidebar-inner" data-simplebar>
                     {/* Switch Mode Button */}
                     <div className="px-3 pt-3 pb-2">
-                        {location.pathname.startsWith('/post-production') ? (
+                        {location.pathname.startsWith('/post-production') && canAccessMode(user, 'pre-production') ? (
                             <button
-                                onClick={() => navigate('/dashboard')}
+                                onClick={() => navigate(firstAccessiblePath(user, 'pre-production'))}
                                 className="btn btn-outline-primary w-100 d-flex align-items-center justify-content-center gap-2"
                                 style={{ borderRadius: '10px', padding: '10px 16px' }}
                             >
@@ -200,9 +215,9 @@ const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
                                 <span>Pre-Production</span>
                                 <i className="ti ti-building-factory ms-auto"></i>
                             </button>
-                        ) : (
+                        ) : !location.pathname.startsWith('/post-production') && canAccessMode(user, 'post-production') ? (
                             <button
-                                onClick={() => navigate('/post-production')}
+                                onClick={() => navigate(firstAccessiblePath(user, 'post-production'))}
                                 className="btn btn-outline-success w-100 d-flex align-items-center justify-content-center gap-2"
                                 style={{ borderRadius: '10px', padding: '10px 16px' }}
                             >
@@ -210,7 +225,7 @@ const Sidebar = ({ navigation: navProp, logoLink = '/dashboard' }) => {
                                 <span>Post-Production</span>
                                 <i className="ti ti-arrow-right ms-auto"></i>
                             </button>
-                        )}
+                        ) : null}
                     </div>
                     <div id="sidebar-menu" className="sidebar-menu">
                         <ul>

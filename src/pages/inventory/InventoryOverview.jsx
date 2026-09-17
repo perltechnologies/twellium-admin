@@ -16,6 +16,17 @@ const STAGE_CONFIG = [
   { id: 'LOADED', label: 'Loaded', icon: 'ti-circle-check-filled', chartColor: '#16a34a' },
 ];
 
+// Stages shown in the Warehouse Distribution chart legend, in display order.
+const WAREHOUSE_STAGE_IDS = [
+  'WAREHOUSE',
+  'QUALIFIED',
+  'LOADING',
+  'FAULTY',
+  'DAMAGED',
+  'EXTERNAL_WAREHOUSE',
+  'PRODUCTION',
+];
+
 const InventoryOverview = () => {
   const navigate = useNavigate();
   const { theme } = useTheme();
@@ -58,6 +69,32 @@ const InventoryOverview = () => {
       .map(stage => ({ name: stage.label, value: Number(stageCounts[stage.id]) || 0, color: stage.chartColor }))
       .filter(d => d.value > 0),
     [stageCounts]
+  );
+
+  // Distribution across the configured warehouse-related stages. Ordered to
+  // match WAREHOUSE_STAGE_IDS. The legend lists every configured stage; the pie
+  // only renders slices with a non-zero count.
+  const warehouseLegend = useMemo(() =>
+    WAREHOUSE_STAGE_IDS.map(id => {
+      const stage = STAGE_CONFIG.find(s => s.id === id);
+      return {
+        id,
+        name: stage?.label || id,
+        color: stage?.chartColor || '#94a3b8',
+        value: Number(stageCounts[id]) || 0,
+      };
+    }),
+    [stageCounts]
+  );
+
+  const warehouseChartData = useMemo(
+    () => warehouseLegend.filter(d => d.value > 0),
+    [warehouseLegend]
+  );
+
+  const warehouseTotal = useMemo(
+    () => warehouseLegend.reduce((s, d) => s + d.value, 0),
+    [warehouseLegend]
   );
 
   const productChartData = useMemo(() =>
@@ -187,20 +224,23 @@ const InventoryOverview = () => {
 
       {/* Charts Row */}
       <div className="row g-3 mb-4">
-        {/* Stage Distribution Donut */}
+        {/* Warehouse Distribution Donut */}
         <div className="col-lg-5">
           <div className="card h-100 border shadow-none">
-            <div className="card-header bg-light py-2.5 px-3">
-              <h6 className="fw-bold mb-0 text-dark">Stage Distribution</h6>
+            <div className="card-header bg-light py-2.5 px-3 d-flex align-items-center justify-content-between">
+              <h6 className="fw-bold mb-0 text-dark">Warehouse Distribution</h6>
+              {warehouseTotal > 0 && (
+                <span className="badge bg-soft-primary text-primary">{warehouseTotal.toLocaleString()} units</span>
+              )}
             </div>
             <div className="card-body p-3">
-              {stageChartData.length > 0 ? (
-                <div>
-                  <div style={{ height: 230 }}>
+              <div className="d-flex flex-column flex-md-row align-items-center gap-3">
+                <div style={{ height: 230, flex: '1 1 55%', minWidth: 0, width: '100%' }}>
+                  {warehouseChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={stageChartData}
+                          data={warehouseChartData}
                           cx="50%"
                           cy="50%"
                           innerRadius={55}
@@ -208,7 +248,7 @@ const InventoryOverview = () => {
                           paddingAngle={3}
                           dataKey="value"
                         >
-                          {stageChartData.map((entry, idx) => (
+                          {warehouseChartData.map((entry, idx) => (
                             <Cell key={idx} fill={entry.color} />
                           ))}
                         </Pie>
@@ -218,20 +258,27 @@ const InventoryOverview = () => {
                         />
                       </PieChart>
                     </ResponsiveContainer>
-                  </div>
-                  <div className="d-flex flex-wrap justify-content-center gap-2 mt-2 pt-2 border-top">
-                    {stageChartData.map((entry, idx) => (
-                      <span key={idx} className="d-flex align-items-center gap-1.5 px-2 py-1 rounded bg-light border small">
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color, display: 'inline-block' }}></span>
-                        <span className="text-muted">{entry.name}:</span>
-                        <strong className="text-dark">{entry.value.toLocaleString()}</strong>
-                      </span>
-                    ))}
-                  </div>
+                  ) : (
+                    <div className="d-flex align-items-center justify-content-center h-100 text-muted small">
+                      No warehouse stock currently in storage
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-center py-5 text-muted small">No stage telemetry data available</div>
-              )}
+                <div
+                  className="d-flex flex-column gap-2 ps-md-3 w-100"
+                  style={{ flex: '1 1 45%', maxWidth: 260 }}
+                >
+                  {warehouseLegend.map((entry) => (
+                    <div key={entry.id} className="d-flex align-items-center justify-content-between gap-2 small">
+                      <span className="d-flex align-items-center gap-2 text-truncate">
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: entry.color, display: 'inline-block', flex: '0 0 auto' }}></span>
+                        <span className="text-muted text-truncate">{entry.name}</span>
+                      </span>
+                      <strong className="text-dark">{entry.value.toLocaleString()}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
