@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { inventoryApi } from '../../api/inventory';
+import { getSyrupMeterUnit } from '../../utils/meterUnits';
 import '../sign-off-forms/css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'productionReportFormV2_filters';
@@ -223,6 +224,15 @@ const ProductionReportFormV2 = () => {
     const syrupMeters = meters.syrup || {};
     const productionMeters = meters.production || {};
     const downtimeBreakdown = data?.downtime_breakdown || {};
+    const selectedPetRecord = pets.find(p => String(p.id) === String(selectedPet));
+    const selectedResponseLine = lines.find(line => String(line.pet_id ?? line.pet?.id ?? '') === String(selectedPet));
+    const selectedPetName = selectedPetRecord?.pet_name
+        || selectedResponseLine?.pet_name
+        || data?.filters?.pet_name
+        || summary.pet_name
+        || '';
+    const isPet3 = /pet(?:\s*line)?\s*0*3\b/i.test(selectedPetName) || String(selectedPet) === '13';
+    const syrupMeterUnit = isPet3 ? 'Kg' : getSyrupMeterUnit(selectedPetName, syrupMeters.unit);
 
     const productNames = products.length > 0
         ? products.map(p => p.name).filter(Boolean).sort()
@@ -593,6 +603,12 @@ const ProductionReportFormV2 = () => {
                                         { type: 'GLUE', label: 'Glue Consumption', defaultUnit: 'Kg' },
                                     ].map(({ type, label, defaultUnit }) => {
                                         const mat = getMaterial(type);
+                                        // Each material type has an intrinsic unit of measure (e.g. SHRINK is
+                                        // always weighed in Kg, not per line). Prefer the canonical unit for the
+                                        // material type so a conflicting/incorrect API unit (e.g. "L" returned for
+                                        // SHRINK on a PET line) does not override it. Only fall back to the API
+                                        // value for types without a defined canonical unit.
+                                        const displayUnit = defaultUnit || mat.unit || '';
                                         // Loss% = losses / used * 100. Falls back to (100 - yield%) when
                                         // used/losses are unavailable but a yield percentage exists.
                                         // When both Used and Losses are 0/empty, Loss% is left blank.
@@ -611,7 +627,7 @@ const ProductionReportFormV2 = () => {
                                         return (
                                             <tr key={type}>
                                                 <td className="label-cell" colSpan={2}>{mat.material_type_display || label}</td>
-                                                <td className="unit-cell"><EditableField value={mat.unit || defaultUnit} /></td>
+                                                <td className="unit-cell"><EditableField value={displayUnit} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={mat.total_used != null ? mat.total_used : ''} /></td>
                                                 <td className="input-cell numeric"><EditableField type="number" value={mat.total_losses != null ? mat.total_losses : ''} /></td>
                                                 <td className="input-cell numeric"><EditableField value={lossPercent !== '' ? `${Number(lossPercent).toFixed(2)}%` : ''} /></td>
@@ -743,8 +759,12 @@ const ProductionReportFormV2 = () => {
                                         </td>
                                         <td>
                                             <div className="meter-field">
-                                                <span className="meter-label">Unit (L, m3, kg):</span>
-                                                <EditableField value={syrupMeters.unit || ''} />
+                                                <span className="meter-label">{isPet3 ? 'Unit (Kg):' : 'Unit (L, m3, kg):'}</span>
+                                                <EditableField
+                                                    key={`syrup-meter-unit-${selectedPet || 'all'}-${syrupMeterUnit}`}
+                                                    value={syrupMeterUnit}
+                                                    readOnly={isPet3}
+                                                />
                                             </div>
                                         </td>
                                         <td>
