@@ -9,6 +9,7 @@ import {
     Download, Filter, Package, Layers, Sun, Moon
 } from 'lucide-react';
 import { exportToExcel } from '../../utils/exportUtils';
+import { resolveCO2Consumption } from '../../utils/co2Consumption';
 
 const OEE_TARGET = 85;
 const AVAIL_TARGET = 90;
@@ -184,6 +185,7 @@ const PlantOverview = () => {
                     syrup_yield: null, co2_yield: null,
                     syrup_total_actual: 0, syrup_total_std: 0,
                     co2_total_actual: 0, co2_total_std: 0,
+                    co2_readings_seen: 0,
                     count: 0,
                 };
             }
@@ -215,20 +217,19 @@ const PlantOverview = () => {
                 }
             }
 
-            if (pet.co2_yield !== null && pet.co2_yield !== undefined) {
-                line.co2_yield = (line.co2_yield || 0) + pet.co2_yield;
-                const actualCo2 = pet.meters_reading?.co2?.total_co2_consumed_kg
-                    || pet.total_co2_consumed_kg || 0;
-                const stdCo2 = pet.meters_reading?.co2?.std_co2_consumption_kg
-                    || pet.std_co2_consumption_kg || 0;
-                if (actualCo2 > 0 && stdCo2 > 0) {
-                    line.co2_total_actual += actualCo2;
-                    line.co2_total_std += stdCo2;
-                } else {
-                    const weight = actualCo2 > 0 ? actualCo2 : (pet.total_bottles_produced || pet.total_bottles || pet.total_packs || 1);
-                    line.co2_total_actual += weight;
-                    line.co2_total_std += weight * (pet.co2_yield / 100);
-                }
+            // CO2 yield is recalculated from persisted standard/actual meter
+            // readings via the shared helper. A completed shift can report
+            // co2_yield === 0 even when valid meter readings exist, so we must
+            // not gate on the reported yield or fall back to it. We only
+            // accumulate qualifying readings (output > 0, standard >= 0,
+            // actual > 0) and track whether any CO2 reading was present so the
+            // UI can distinguish "no readings" from "invalid readings".
+            const co2 = resolveCO2Consumption(pet);
+            const hasAnyCo2Reading = co2.standard !== null || co2.actual !== null;
+            if (hasAnyCo2Reading) line.co2_readings_seen += 1;
+            if (co2.qualifies) {
+                line.co2_total_std += co2.standard;
+                line.co2_total_actual += co2.actual;
             }
             line.count += 1;
         });
@@ -241,6 +242,14 @@ const PlantOverview = () => {
             quality: line.count > 0 ? line.quality / line.count : 0,
             syrup_yield: line.syrup_total_actual > 0 ? (line.syrup_total_std / line.syrup_total_actual) * 100 : null,
             co2_yield: line.co2_total_actual > 0 ? (line.co2_total_std / line.co2_total_actual) * 100 : null,
+            // co2_state distinguishes the required completed-shift states:
+            //   'valid'       -> qualifying readings produced a yield
+            //   'unavailable' -> CO2 readings existed but were missing/invalid
+            //                    (do not show a fabricated 0%)
+            //   null          -> no CO2 readings logged for this line at all
+            co2_state: line.co2_total_actual > 0
+                ? 'valid'
+                : (line.co2_readings_seen > 0 ? 'unavailable' : null),
             product_name: [...new Set(line.products.filter(Boolean))].join(', ') || 'No SKU logged',
             status: line.mechanical_downtime_mins > line.planned_downtime_mins && line.mechanical_downtime_mins > 30
                 ? 'MECHANICAL_FAULT'
@@ -271,6 +280,7 @@ const PlantOverview = () => {
             fullName: line.pet_name,
             syrup_yield: line.syrup_yield !== null ? parseFloat(line.syrup_yield.toFixed(1)) : null,
             co2_yield: line.co2_yield !== null ? parseFloat(line.co2_yield.toFixed(1)) : null,
+            co2_state: line.co2_state,
         }));
     }, [lineCards]);
 
@@ -292,7 +302,9 @@ const PlantOverview = () => {
             'Mechanical Downtime (mins)': Math.round(line.mechanical_downtime_mins),
             'Planned Downtime (mins)': Math.round(line.planned_downtime_mins),
             'Syrup Yield (%)': line.syrup_yield != null ? Math.round(line.syrup_yield) : 'N/A',
-            'CO2 Yield (%)': line.co2_yield != null ? Math.round(line.co2_yield) : 'N/A',
+            'CO2 Yield (%)': line.co2_yield != null
+                ? Math.round(line.co2_yield)
+                : (line.co2_state === 'unavailable' ? 'Readings unavailable' : 'N/A'),
         }));
         exportToExcel(exportRows, `Plant_Overview_${selectedDate}_${shiftLabel.replace(/\s+/g, '_')}`);
     };
@@ -674,8 +686,17 @@ const PlantOverview = () => {
                                                         <span className={`badge ${line.syrup_yield != null && line.syrup_yield >= SYRUP_TARGET ? 'bg-soft-success text-success' : 'bg-soft-warning text-warning'}`}>
                                                             Syrup: {line.syrup_yield != null ? `${Math.round(line.syrup_yield)}%` : '—'}
                                                         </span>
-                                                        <span className={`badge ${line.co2_yield != null && line.co2_yield >= CO2_TARGET ? 'bg-soft-success text-success' : 'bg-soft-warning text-warning'}`}>
-                                                            CO2: {line.co2_yield != null ? `${Math.round(line.co2_yield)}%` : '—'}
+                                                        <span
+                                                            className={`badge ${line.co2_yield != null
+                                                                ? (line.co2_yield >= CO2_TARGET ? 'bg-soft-success text-success' : 'bg-soft-warning text-warning')
+                                                                : (line.co2_state === 'unavailable' ? 'bg-soft-danger text-danger' : 'bg-soft-secondary text-secondary')}`}
+                                                            title={line.co2_yield == null && line.co2_state === 'unavailable'
+                                                                ? 'Completed shift: CO2 meter readings missing or invalid'
+                                                                : undefined}
+                                                        >
+                                                            CO2: {line.co2_yield != null
+                                                                ? `${Math.round(line.co2_yield)}%`
+                                                                : (line.co2_state === 'unavailable' ? 'N/A' : '—')}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -757,6 +778,8 @@ const PlantOverview = () => {
                                                             <span className={`badge ${line.co2_yield >= CO2_TARGET ? 'bg-soft-success text-success' : 'bg-soft-warning text-warning'}`}>
                                                                 {Math.round(line.co2_yield)}%
                                                             </span>
+                                                        ) : line.co2_state === 'unavailable' ? (
+                                                            <span className="badge bg-soft-danger text-danger" title="Completed shift: CO2 meter readings missing or invalid">N/A</span>
                                                         ) : '—'}
                                                     </td>
                                                 </tr>
@@ -914,8 +937,12 @@ const PlantOverview = () => {
                                                     <div key={idx} className="small">
                                                         <div className="d-flex justify-content-between mb-1">
                                                             <span className="fw-semibold" style={{ color: themeStyles.textPrimary }}>{line.fullName || line.name}</span>
-                                                            <span className={`fw-bold ${line.co2_yield != null && line.co2_yield >= CO2_TARGET ? 'text-success' : 'text-warning'}`}>
-                                                                {line.co2_yield != null ? `${line.co2_yield}%` : 'N/A'}
+                                                            <span className={`fw-bold ${line.co2_yield != null
+                                                                ? (line.co2_yield >= CO2_TARGET ? 'text-success' : 'text-warning')
+                                                                : (line.co2_state === 'unavailable' ? 'text-danger' : 'text-muted')}`}>
+                                                                {line.co2_yield != null
+                                                                    ? `${line.co2_yield}%`
+                                                                    : (line.co2_state === 'unavailable' ? 'N/A' : '—')}
                                                             </span>
                                                         </div>
                                                         <div className="progress position-relative" style={{ height: '7px', backgroundColor: themeStyles.innerBoxBg }}>

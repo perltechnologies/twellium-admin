@@ -42,6 +42,24 @@ describe('resolveCO2Consumption', () => {
         expect(resolveCO2Consumption({ meters_reading: { co2: { std_co2_consumption_kg: 90, total_co2_consumed_kg: 100 } } }).qualifies).toBe(false);
         expect(resolveCO2Consumption({ total_bottles: 100, meters_reading: { co2: { std_co2_consumption_kg: 90 } } }).qualifies).toBe(false);
     });
+
+    // Section 11: a completed shift can report co2_yield === 0 even when valid
+    // standard/actual meter readings exist. The calculated yield must come from
+    // the persisted readings, not the misleading reported zero.
+    test('recalculates the completed-shift yield from readings, ignoring a reported zero', () => {
+        const result = resolveCO2Consumption({
+            total_bottles_produced: 1000,
+            co2_yield: 0,
+            meters_reading: { co2: {
+                std_co2_consumption_kg: 92,
+                total_co2_consumed_kg: 100,
+                co2_yield_percent: 0,
+            } },
+        });
+
+        expect(result).toMatchObject({ qualifies: true, standard: 92, actual: 100, actualSource: 'api' });
+        expect(result.yieldPercent).toBeCloseTo(92);
+    });
 });
 
 describe('summarizeCO2Consumption', () => {
