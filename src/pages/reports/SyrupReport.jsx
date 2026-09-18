@@ -24,6 +24,7 @@ const SyrupReport = () => {
     const [loading, setLoading] = useState(true);
     const [timeRange, setTimeRange] = useState('yesterday');
     const [viewMode, setViewMode] = useState('chart');
+    const [activeProductTab, setActiveProductTab] = useState(null);
     const prevFiltersRef = useRef({ log_date: filters.log_date, start_date: filters.start_date, end_date: filters.end_date });
 
     const fetchData = useCallback(async () => {
@@ -117,6 +118,29 @@ const SyrupReport = () => {
         });
         return rows.sort((a, b) => a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet));
     }, [rawData]);
+
+    // Distinct products present in the syrup detail rows, for the detail tabs.
+    const products = useMemo(() => {
+        const set = new Set();
+        tableData.forEach(r => set.add(r.product || '-'));
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [tableData]);
+
+    // Keep the active product tab pointed at a product that exists in the current
+    // dataset. Default to the first product; reset if it disappears after a filter change.
+    useEffect(() => {
+        if (!products.length) {
+            if (activeProductTab !== null) setActiveProductTab(null);
+            return;
+        }
+        if (!products.includes(activeProductTab)) setActiveProductTab(products[0]);
+    }, [products, activeProductTab]);
+
+    // Rows for the currently active product tab.
+    const productTabRows = useMemo(
+        () => tableData.filter(r => (r.product || '-') === activeProductTab),
+        [tableData, activeProductTab]
+    );
 
     // Build per-pet syrup yield for the "Syrup Yield by PET Line" chart.
     // Each line's yield is CUMULATIVE: Σ standard / Σ actual × 100 across its
@@ -404,11 +428,45 @@ const SyrupReport = () => {
                                 </div>
                             </div>
 
-                            {/* Detail Table */}
+                            {/* Detail Table - one tab per product */}
                             <div className="card">
                                 <div className="card-header">
-                                    <h6 className="mb-0">Syrup Yield Details</h6>
-                                    <small className="text-muted">{tableData.length} records</small>
+                                    <div className="d-flex align-items-center justify-content-between mb-2">
+                                        <div>
+                                            <h6 className="mb-0">Syrup Yield Details</h6>
+                                            <small className="text-muted">{productTabRows.length} of {tableData.length} records</small>
+                                        </div>
+                                    </div>
+                                    <ul className="nav nav-pills card-header-pills gap-2 flex-wrap" role="tablist">
+                                        {products.map((product, idx) => {
+                                            const isActive = product === activeProductTab;
+                                            const color = PET_COLORS[idx % PET_COLORS.length];
+                                            const count = tableData.filter(r => (r.product || '-') === product).length;
+                                            return (
+                                                <li className="nav-item" key={product} role="presentation">
+                                                    <button
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-selected={isActive}
+                                                        className={`btn btn-sm d-flex align-items-center gap-2 ${isActive ? 'text-white' : 'btn-outline-secondary'}`}
+                                                        style={isActive ? { backgroundColor: color, borderColor: color } : undefined}
+                                                        onClick={() => setActiveProductTab(product)}
+                                                    >
+                                                        <span
+                                                            style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: isActive ? '#fff' : color, display: 'inline-block' }}
+                                                        ></span>
+                                                        {product}
+                                                        <span
+                                                            className={`badge ${isActive ? 'bg-white' : 'bg-secondary-subtle text-secondary'}`}
+                                                            style={isActive ? { color } : undefined}
+                                                        >
+                                                            {count}
+                                                        </span>
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
                                 </div>
                                 <div className="card-body p-0">
                                     <div className="table-responsive" style={{ maxHeight: 400 }}>
@@ -417,20 +475,18 @@ const SyrupReport = () => {
                                                 <tr>
                                                     <th>Date</th>
                                                     <th>PET Line</th>
-                                                    <th>Product</th>
                                                     <th>Shift</th>
                                                     <th className="text-end">Syrup Yield</th>
                                                     <th className="text-end">Output</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {tableData.length === 0 ? (
-                                                    <tr><td colSpan={6} className="text-center text-muted py-4">No syrup yield data</td></tr>
-                                                ) : tableData.map((row, idx) => (
+                                                {productTabRows.length === 0 ? (
+                                                    <tr><td colSpan={5} className="text-center text-muted py-4">No syrup yield data</td></tr>
+                                                ) : productTabRows.map((row, idx) => (
                                                     <tr key={idx}>
                                                         <td>{row.date}</td>
                                                         <td className="fw-medium">{row.pet}</td>
-                                                        <td className="text-muted">{row.product}</td>
                                                         <td><span className="badge bg-secondary-subtle text-secondary">{row.shift}</span></td>
                                                         <td className="text-end">
                                                             <span className={`badge bg-${yieldBadge(row.syrup_yield)}-subtle text-${yieldBadge(row.syrup_yield)} fw-bold`}>
