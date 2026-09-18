@@ -808,6 +808,14 @@ const ReportDetails = () => {
     const catalogProduct = products.find(p => p.name === report.product_name || String(p.id) === String(report.product));
     const bottleSize = report.bottle_size || (catalogProduct?.size ? `${catalogProduct.size}ml` : null);
     const totalBottlesProduced = Number(report.total_bottles_produced) || 0;
+    const singlePacks = report.single_packs
+        ?? report.total_single_packs
+        ?? report.metrics?.details?.single_packs
+        ?? report.metrics?.details?.total_single_packs
+        ?? report.productionSummary?.summary?.single_packs;
+    const singlePacksDisplay = singlePacks === null || singlePacks === undefined || singlePacks === ''
+        ? null
+        : (Number.isFinite(Number(singlePacks)) ? Number(singlePacks).toLocaleString() : singlePacks);
 
     const tabs = [
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
@@ -887,7 +895,7 @@ const ReportDetails = () => {
                             <DetailRow label="Total Output" value={totalOutput.toLocaleString()} />
                             <DetailRow label="Total Bottles" value={totalBottlesProduced.toLocaleString()} />
                             <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
-                            <DetailRow label="Single Packs" value={report.total_single_packs?.toLocaleString()} />
+                            <DetailRow label="Single Pack" value={singlePacksDisplay} />
                             <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
                             <DetailRow label="Line Speed" value={report.line_speed} />
                         </div>
