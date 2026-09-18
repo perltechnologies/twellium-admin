@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { inventoryApi } from '../../api/inventory';
-import { getSyrupMeterUnit } from '../../utils/meterUnits';
 import '../sign-off-forms/css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'productionReportFormV2_filters';
@@ -232,7 +231,7 @@ const ProductionReportFormV2 = () => {
         || summary.pet_name
         || '';
     const isPet3 = /pet(?:\s*line)?\s*0*3\b/i.test(selectedPetName) || String(selectedPet) === '13';
-    const syrupMeterUnit = isPet3 ? 'Kg' : getSyrupMeterUnit(selectedPetName, syrupMeters.unit);
+    const syrupMeterUnit = isPet3 ? 'Kg' : (syrupMeters.unit || '');
 
     const productNames = products.length > 0
         ? products.map(p => p.name).filter(Boolean).sort()
