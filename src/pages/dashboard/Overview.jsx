@@ -13,6 +13,7 @@ import {
 } from '../../components/ui/Skeletons';
 import CorporateStatCard from '../../components/production/CorporateStatCard';
 import CorporateGaugeChart from '../../components/charts/CorporateGaugeChart';
+import { aggregateDowntimeCategories } from '../../utils/downtime';
 
 const ReactApexChart = lazy(() => import('react-apexcharts'));
 
@@ -391,7 +392,21 @@ const Overview = () => {
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
             const dailyBreakdown = envelope.daily_breakdown || [];
             const dayData = dailyBreakdown.find(d => d.date === refDateStr) || dailyBreakdown[0] || {};
-            const allPets = (dayData.pets || []).filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            const allPets = (dayData.pets || [])
+                .filter(r => !r.pet_name?.toLowerCase().includes('can'))
+                .map((report) => {
+                    const categories = report.downtime_breakdown?.categories || [];
+                    if (categories.length === 0) return report;
+                    const classified = aggregateDowntimeCategories(categories);
+                    const totalDowntime = Object.values(classified.totals)
+                        .reduce((sum, minutes) => sum + minutes, 0);
+                    return {
+                        ...report,
+                        total_downtime_minutes: totalDowntime,
+                        planned_downtime_mins: classified.totals.planned,
+                        mechanical_downtime_mins: classified.totals.mechanical,
+                    };
+                });
 
             // Filter by target shift if not already filtered by API
             let activeReports = [];

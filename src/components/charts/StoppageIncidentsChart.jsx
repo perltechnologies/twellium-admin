@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
 import { toLocalDateStr } from '../../utils/filterParams';
+import { classifyDowntime, DOWNTIME_CLASSIFICATION } from '../../utils/downtime';
 
 const formatDuration = (mins) => {
     if (!Number.isFinite(mins) || mins <= 0) return '0m';
@@ -110,9 +111,10 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
         if (!downtimeBreakdown?.categories) return [];
         const items = [];
         downtimeBreakdown.categories.forEach(cat => {
-            // Only include Mechanical Downtime subcategories.
-            if (!cat.category_name?.toLowerCase().includes('mechanical')) return;
             (cat.sub_categories || []).forEach(sub => {
+                // A planned subcategory nested under a mechanical parent is still
+                // planned and must never enter the mechanical Pareto dataset.
+                if (classifyDowntime(sub, cat) !== DOWNTIME_CLASSIFICATION.MECHANICAL) return;
                 let count = sub.incident_count || 0;
                 let duration = sub.total_duration_mins || 0;
                 

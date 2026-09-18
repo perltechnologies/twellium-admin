@@ -9,6 +9,12 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList
 } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
+import {
+    aggregateDowntimeCategories,
+    classifyDowntime,
+    DOWNTIME_CLASSIFICATION,
+    parseDowntimeMinutes,
+} from '../../utils/downtime';
 
 const DOWNTIME_COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#06b6d4', '#ec4899', '#6b7280'];
 
@@ -431,7 +437,6 @@ const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) =
         { key: 'std_syrup_consumption', label: 'Std Consumption' },
         { key: 'syrup_yield_percentage', label: 'Yield %' },
         { key: 'syrup_density', label: 'Density' },
-        { key: 'dilution_ratio', label: 'Dilution Ratio' },
         { key: 'syrup_dilution_ratio', label: 'Syrup DR' },
     ];
 
@@ -442,9 +447,8 @@ const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) =
         { key: 'total_consumed', label: 'Total Consumed' },
         { key: 'total_co2_consumed_kg', label: 'CO2 Consumed (kg)' },
         { key: 'std_co2_consumed_kg', label: 'Std CO2 (kg)' },
-        { key: 'co2_yield_percentage', label: 'CO2 Yield %' },
+        { key: 'co2_yield_percentage', label: 'CO2 Yield Percent' },
         { key: 'dilution_ratio', label: 'Dilution Ratio' },
-        { key: 'yield_percentage', label: 'Yield %' },
     ];
 
     const readingTabs = [
@@ -587,6 +591,7 @@ const ReportDetails = () => {
         const categoryMap = {};
         let plannedDowntime = 0;
         let mechanicalDowntime = 0;
+        let hasIncidentDowntime = false;
 
         // Stoppage Logs Processing
         if (report.stoppage_logs && report.stoppage_logs.length > 0) {
@@ -609,34 +614,17 @@ const ReportDetails = () => {
                 // Downtime Breakdown
                 if (log.incidents && log.incidents.length > 0) {
                     log.incidents.forEach(inc => {
+                        hasIncidentDowntime = true;
                         const catName = inc.downtime_category_name || 'Uncategorized';
-                        
-                        // Parse incident_duration (could be "HH:MM:SS" or number)
-                        let durationMinutes = 0;
-                        if (inc.incident_duration) {
-                            if (typeof inc.incident_duration === 'string' && inc.incident_duration.includes(':')) {
-                                // Parse time string "HH:MM:SS" or "HH:MM"
-                                const parts = inc.incident_duration.split(':');
-                                const hours = parseInt(parts[0]) || 0;
-                                const mins = parseInt(parts[1]) || 0;
-                                const secs = parts[2] ? parseInt(parts[2]) || 0 : 0;
-                                durationMinutes = (hours * 60) + mins + (secs / 60);
-                            } else {
-                                durationMinutes = parseFloat(inc.incident_duration) || 0;
-                            }
-                        }
+                        const durationMinutes = parseDowntimeMinutes(inc.incident_duration);
                         
                         if (!categoryMap[catName]) categoryMap[catName] = 0;
                         categoryMap[catName] += durationMinutes;
 
-                        const categoryType = inc.downtime_category_type?.toUpperCase();
-
-                        // The API exposes the category type explicitly. Name matching is
-                        // retained only for older report payloads which predate that field.
-                        if (categoryType === 'PLANNED' || (!categoryType && catName.toLowerCase().includes('planned'))) {
+                        const classification = classifyDowntime(inc);
+                        if (classification === DOWNTIME_CLASSIFICATION.PLANNED) {
                             plannedDowntime += durationMinutes;
-                        }
-                        if (categoryType === 'MECHANICAL' || (!categoryType && catName.toLowerCase().includes('mechanical'))) {
+                        } else if (classification === DOWNTIME_CLASSIFICATION.MECHANICAL) {
                             mechanicalDowntime += durationMinutes;
                         }
                     });
@@ -702,14 +690,28 @@ const ReportDetails = () => {
         })).sort((a, b) => b.minutes - a.minutes);
 
         const summaryDowntimeCategories = report.productionSummary?.downtime_breakdown?.categories;
+        const normalizedSummaryDowntime = aggregateDowntimeCategories(summaryDowntimeCategories || []);
+        const hasSummaryDowntime = Array.isArray(summaryDowntimeCategories) && summaryDowntimeCategories.length > 0;
+        if (hasSummaryDowntime) {
+            plannedDowntime = normalizedSummaryDowntime.totals.planned;
+            mechanicalDowntime = normalizedSummaryDowntime.totals.mechanical;
+            totalDowntime = Object.values(normalizedSummaryDowntime.totals).reduce((sum, minutes) => sum + minutes, 0);
+        }
+        const summaryDowntimeTotal = Object.values(normalizedSummaryDowntime.totals)
+            .reduce((sum, minutes) => sum + minutes, 0);
+        const classificationColors = {
+            [DOWNTIME_CLASSIFICATION.PLANNED]: '#3b82f6',
+            [DOWNTIME_CLASSIFICATION.MECHANICAL]: '#ef4444',
+            [DOWNTIME_CLASSIFICATION.UNPLANNED]: '#f59e0b',
+            [DOWNTIME_CLASSIFICATION.OTHER]: '#6b7280',
+        };
         const downtimeData = Array.isArray(summaryDowntimeCategories) && summaryDowntimeCategories.length > 0
-            ? summaryDowntimeCategories
-                .map((category, index) => ({
-                    name: category.category_name || 'Uncategorized',
-                    minutes: Number(category.total_duration_mins) || 0,
-                    percentage: Number(category.percentage_of_total) || 0,
-                    incidentCount: Number(category.incident_count) || 0,
-                    color: category.color || DOWNTIME_COLORS[index % DOWNTIME_COLORS.length],
+            ? normalizedSummaryDowntime.entries
+                .map((entry) => ({
+                    name: entry.label,
+                    minutes: entry.duration,
+                    percentage: summaryDowntimeTotal > 0 ? (entry.duration / summaryDowntimeTotal) * 100 : 0,
+                    color: classificationColors[entry.classification],
                 }))
                 .filter(category => category.minutes > 0)
                 .sort((a, b) => b.minutes - a.minutes)
@@ -777,8 +779,12 @@ const ReportDetails = () => {
             efficiency: Number(numericOr(apiMetrics.efficiency, effVal).toFixed(1)),
             productionTime: productionTime || report.total_production_time_hours || 0,
             oeeMetrics,
-            plannedDowntime: numericOr(apiDetails.planned_downtime_mins, plannedDowntime),
-            mechanicalDowntime: numericOr(apiDetails.mechanical_downtime_mins, mechanicalDowntime)
+            plannedDowntime: hasSummaryDowntime || hasIncidentDowntime
+                ? plannedDowntime
+                : numericOr(apiDetails.planned_downtime_mins, plannedDowntime),
+            mechanicalDowntime: hasSummaryDowntime || hasIncidentDowntime
+                ? mechanicalDowntime
+                : numericOr(apiDetails.mechanical_downtime_mins, mechanicalDowntime)
         };
     };
 
@@ -881,6 +887,7 @@ const ReportDetails = () => {
                             <DetailRow label="Total Output" value={totalOutput.toLocaleString()} />
                             <DetailRow label="Total Bottles" value={totalBottlesProduced.toLocaleString()} />
                             <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
+                            <DetailRow label="Single Packs" value={report.total_single_packs?.toLocaleString()} />
                             <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
                             <DetailRow label="Line Speed" value={report.line_speed} />
                         </div>

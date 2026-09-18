@@ -16,6 +16,11 @@ import {
     SkeletonChart, SkeletonDonut, SkeletonTable
 } from '../../components/ui/Skeletons';
 import ReactApexChart from 'react-apexcharts';
+import {
+    aggregateDowntimeCategories,
+    classifyDowntime,
+    DOWNTIME_CLASSIFICATION,
+} from '../../utils/downtime';
 
 const STATUS_BADGES = {
     STARTED: 'badge bg-soft-info text-info',
@@ -172,16 +177,17 @@ const Overview = () => {
 
                 const lineDowntimeMap = {};
                 (breakdown.categories || []).forEach(cat => {
-                    const isMechanical = cat.category_name?.toLowerCase().includes('mechanical');
-                    const isPlanned = cat.category_name?.toLowerCase().includes('planned');
                     (cat.sub_categories || []).forEach(sub => {
+                        const classification = classifyDowntime(sub, cat);
                         (sub.pets_affected || []).forEach(pet => {
                             const name = pet.pet_name;
                             if (!name) return;
                             if (!lineDowntimeMap[name]) lineDowntimeMap[name] = { name, Mechanical: 0, Planned: 0 };
-                            if (isMechanical) lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
-                            else if (isPlanned) lineDowntimeMap[name].Planned += pet.duration_mins || 0;
-                            else lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                            if (classification === DOWNTIME_CLASSIFICATION.MECHANICAL) {
+                                lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                            } else if (classification === DOWNTIME_CLASSIFICATION.PLANNED) {
+                                lineDowntimeMap[name].Planned += pet.duration_mins || 0;
+                            }
                         });
                     });
                 });
@@ -280,13 +286,19 @@ const Overview = () => {
             const summary = envelope.summary || {};
             const dailyBreakdown = envelope.daily_breakdown || [];
             const downtimeBreakdownData = envelope.downtime_breakdown || {};
+            const normalizedDowntime = aggregateDowntimeCategories(downtimeBreakdownData.categories || []);
+            const hasDowntimeCategories = (downtimeBreakdownData.categories || []).length > 0;
 
             // Extract all pet entries from daily breakdown
             const allPetEntries = dailyBreakdown.flatMap(d => (d.pets || []).filter(p => !p.pet_name?.toLowerCase().includes('can')));
 
             // Build stats
-            const totalDowntime = summary.total_downtime_minutes || summary.total_downtime_mins ||
-                ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0));
+            const classifiedDowntimeTotal = Object.values(normalizedDowntime.totals)
+                .reduce((total, minutes) => total + minutes, 0);
+            const totalDowntime = hasDowntimeCategories
+                ? classifiedDowntimeTotal
+                : summary.total_downtime_minutes || summary.total_downtime_mins ||
+                    ((summary.planned_downtime_mins || 0) + (summary.mechanical_downtime_mins || 0));
             const totalProduced = summary.total_bottles_produced || summary.total_output || summary.total_bottles || 0;
 
             setStats({
@@ -298,24 +310,29 @@ const Overview = () => {
             });
 
             // Build reports-like data from pet entries for downstream components
-            const reportData = allPetEntries.map(p => ({
-                pet_name: p.pet_name,
-                product_name: p.product_name,
-                shift: p.shift,
-                status: p.status,
-                production_date: dailyBreakdown.find(d => (d.pets || []).includes(p))?.date || dateStart,
-                total_bottles_produced: p.total_bottles || p.total_bottles_produced || p.total_output || p.total_units || 0,
-                total_bottles: p.total_bottles || p.total_bottles_produced || p.total_output || p.total_units || 0,
-                total_packs: p.total_packs || 0,
-                oee: p.oee || 0,
-                efficiency: p.efficiency || 0,
-                availability: p.availability || 0,
-                performance: p.performance || 0,
-                quality: p.quality || 0,
-                total_downtime_minutes: p.total_downtime_minutes || 0,
-                planned_downtime_mins: p.planned_downtime_mins || 0,
-                mechanical_downtime_mins: p.mechanical_downtime_mins || 0,
-            }));
+            const reportData = allPetEntries.map(p => {
+                const petDowntime = aggregateDowntimeCategories(p.downtime_breakdown?.categories || []);
+                const hasPetDowntime = (p.downtime_breakdown?.categories || []).length > 0;
+                const petTotalDowntime = Object.values(petDowntime.totals).reduce((sum, minutes) => sum + minutes, 0);
+                return ({
+                    pet_name: p.pet_name,
+                    product_name: p.product_name,
+                    shift: p.shift,
+                    status: p.status,
+                    production_date: dailyBreakdown.find(d => (d.pets || []).includes(p))?.date || dateStart,
+                    total_bottles_produced: p.total_bottles || p.total_bottles_produced || p.total_output || p.total_units || 0,
+                    total_bottles: p.total_bottles || p.total_bottles_produced || p.total_output || p.total_units || 0,
+                    total_packs: p.total_packs || 0,
+                    oee: p.oee || 0,
+                    efficiency: p.efficiency || 0,
+                    availability: p.availability || 0,
+                    performance: p.performance || 0,
+                    quality: p.quality || 0,
+                    total_downtime_minutes: hasPetDowntime ? petTotalDowntime : (p.total_downtime_minutes || 0),
+                    planned_downtime_mins: hasPetDowntime ? petDowntime.totals.planned : (p.planned_downtime_mins || 0),
+                    mechanical_downtime_mins: hasPetDowntime ? petDowntime.totals.mechanical : (p.mechanical_downtime_mins || 0),
+                });
+            });
 
             // Recent reports (latest entries)
             setRecentReports(reportData.slice(0, 5));
@@ -374,39 +391,51 @@ const Overview = () => {
             );
 
             // OEE summary from daily breakdown
-            const oeeData = dailyBreakdown.map(d => ({
-                production_date: d.date,
-                oee: d.oee || 0,
-                availability: d.avg_availability || 0,
-                performance: d.avg_performance || 0,
-                quality: d.avg_quality || 0,
-                total_output: d.total_bottles_produced || d.total_output || d.total_bottles || 0,
-                downtime: d.total_downtime_minutes || ((d.planned_downtime_mins || 0) + (d.mechanical_downtime_mins || 0)),
-                planned_downtime: d.planned_downtime_mins || 0,
-                mechanical_downtime: d.mechanical_downtime_mins || 0,
-            }));
+            const oeeData = dailyBreakdown.map(d => {
+                const dailyDowntime = aggregateDowntimeCategories(d.downtime_breakdown?.categories || []);
+                const hasDailyDowntime = (d.downtime_breakdown?.categories || []).length > 0;
+                const dailyTotal = Object.values(dailyDowntime.totals).reduce((sum, minutes) => sum + minutes, 0);
+                return ({
+                    production_date: d.date,
+                    oee: d.oee || 0,
+                    availability: d.avg_availability || 0,
+                    performance: d.avg_performance || 0,
+                    quality: d.avg_quality || 0,
+                    total_output: d.total_bottles_produced || d.total_output || d.total_bottles || 0,
+                    downtime: hasDailyDowntime ? dailyTotal : d.total_downtime_minutes || ((d.planned_downtime_mins || 0) + (d.mechanical_downtime_mins || 0)),
+                    planned_downtime: hasDailyDowntime ? dailyDowntime.totals.planned : (d.planned_downtime_mins || 0),
+                    mechanical_downtime: hasDailyDowntime ? dailyDowntime.totals.mechanical : (d.mechanical_downtime_mins || 0),
+                });
+            });
             setOeeSummary(oeeData);
 
             // Downtime breakdown from production_summary downtime_breakdown
-            const allCategories = (downtimeBreakdownData.categories || []).map(cat => ({
-                name: cat.category_name,
-                value: Math.round(cat.total_duration_mins || 0),
-            })).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+            const classificationLabels = {
+                [DOWNTIME_CLASSIFICATION.MECHANICAL]: 'Mechanical Downtime',
+                [DOWNTIME_CLASSIFICATION.PLANNED]: 'Planned Downtime',
+                [DOWNTIME_CLASSIFICATION.UNPLANNED]: 'Unplanned Downtime',
+                [DOWNTIME_CLASSIFICATION.OTHER]: 'Other',
+            };
+            const allCategories = Object.entries(normalizedDowntime.totals)
+                .map(([classification, value]) => ({ name: classificationLabels[classification], value: Math.round(value) }))
+                .filter(d => d.value > 0)
+                .sort((a, b) => b.value - a.value);
             setDowntimeTypes(allCategories);
 
             // Downtime by line from subcategory pets_affected
             const lineDowntimeMap = {};
             (downtimeBreakdownData.categories || []).forEach(cat => {
-                const isMechanical = cat.category_name?.toLowerCase().includes('mechanical');
-                const isPlanned = cat.category_name?.toLowerCase().includes('planned');
                 (cat.sub_categories || []).forEach(sub => {
+                    const classification = classifyDowntime(sub, cat);
                     (sub.pets_affected || []).forEach(pet => {
                         const name = pet.pet_name;
                         if (!name) return;
                         if (!lineDowntimeMap[name]) lineDowntimeMap[name] = { name, Mechanical: 0, Planned: 0 };
-                        if (isMechanical) lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
-                        else if (isPlanned) lineDowntimeMap[name].Planned += pet.duration_mins || 0;
-                        else lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                        if (classification === DOWNTIME_CLASSIFICATION.MECHANICAL) {
+                            lineDowntimeMap[name].Mechanical += pet.duration_mins || 0;
+                        } else if (classification === DOWNTIME_CLASSIFICATION.PLANNED) {
+                            lineDowntimeMap[name].Planned += pet.duration_mins || 0;
+                        }
                     });
                 });
             });

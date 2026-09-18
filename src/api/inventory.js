@@ -1,5 +1,7 @@
 import api from './axios';
 
+export const MAIN_WAREHOUSE_STAGE = 'WAREHOUSE';
+
 export const inventoryApi = {
     getProducts: (params) => api.get('/inventory/products/', { params }),
     getProduct: (id) => api.get(`/inventory/products/${id}/`),
@@ -32,12 +34,10 @@ export const inventoryApi = {
             ...(location ? { location } : {}),
         }),
 
-    // Staging Warehouse -> Main Warehouse transfer.
-    // Moves the given pallets (handling units) out of the on-site staging
-    // WAREHOUSE stage into the main storage warehouse via the batch scan
-    // endpoint. scan_values are barcodes / RFID numbers (not internal UUIDs).
-    // The main warehouse maps to the EXTERNAL_WAREHOUSE stage in this system.
-    transferToMainWarehouse: ({ scan_values, target_stage = 'EXTERNAL_WAREHOUSE', location = null } = {}) =>
+    // Staging -> Main Warehouse transfer. The API stage contract defines
+    // WAREHOUSE as the main warehouse; EXTERNAL_WAREHOUSE is an external site.
+    // scan_values are barcodes / RFID numbers (not internal UUIDs).
+    transferToMainWarehouse: ({ scan_values, target_stage = MAIN_WAREHOUSE_STAGE, location = null } = {}) =>
         api.post('/inventory/handling-units/scan/', {
             scan_values,
             target_stage,

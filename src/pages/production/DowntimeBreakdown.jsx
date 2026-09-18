@@ -4,6 +4,7 @@ import { productionApi } from '../../api/production';
 import { Clock, AlertTriangle, TrendingUp, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
+import { classifyDowntime, DOWNTIME_CLASSIFICATION, parseDowntimeMinutes } from '../../utils/downtime';
 
 const DowntimeBreakdown = () => {
     const [reports, setReports] = useState([]);
@@ -42,7 +43,7 @@ const DowntimeBreakdown = () => {
                     if (log.incidents) {
                         log.incidents.forEach(inc => {
                             const catName = inc.downtime_category_name || 'Uncategorized';
-                            const duration = inc.incident_duration || 0;
+                            const duration = parseDowntimeMinutes(inc.incident_duration);
 
                             // Category breakdown
                             if (!categoryBreakdown[catName]) {
@@ -51,11 +52,12 @@ const DowntimeBreakdown = () => {
                             categoryBreakdown[catName] += duration;
 
                             // Type breakdown
-                            if (catName.toLowerCase().includes('mechanical')) {
+                            const classification = classifyDowntime(inc);
+                            if (classification === DOWNTIME_CLASSIFICATION.MECHANICAL) {
                                 totalMechanical += duration;
-                            } else if (catName.toLowerCase().includes('planned')) {
+                            } else if (classification === DOWNTIME_CLASSIFICATION.PLANNED) {
                                 totalPlanned += duration;
-                            } else if (catName.toLowerCase().includes('unplanned')) {
+                            } else if (classification === DOWNTIME_CLASSIFICATION.UNPLANNED) {
                                 totalUnplanned += duration;
                             } else {
                                 totalOther += duration;

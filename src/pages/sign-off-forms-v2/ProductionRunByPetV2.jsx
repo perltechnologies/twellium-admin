@@ -4,6 +4,7 @@ import { productionApi } from '../../api/production';
 import { workersApi } from '../../api/workers';
 import { inventoryApi } from '../../api/inventory';
 import '../sign-off-forms/css/Sign-Off-Styles.css';
+import { aggregateDowntimeCategories } from '../../utils/downtime';
 
 const STORAGE_KEY = 'productionRunByPetV2_filters';
 
@@ -986,14 +987,10 @@ const ProductionRunByPetV2 = () => {
 
                                 const dtBreakdown = data?.downtime_breakdown;
                                 if (dtBreakdown?.categories?.length > 0) {
-                                    dtBreakdown.categories.forEach(cat => {
-                                        if (cat.category_name?.toLowerCase().includes('planned')) {
-                                            plannedDowntimeMins += (cat.total_duration_mins || 0);
-                                        } else if (cat.category_name?.toLowerCase().includes('mechanical')) {
-                                            mechanicalDowntimeMins += (cat.total_duration_mins || 0);
-                                        }
-                                    });
-                                    totalDowntimeMins = dtBreakdown.total_downtime_minutes || (plannedDowntimeMins + mechanicalDowntimeMins);
+                                    const classified = aggregateDowntimeCategories(dtBreakdown.categories);
+                                    plannedDowntimeMins = classified.totals.planned;
+                                    mechanicalDowntimeMins = classified.totals.mechanical;
+                                    totalDowntimeMins = Object.values(classified.totals).reduce((sum, minutes) => sum + minutes, 0);
                                 } else {
                                     plannedDowntimeMins = summary.planned_downtime_mins || 0;
                                     mechanicalDowntimeMins = summary.mechanical_downtime_mins || 0;

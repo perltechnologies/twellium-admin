@@ -8,6 +8,11 @@ import { useFilters } from '../../context/FilterContext';
 const PET_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 const TARGET_YIELD = 98;
 const defaultPets = ['Pet 1', 'Pet 2', 'Pet 3', 'Pet 4', 'Pet 5', 'Pet 6'];
+const SYRUP_CONSUMPTION_UNIT = 'L';
+const formatConsumption = (value) => Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+});
 
 const yieldColor = (v) => {
     if (!v || v === 0) return '#94a3b8';
@@ -353,10 +358,29 @@ const SyrupReport = () => {
                                 <div className="card border-0 shadow-sm h-100">
                                     <div className="card-body text-center py-3">
                                         <small className="text-muted d-block mb-1">{p.pet}</small>
-                                        <h5 className="mb-0 fw-bold" style={{ color: yieldColor(p.avg_yield) }}>
-                                            {p.avg_yield > 0 ? `${p.avg_yield.toFixed(1)}%` : '-'}
-                                        </h5>
-                                        <small className="text-muted">{p.count} report{p.count !== 1 ? 's' : ''}</small>
+                                        {p.count > 0 ? (
+                                            <>
+                                                <h5 className="mb-2 fw-bold" style={{ color: yieldColor(p.avg_yield) }}>
+                                                    {p.avg_yield.toFixed(1)}%
+                                                </h5>
+                                                <div className="border-top pt-2 text-start small">
+                                                    <div className="d-flex justify-content-between gap-2">
+                                                        <span className="text-muted">Standard Consumption</span>
+                                                        <strong>{formatConsumption(p.totalStd)} {SYRUP_CONSUMPTION_UNIT}</strong>
+                                                    </div>
+                                                    <div className="d-flex justify-content-between gap-2 mt-1">
+                                                        <span className="text-muted">Total Consumption</span>
+                                                        <strong>{formatConsumption(p.totalActual)} {SYRUP_CONSUMPTION_UNIT}</strong>
+                                                    </div>
+                                                </div>
+                                                <small className="text-muted d-block mt-2">{p.count} report{p.count !== 1 ? 's' : ''}</small>
+                                            </>
+                                        ) : (
+                                            <div className="py-3 text-muted">
+                                                <i className="ti ti-database-off d-block fs-4 mb-1"></i>
+                                                <small>No qualifying data</small>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

@@ -21,7 +21,7 @@ import {
     ArrowRightLeft,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { inventoryApi } from '../../api/inventory';
+import { inventoryApi, MAIN_WAREHOUSE_STAGE } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { formatAndSortPets } from '../../utils/petUtils';
 import { Pagination } from '../../components/ui/Pagination';
@@ -41,10 +41,6 @@ import './StagingWarehouse.css';
 
 const WAREHOUSE_STAGE = 'WAREHOUSE';
 
-// The "main warehouse" (off the production floor) is modelled as the
-// EXTERNAL_WAREHOUSE stage. Pallets in the on-site staging WAREHOUSE stage are
-// transferred here.
-const MAIN_WAREHOUSE_STAGE = 'EXTERNAL_WAREHOUSE';
 const MAIN_WAREHOUSE_LABEL = 'Main Warehouse';
 
 // Resolve the value to send to the scan endpoint (barcode preferred, RFID fallback).

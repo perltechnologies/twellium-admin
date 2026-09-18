@@ -53,7 +53,7 @@ const Formulas = () => {
             variables: [
                 {name: "Planned Time", desc: "Shift duration derived from report start_time → end_time (hours)"},
                 {name: "Total Downtime", desc: "Sum of stoppage_logs[].downtime_minutes across all stoppages (converted to hours)"},
-                {name: "Mechanical Downtime", desc: "Sum of incident_duration where downtime_category_name contains 'mechanical' (converted to hours)"}
+                {name: "Mechanical Downtime", desc: "Sum of incidents classified MECHANICAL by the API category type; exact category-name fallback is used for legacy records. Planned incidents are excluded."}
             ],
             icon: TrendingUp,
             color: "blue"
@@ -65,7 +65,7 @@ const Formulas = () => {
             variables: [
                 {name: "Planned Time", desc: "Shift duration derived from report start_time → end_time (hours)"},
                 {name: "Total Downtime", desc: "Sum of stoppage_logs[].downtime_minutes across all stoppages (converted to hours)"},
-                {name: "Planned Downtime", desc: "Sum of incident_duration where downtime_category_name contains 'planned' (converted to hours)"}
+                {name: "Planned Downtime", desc: "Sum of incidents classified PLANNED by the API category type; exact category-name fallback is used for legacy records."}
             ],
             icon: Target,
             color: "purple"
@@ -152,4 +152,3 @@ const Formulas = () => {
 };
 
 export default Formulas;
-
