@@ -21,7 +21,7 @@ import {
     ArrowRightLeft,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { inventoryApi, MAIN_WAREHOUSE_STAGE } from '../../api/inventory';
+import { inventoryApi, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { formatAndSortPets } from '../../utils/petUtils';
 import { Pagination } from '../../components/ui/Pagination';
@@ -30,16 +30,14 @@ import './StagingWarehouse.css';
 /**
  * Staging Warehouse
  * -----------------
- * Everything held in the WAREHOUSE ("Main Unit") stage — i.e. all pallets
- * added to the staging warehouse via completed Production Transfers.
+ * Everything held in the STAGGING stage — i.e. all pallets added to
+ * the staging warehouse via completed Production Transfers.
  *
  * The units are grouped into cards (by date + product + PET line). Clicking a
  * card drills into the individual pallet records that make up that group.
  *
- * Data source: GET /inventory/handling-units/stage-details/?stage=WAREHOUSE
+ * Data source: GET /inventory/handling-units/stage-details/?stage=STAGGING
  */
-
-const WAREHOUSE_STAGE = 'WAREHOUSE';
 
 const MAIN_WAREHOUSE_LABEL = 'Main Warehouse';
 
@@ -150,7 +148,7 @@ const StagingWarehouse = () => {
         setLoading(true);
         setError('');
         try {
-            const params = { stage: WAREHOUSE_STAGE, page_size: 1000 };
+            const params = { stage: STAGING_WAREHOUSE_STAGE, page_size: 1000 };
             if (filters.date) params.date = filters.date;
             if (filters.search) params.search = filters.search;
 
@@ -426,7 +424,7 @@ const StagingWarehouse = () => {
                                     </div>
                                     <div>
                                         <span>Target stage</span>
-                                        <strong>{MAIN_WAREHOUSE_STAGE}</strong>
+                                        <strong>{MAIN_WAREHOUSE_LABEL}</strong>
                                     </div>
                                 </div>
                                 {transferError && (
@@ -682,7 +680,7 @@ const StagingWarehouse = () => {
                     <span className="warehouse-eyebrow">Post-production inventory</span>
                     <h3 className="fw-bold mb-1">Staging Warehouse</h3>
                     <p className="text-muted mb-0">
-                        Track pallets in the Main Unit stage, grouped by production date, product and PET line — and transfer stock to the Main Warehouse.
+                        Track pallets in staging, grouped by production date, product and PET line — and transfer stock to the Main Warehouse.
                     </p>
                     </div>
                 </div>

@@ -1,30 +1,54 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes } from 'lucide-react';
-import { inventoryApi } from '../../api/inventory';
-import { productionApi } from '../../api/production';
-import { formatAndSortPets } from '../../utils/petUtils';
+import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3 } from 'lucide-react';
+import { inventoryApi, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import './TransferExecution.css';
 
 /**
  * Transfer Execution Page
  * ------------------------
- * Browse all Staging Unit -> Main Unit transfers as summary cards.
- * A "transfer" is the group of pallets (handling units) dispatched together,
- * grouped by transfer date + product + PET line (matching the single-document
- * BatchPrintTransfer form). Each card shows: Transfer ID, Product Name, Date,
- * PET Name, Total Pallets.
+ * Browse pending transfers and stock held across the staging and main
+ * warehouses. Units are grouped by date + product + PET line.
  */
 
 // --- field accessors (handling unit records use varied shapes across the API) ---
 const getProductName = (u) => u.product_name || u.product?.name || u.product || 'N/A';
 const getPetName = (u) => u.pet_name || u.pet?.pet_name || u.pet?.name || u.pet || 'N/A';
 const getCreatedAt = (u) => u.created_at || u.created || null;
+const getStage = (u) => {
+    const stage = u.current_status || u.current_stage || u.stage || '';
+    return String(stage?.code || stage?.name || stage).trim().toUpperCase();
+};
 const getPacks = (u) =>
     parseInt(u.quantity, 10) ||
     parseInt(u.packs_per_pallet, 10) ||
     parseInt(u.total_packs, 10) ||
     parseInt(u.packs, 10) ||
     0;
+
+const WAREHOUSE_TABS = [
+    {
+        id: 'transfer',
+        label: 'Transfer Queue',
+        description: 'Products waiting to be transferred from production',
+        icon: ArrowRight,
+        tone: 'amber',
+    },
+    {
+        id: 'staging',
+        label: 'Staging Warehouse',
+        description: 'Products currently held in the staging warehouse',
+        icon: Building2,
+        tone: 'blue',
+    },
+    {
+        id: 'main',
+        label: 'Main Warehouse',
+        description: 'Products already transferred to the main warehouse',
+        icon: Warehouse,
+        tone: 'green',
+    },
+];
 
 // Build a stable, human-readable Transfer ID from date + product + pet.
 // Mirrors the PDyymmddHHMM document-code style used on the transfer form.
@@ -43,8 +67,8 @@ const TransferExecution = () => {
 
     const [loading, setLoading] = useState(false);
     const [units, setUnits] = useState([]);
-    const [pets, setPets] = useState([]);
-    const [products, setProducts] = useState([]);
+    const [activeTab, setActiveTab] = useState('transfer');
+    const [lastUpdated, setLastUpdated] = useState(null);
 
     const [filters, setFilters] = useState({
         startDate: '',
@@ -56,35 +80,10 @@ const TransferExecution = () => {
     // 'range' = start/end dates; 'single' = one date
     const [dateMode, setDateMode] = useState('range');
 
-    useEffect(() => {
-        fetchDropdownData();
-    }, []);
-
-    const fetchDropdownData = async () => {
-        try {
-            const [petsRes, productsRes] = await Promise.all([
-                productionApi.getPets(),
-                inventoryApi.getProducts({ page_size: 100 }),
-            ]);
-            setPets(formatAndSortPets(petsRes));
-            const prodList =
-                productsRes.data?.data?.data ||
-                productsRes.data?.data ||
-                productsRes.data?.results ||
-                [];
-            setProducts(Array.isArray(prodList) ? prodList : prodList.results || []);
-        } catch (error) {
-            console.error('Failed to fetch dropdown data:', error);
-        }
-    };
-
     const fetchTransfers = async () => {
         setLoading(true);
         try {
-            const params = {};
-            if (filters.startDate) params.start_date = filters.startDate;
-            if (filters.endDate) params.end_date = filters.endDate;
-            const response = await inventoryApi.getBulkBarcodes(params);
+            const response = await inventoryApi.getBulkBarcodes();
             const data =
                 response.data?.data?.data ||
                 response.data?.data ||
@@ -92,6 +91,7 @@ const TransferExecution = () => {
                 [];
             const list = Array.isArray(data) ? data : data.results || [];
             setUnits(list);
+            setLastUpdated(new Date());
         } catch (error) {
             console.error('Failed to fetch transfers:', error);
             setUnits([]);
@@ -100,19 +100,50 @@ const TransferExecution = () => {
         }
     };
 
-    // Debounced auto-load when server-side (date) filters change.
+    // The handling-unit list endpoint does not support date/product/PET query
+    // parameters, so load once and apply all selection filters client-side.
     useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchTransfers();
-        }, 400);
-        return () => clearTimeout(timer);
+        fetchTransfers();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters.startDate, filters.endDate]);
+    }, []);
 
-    // Aggregate handling units into transfers (date + product + pet).
+    const tabCounts = useMemo(() => units.reduce((counts, unit) => {
+        const stage = getStage(unit);
+        if (stage === STAGING_WAREHOUSE_STAGE) counts.staging += 1;
+        else if (stage === MAIN_WAREHOUSE_STAGE) counts.main += 1;
+        else counts.transfer += 1;
+        return counts;
+    }, { transfer: 0, staging: 0, main: 0 }), [units]);
+
+    const tabUnits = useMemo(() => units.filter((unit) => {
+        const stage = getStage(unit);
+        if (activeTab === 'staging') return stage === STAGING_WAREHOUSE_STAGE;
+        if (activeTab === 'main') return stage === MAIN_WAREHOUSE_STAGE;
+        return stage !== STAGING_WAREHOUSE_STAGE && stage !== MAIN_WAREHOUSE_STAGE;
+    }), [units, activeTab]);
+
+    const availablePets = useMemo(() => (
+        [...new Set(tabUnits.map(getPetName).filter((name) => name && name !== 'N/A'))]
+            .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }))
+    ), [tabUnits]);
+
+    const availableProducts = useMemo(() => (
+        [...new Set(tabUnits.map(getProductName).filter((name) => name && name !== 'N/A'))]
+            .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }))
+    ), [tabUnits]);
+
+    // A selection from one warehouse may not exist in another warehouse.
+    useEffect(() => {
+        setFilters((current) => ({ ...current, petName: '', productName: '' }));
+    }, [activeTab]);
+
+    const activeTabConfig = WAREHOUSE_TABS.find((tab) => tab.id === activeTab) || WAREHOUSE_TABS[0];
+    const ActiveTabIcon = activeTabConfig.icon;
+
+    // Aggregate the active tab's handling units by date + product + pet.
     const transfers = useMemo(() => {
         const map = {};
-        units.forEach((u) => {
+        tabUnits.forEach((u) => {
             const createdAt = getCreatedAt(u);
             const dateKey = createdAt ? new Date(createdAt).toISOString().split('T')[0] : 'unknown';
             const productName = getProductName(u);
@@ -134,18 +165,20 @@ const TransferExecution = () => {
             map[key].totalPacks += getPacks(u);
         });
         return Object.values(map).sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1));
-    }, [units]);
+    }, [tabUnits]);
 
     // Client-side filters that operate on aggregated transfers.
     const filteredTransfers = useMemo(() => {
         const norm = (v) => String(v || '').toLowerCase().trim();
         return transfers.filter((t) => {
+            if (filters.startDate && (t.dateKey === 'unknown' || t.dateKey < filters.startDate)) return false;
+            if (filters.endDate && (t.dateKey === 'unknown' || t.dateKey > filters.endDate)) return false;
             if (filters.petName && norm(t.petName) !== norm(filters.petName)) return false;
             if (filters.productName && norm(t.productName) !== norm(filters.productName)) return false;
             if (filters.transferId && !norm(t.transferId).includes(norm(filters.transferId))) return false;
             return true;
         });
-    }, [transfers, filters.petName, filters.productName, filters.transferId]);
+    }, [transfers, filters.startDate, filters.endDate, filters.petName, filters.productName, filters.transferId]);
 
     const handleReset = () => {
         setFilters({
@@ -177,24 +210,75 @@ const TransferExecution = () => {
         (filters.productName ? 1 : 0) +
         (filters.transferId ? 1 : 0);
 
+    const openTransfer = (transfer) => {
+        if (activeTab !== 'transfer') return;
+        navigate('/post-production/batch-print-transfer', {
+            state: {
+                fromTransferList: true,
+                date: transfer.dateKey,
+                productName: transfer.productName,
+                petName: transfer.petName,
+            },
+        });
+    };
+
     return (
-        <div>
-            {/* Header */}
-            <div className="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                    <h4 className="fw-bold mb-1">Production Transfer</h4>
-                    <p className="text-muted mb-0 d-flex align-items-center gap-2">
-                        <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
-                            Staging Unit <ArrowRight size={12} /> Main Unit
-                        </span>
-                        Browse and search all production-to-main transfers
-                    </p>
+        <div className="transfer-execution-page">
+            <section className="transfer-hero mb-3">
+                <div className="transfer-hero__content">
+                    <span className="transfer-hero__icon"><ArrowRight size={24} /></span>
+                    <div>
+                        <span className="transfer-eyebrow">Post-production logistics</span>
+                        <h3 className="fw-bold mb-1">Transfer &amp; Warehouse Control</h3>
+                        <p className="mb-0">
+                            <span className={`transfer-current-view is-${activeTabConfig.tone}`}>
+                                <ActiveTabIcon size={13} /> {activeTabConfig.label}
+                            </span>
+                            {activeTabConfig.description}
+                        </p>
+                    </div>
                 </div>
-                {loading && <Loader2 size={20} className="spinning text-primary" />}
+                <div className="transfer-hero__actions">
+                    {lastUpdated && (
+                        <span className="transfer-updated">
+                            <Clock3 size={14} /> Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    )}
+                    <button className="btn btn-light transfer-refresh-btn" type="button" onClick={fetchTransfers} disabled={loading}>
+                        <RefreshCw size={15} className={loading ? 'spinning' : ''} /> Refresh
+                    </button>
+                </div>
+            </section>
+
+            <div className="warehouse-tabs mb-3" role="tablist" aria-label="Warehouse views">
+                {WAREHOUSE_TABS.map((tab) => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            className={`warehouse-tab is-${tab.tone} ${isActive ? 'is-active' : ''}`}
+                            onClick={() => setActiveTab(tab.id)}
+                        >
+                            <span className="warehouse-tab__icon"><Icon size={18} /></span>
+                            <span className="warehouse-tab__copy">
+                                <strong>{tab.label}</strong>
+                                <small>{tab.description}</small>
+                            </span>
+                            <span className="warehouse-tab__count">
+                                <strong>{tabCounts[tab.id].toLocaleString()}</strong>
+                                <small>pallets</small>
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
 
             {/* Filter Bar */}
-            <div className="card mb-3 border-0 shadow-sm">
+            <div className="card mb-3 transfer-filter-card">
                 {/* Filter header: title + active count on the left, actions/summary on the right */}
                 <div className="card-header bg-transparent border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2 py-2">
                     <div className="d-flex align-items-center gap-2">
@@ -210,7 +294,7 @@ const TransferExecution = () => {
                         {filteredTransfers.length > 0 && (
                             <>
                                 <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1 fs-13">
-                                    <Boxes size={13} /> {filteredTransfers.length} transfers
+                                    <Boxes size={13} /> {filteredTransfers.length} {activeTab === 'transfer' ? 'transfers' : 'groups'}
                                 </span>
                                 <span className="badge bg-soft-success text-success d-inline-flex align-items-center gap-1 fs-13">
                                     <Layers size={13} /> {totalPalletsAll.toLocaleString()} pallets
@@ -304,8 +388,8 @@ const TransferExecution = () => {
                                     onChange={(e) => setFilters((f) => ({ ...f, petName: e.target.value }))}
                                 >
                                     <option value="">All PET Lines</option>
-                                    {pets.map((p) => (
-                                        <option key={p.id} value={p.pet_name}>{p.label}</option>
+                                    {availablePets.map((petName) => (
+                                        <option key={petName} value={petName}>{petName}</option>
                                     ))}
                                 </select>
                             </div>
@@ -324,8 +408,8 @@ const TransferExecution = () => {
                                     onChange={(e) => setFilters((f) => ({ ...f, productName: e.target.value }))}
                                 >
                                     <option value="">All Products</option>
-                                    {products.map((p) => (
-                                        <option key={p.id} value={p.name || p.product_name}>{p.name || p.product_name}</option>
+                                    {availableProducts.map((productName) => (
+                                        <option key={productName} value={productName}>{productName}</option>
                                     ))}
                                 </select>
                             </div>
@@ -333,7 +417,9 @@ const TransferExecution = () => {
 
                         {/* Transfer ID */}
                         <div className="col-xl-3 col-lg-6 col-md-4">
-                            <label className="form-label text-muted fs-13 fw-semibold text-uppercase" style={{ letterSpacing: '.03em' }}>Transfer ID</label>
+                            <label className="form-label text-muted fs-13 fw-semibold text-uppercase" style={{ letterSpacing: '.03em' }}>
+                                {activeTab === 'transfer' ? 'Transfer ID' : 'Group ID'}
+                            </label>
                             <div className="input-group input-group-sm">
                                 <span className="input-group-text bg-light border-end-0">
                                     <Search size={15} className="text-muted" />
@@ -341,7 +427,7 @@ const TransferExecution = () => {
                                 <input
                                     type="text"
                                     className="form-control border-start-0"
-                                    placeholder="Search by ID…"
+                                    placeholder={`Search ${activeTab === 'transfer' ? 'transfer' : 'group'} ID…`}
                                     value={filters.transferId}
                                     onChange={(e) => setFilters((f) => ({ ...f, transferId: e.target.value }))}
                                 />
@@ -355,7 +441,7 @@ const TransferExecution = () => {
             {loading && (
                 <div className="d-flex justify-content-center align-items-center py-5">
                     <Loader2 size={32} className="text-primary spinning" />
-                    <span className="ms-2 text-muted">Loading transfers…</span>
+                    <span className="ms-2 text-muted">Loading {activeTabConfig.label.toLowerCase()}…</span>
                 </div>
             )}
 
@@ -365,26 +451,25 @@ const TransferExecution = () => {
                     {filteredTransfers.map((t) => (
                         <div className="col-xl-3 col-lg-4 col-md-6" key={t.key}>
                             <div
-                                className="card h-100 shadow-sm transfer-card"
-                                role="button"
-                                onClick={() =>
-                                    navigate('/post-production/batch-print-transfer', {
-                                        state: {
-                                            fromTransferList: true,
-                                            date: t.dateKey,
-                                            productName: t.productName,
-                                            petName: t.petName,
-                                        },
-                                    })
-                                }
-                                style={{ cursor: 'pointer', transition: 'transform .12s ease, box-shadow .12s ease' }}
+                                className={`card h-100 transfer-group-card is-${activeTabConfig.tone}`}
+                                role={activeTab === 'transfer' ? 'button' : undefined}
+                                tabIndex={activeTab === 'transfer' ? 0 : undefined}
+                                onClick={() => openTransfer(t)}
+                                onKeyDown={(event) => {
+                                    if (activeTab === 'transfer' && (event.key === 'Enter' || event.key === ' ')) {
+                                        event.preventDefault();
+                                        openTransfer(t);
+                                    }
+                                }}
                             >
                                 <div className="card-body">
                                     <div className="d-flex justify-content-between align-items-start mb-3">
                                         <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
                                             <Hash size={12} /> {t.transferId}
                                         </span>
-                                        <span className="badge bg-soft-success text-success">Staging → Main</span>
+                                        <span className="badge bg-soft-success text-success">
+                                            {activeTab === 'transfer' ? 'Production → Staging' : activeTabConfig.label}
+                                        </span>
                                     </div>
 
                                     <h6 className="fw-bold mb-1 d-flex align-items-center gap-2" title={t.productName}>
@@ -408,6 +493,10 @@ const TransferExecution = () => {
                                             <span className="badge bg-primary fs-13">{t.totalPallets}</span>
                                         </div>
                                     </div>
+                                    <div className="transfer-card-footer">
+                                        <span>{activeTab === 'transfer' ? 'Open transfer form' : 'Inventory group'}</span>
+                                        {activeTab === 'transfer' && <ArrowRight size={15} />}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -417,13 +506,17 @@ const TransferExecution = () => {
 
             {/* Empty state */}
             {!loading && filteredTransfers.length === 0 && (
-                <div className="text-center py-5">
-                    <div className="text-muted mb-2">
-                        <Search size={48} strokeWidth={1} />
-                    </div>
-                    <p className="text-muted mb-0">
-                        No transfers match the selected filters. Adjust the date range or filters above.
-                    </p>
+                <div className="transfer-empty-state">
+                    <span className={`transfer-empty-state__icon is-${activeTabConfig.tone}`}>
+                        <ActiveTabIcon size={27} />
+                    </span>
+                    <h5>No products found</h5>
+                    <p>No products in {activeTabConfig.label.toLowerCase()} match the selected filters.</p>
+                    {activeFilterCount > 0 && (
+                        <button type="button" className="btn btn-outline-primary btn-sm" onClick={handleReset}>
+                            <RotateCcw size={14} /> Clear filters
+                        </button>
+                    )}
                 </div>
             )}
         </div>

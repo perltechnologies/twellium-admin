@@ -1,5 +1,7 @@
 import api from './axios';
 
+// Stage names follow the backend contract (including its STAGGING spelling).
+export const STAGING_WAREHOUSE_STAGE = 'STAGGING';
 export const MAIN_WAREHOUSE_STAGE = 'WAREHOUSE';
 
 export const inventoryApi = {
@@ -22,21 +24,20 @@ export const inventoryApi = {
     lookupUnit: (params) => api.get('/inventory/handling-units/lookup/', { params }),
     printBatch: (data) => api.post('/inventory/handling-units/print_batch/', data),
 
-    // Transfer completion (Production/Staging -> Warehouse "Main Unit").
+    // Production -> staging warehouse transfer completion.
     // Backend has no dedicated "complete-transfer" route; the canonical way to
     // move handling units to a new stage in batch is the scan endpoint
     // (POST /inventory/handling-units/scan/ — "move multiple handling units to a
-    // new stage in batch"). scan_values are barcodes/RFIDs; target_stage=WAREHOUSE.
-    completeTransfer: ({ scan_values, target_stage = 'WAREHOUSE', location = null } = {}) =>
+    // new stage in batch"). scan_values are barcodes/RFIDs.
+    completeTransfer: ({ scan_values, target_stage = STAGING_WAREHOUSE_STAGE, location = null } = {}) =>
         api.post('/inventory/handling-units/scan/', {
             scan_values,
             target_stage,
             ...(location ? { location } : {}),
         }),
 
-    // Staging -> Main Warehouse transfer. The API stage contract defines
-    // WAREHOUSE as the main warehouse; EXTERNAL_WAREHOUSE is an external site.
-    // scan_values are barcodes / RFID numbers (not internal UUIDs).
+    // Staging Warehouse -> Main Warehouse transfer. scan_values are barcodes /
+    // RFID numbers (not internal UUIDs).
     transferToMainWarehouse: ({ scan_values, target_stage = MAIN_WAREHOUSE_STAGE, location = null } = {}) =>
         api.post('/inventory/handling-units/scan/', {
             scan_values,

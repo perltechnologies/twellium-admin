@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Printer, Loader2, Calendar, Search, CheckCircle2, UserCheck, ArrowLeft, FileText, Warehouse, RefreshCw, Package, Layers, X } from 'lucide-react';
-import { inventoryApi } from '../../api/inventory';
+import { inventoryApi, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { usersApi } from '../../api/users';
 import { formatAndSortPets } from '../../utils/petUtils';
@@ -179,19 +179,19 @@ const BatchPrintTransfer = () => {
 
         setCompleting(true);
         try {
-            const TARGET_STAGE = 'WAREHOUSE';
+            const TARGET_STAGE = STAGING_WAREHOUSE_STAGE;
             const unitStage = (b) =>
                 String(b.stage || b.current_status || b.current_stage || '').toUpperCase();
 
             // Only move pallets that are not already in the target stage. Sending
-            // units that are already in WAREHOUSE is a no-op on the backend, which
+            // Units already in staging are a no-op on the backend, which
             // is why "completing" appeared to do nothing.
             const movable = barcodes.filter((b) => unitStage(b) !== TARGET_STAGE);
             const alreadyThere = barcodes.length - movable.length;
 
             if (movable.length === 0) {
                 setCompleteError(
-                    `All ${barcodes.length} loaded pallet(s) are already in the ${TARGET_STAGE} (Main Unit) stage — nothing to transfer.`
+                    `All ${barcodes.length} loaded pallet(s) are already in the Staging Warehouse — nothing to transfer.`
                 );
                 return;
             }
@@ -262,7 +262,7 @@ const BatchPrintTransfer = () => {
                 if (verifiedMoved === 0) {
                     setCompleteError(
                         'The server accepted the request but no pallets changed stage. ' +
-                        'They may not be eligible for transfer to the Main Unit from their current stage. ' +
+                        'They may not be eligible for transfer to the Staging Warehouse from their current stage. ' +
                         'Please check the pallet stages or contact an administrator.'
                     );
                     return;
@@ -564,9 +564,9 @@ const BatchPrintTransfer = () => {
                             )}
                             {completed && (
                                 <div className="alert alert-success py-2 px-3 mt-3 mb-0 fs-13">
-                                    Transfer <strong>{documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from Staging Unit to Main Unit.
+                                    Transfer <strong>{documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from Production to the Staging Warehouse.
                                     {transferSummary.alreadyThere > 0 && (
-                                        <> ({transferSummary.alreadyThere} pallet(s) were already in the Main Unit and were skipped.)</>
+                                        <> ({transferSummary.alreadyThere} pallet(s) were already in the Staging Warehouse and were skipped.)</>
                                     )}
                                 </div>
                             )}
