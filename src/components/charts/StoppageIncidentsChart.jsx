@@ -16,24 +16,25 @@ const formatDuration = (mins) => {
 
 const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
     const navigate = useNavigate();
-    const [useRange, setUseRange] = useState(false);
-    const [singleDate, setSingleDate] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const filterLogDate = dateFilter?.log_date || '';
+    const filterStartDate = dateFilter?.start_date || '';
+    const filterEndDate = dateFilter?.end_date || '';
+    const [useRange, setUseRange] = useState(() => Boolean(filterStartDate && filterEndDate));
+    const [singleDate, setSingleDate] = useState(() => filterLogDate);
+    const [startDate, setStartDate] = useState(() => filterStartDate);
+    const [endDate, setEndDate] = useState(() => filterEndDate);
     const [selectedPet, setSelectedPet] = useState('');
     const [downtimeBreakdown, setDowntimeBreakdown] = useState(null);
     const [loading, setLoading] = useState(false);
     const [fetchKey, setFetchKey] = useState(0);
 
     useEffect(() => {
-        if (dateFilter) {
-            const hasRange = Boolean(dateFilter.start_date && dateFilter.end_date);
-            setUseRange(hasRange);
-            setSingleDate(dateFilter.log_date || '');
-            setStartDate(dateFilter.start_date || '');
-            setEndDate(dateFilter.end_date || '');
-        }
-    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date]);
+        const hasRange = Boolean(filterStartDate && filterEndDate);
+        setUseRange(hasRange);
+        setSingleDate(filterLogDate);
+        setStartDate(filterStartDate);
+        setEndDate(filterEndDate);
+    }, [filterLogDate, filterStartDate, filterEndDate]);
 
     useEffect(() => {
         if (petFilter) {
@@ -44,21 +45,18 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
     }, [petFilter, selectedPet]);
 
     useEffect(() => {
+        let cancelled = false;
+
         const fetchData = async () => {
             setLoading(true);
             try {
-                const effectiveUseRange = dateFilter ? Boolean(dateFilter.start_date && dateFilter.end_date) : useRange;
-                const effectiveSingleDate = dateFilter ? (dateFilter.log_date || '') : singleDate;
-                const effectiveStartDate = dateFilter ? (dateFilter.start_date || '') : startDate;
-                const effectiveEndDate = dateFilter ? (dateFilter.end_date || '') : endDate;
-
                 let dateStart, dateEnd;
-                if (effectiveUseRange && effectiveStartDate && effectiveEndDate) {
-                    dateStart = effectiveStartDate;
-                    dateEnd = effectiveEndDate;
-                } else if (effectiveSingleDate) {
-                    dateStart = effectiveSingleDate;
-                    dateEnd = effectiveSingleDate;
+                if (useRange && startDate && endDate) {
+                    dateStart = startDate;
+                    dateEnd = endDate;
+                } else if (singleDate) {
+                    dateStart = singleDate;
+                    dateEnd = singleDate;
                 } else {
                     const now = new Date();
                     const currentTime = now.toTimeString().slice(0, 5);
@@ -74,17 +72,21 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                 const params = { start_date: dateStart, end_date: dateEnd };
                 const res = await productionApi.getProductionSummary(params);
                 const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
-                setDowntimeBreakdown(envelope.downtime_breakdown || null);
+                if (!cancelled) setDowntimeBreakdown(envelope.downtime_breakdown || null);
             } catch (err) {
                 console.error('Failed to fetch production summary:', err);
-                setDowntimeBreakdown(null);
+                if (!cancelled) setDowntimeBreakdown(null);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
 
         fetchData();
-    }, [dateFilter?.log_date, dateFilter?.start_date, dateFilter?.end_date, useRange, singleDate, startDate, endDate, fetchKey]);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [useRange, singleDate, startDate, endDate, fetchKey]);
 
     // Extract available pets from downtime breakdown
     const availablePets = useMemo(() => {

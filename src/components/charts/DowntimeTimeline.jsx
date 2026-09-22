@@ -100,15 +100,16 @@ const DowntimeTimeline = ({ dateFilter, subCategoryFilter, onSubCategoryChange, 
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
 
+    // Only resync when the dashboard date values change. Other global filter
+    // updates (PET/subcategory) replace the filters object too, and must not
+    // wipe out a date selected directly in this chart.
     useEffect(() => {
-        if (dateFilter) {
-            const hasRange = Boolean(filterStartDate && filterEndDate);
-            setUseRange(hasRange);
-            setSingleDate(filterLogDate);
-            setStartDate(filterStartDate);
-            setEndDate(filterEndDate);
-        }
-    }, [dateFilter, filterLogDate, filterStartDate, filterEndDate]);
+        const hasRange = Boolean(filterStartDate && filterEndDate);
+        setUseRange(hasRange);
+        setSingleDate(filterLogDate);
+        setStartDate(filterStartDate);
+        setEndDate(filterEndDate);
+    }, [filterLogDate, filterStartDate, filterEndDate]);
 
     useEffect(() => {
         if (subCategoryFilter) {
