@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3 } from 'lucide-react';
+import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3, X, CheckCircle2 } from 'lucide-react';
 import { inventoryApi, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 import './TransferExecution.css';
 
@@ -15,6 +15,8 @@ import './TransferExecution.css';
 const getProductName = (u) => u.product_name || u.product?.name || u.product || 'N/A';
 const getPetName = (u) => u.pet_name || u.pet?.pet_name || u.pet?.name || u.pet || 'N/A';
 const getCreatedAt = (u) => u.created_at || u.created || null;
+const getUnitKey = (u) => String(u.current_barcode || u.barcode || u.rfid_number || u.id || u.internal_id || '');
+const getBarcode = (u) => u.current_barcode || u.barcode || u.rfid_number || '—';
 const getStage = (u) => {
     const stage = u.current_status || u.current_stage || u.stage || '';
     return String(stage?.code || stage?.name || stage).trim().toUpperCase();
@@ -69,6 +71,8 @@ const TransferExecution = () => {
     const [units, setUnits] = useState([]);
     const [activeTab, setActiveTab] = useState('transfer');
     const [lastUpdated, setLastUpdated] = useState(null);
+    const [selectionGroup, setSelectionGroup] = useState(null);
+    const [selectedUnitKeys, setSelectedUnitKeys] = useState(() => new Set());
 
     const [filters, setFilters] = useState({
         startDate: '',
@@ -159,10 +163,12 @@ const TransferExecution = () => {
                     transferId: buildTransferId(dateKey, productName, petName),
                     totalPallets: 0,
                     totalPacks: 0,
+                    units: [],
                 };
             }
             map[key].totalPallets += 1;
             map[key].totalPacks += getPacks(u);
+            map[key].units.push(u);
         });
         return Object.values(map).sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1));
     }, [tabUnits]);
@@ -210,14 +216,54 @@ const TransferExecution = () => {
         (filters.productName ? 1 : 0) +
         (filters.transferId ? 1 : 0);
 
-    const openTransfer = (transfer) => {
-        if (activeTab !== 'transfer') return;
+    const canSelectForTransfer = activeTab === 'transfer' || activeTab === 'staging';
+    const selectionTarget = activeTab === 'staging'
+        ? { stage: MAIN_WAREHOUSE_STAGE, label: 'Main Warehouse', source: 'Staging Warehouse' }
+        : { stage: STAGING_WAREHOUSE_STAGE, label: 'Staging Warehouse', source: 'Production' };
+
+    const openSelection = (transfer) => {
+        if (!canSelectForTransfer) return;
+        setSelectionGroup(transfer);
+        setSelectedUnitKeys(new Set());
+    };
+
+    const closeSelection = () => {
+        setSelectionGroup(null);
+        setSelectedUnitKeys(new Set());
+    };
+
+    const toggleUnit = (unit) => {
+        const key = getUnitKey(unit);
+        if (!key) return;
+        setSelectedUnitKeys((current) => {
+            const next = new Set(current);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    const toggleAllUnits = () => {
+        const selectableKeys = selectionGroup?.units.map(getUnitKey).filter(Boolean) || [];
+        setSelectedUnitKeys((current) => (
+            current.size === selectableKeys.length ? new Set() : new Set(selectableKeys)
+        ));
+    };
+
+    const continueWithSelection = () => {
+        if (!selectionGroup || selectedUnitKeys.size === 0) return;
+        const selectedUnits = selectionGroup.units.filter((unit) => selectedUnitKeys.has(getUnitKey(unit)));
         navigate('/post-production/batch-print-transfer', {
             state: {
                 fromTransferList: true,
-                date: transfer.dateKey,
-                productName: transfer.productName,
-                petName: transfer.petName,
+                date: selectionGroup.dateKey,
+                productName: selectionGroup.productName,
+                petName: selectionGroup.petName,
+                selectedUnits,
+                selectedScanValues: selectedUnits.map(getUnitKey),
+                targetStage: selectionTarget.stage,
+                targetLabel: selectionTarget.label,
+                sourceLabel: selectionTarget.source,
             },
         });
     };
@@ -452,13 +498,13 @@ const TransferExecution = () => {
                         <div className="col-xl-3 col-lg-4 col-md-6" key={t.key}>
                             <div
                                 className={`card h-100 transfer-group-card is-${activeTabConfig.tone}`}
-                                role={activeTab === 'transfer' ? 'button' : undefined}
-                                tabIndex={activeTab === 'transfer' ? 0 : undefined}
-                                onClick={() => openTransfer(t)}
+                                role={canSelectForTransfer ? 'button' : undefined}
+                                tabIndex={canSelectForTransfer ? 0 : undefined}
+                                onClick={() => openSelection(t)}
                                 onKeyDown={(event) => {
-                                    if (activeTab === 'transfer' && (event.key === 'Enter' || event.key === ' ')) {
+                                    if (canSelectForTransfer && (event.key === 'Enter' || event.key === ' ')) {
                                         event.preventDefault();
-                                        openTransfer(t);
+                                        openSelection(t);
                                     }
                                 }}
                             >
@@ -494,8 +540,8 @@ const TransferExecution = () => {
                                         </div>
                                     </div>
                                     <div className="transfer-card-footer">
-                                        <span>{activeTab === 'transfer' ? 'Open transfer form' : 'Inventory group'}</span>
-                                        {activeTab === 'transfer' && <ArrowRight size={15} />}
+                                        <span>{canSelectForTransfer ? `Select pallets for ${selectionTarget.label}` : 'Inventory group'}</span>
+                                        {canSelectForTransfer && <ArrowRight size={15} />}
                                     </div>
                                 </div>
                             </div>
@@ -517,6 +563,88 @@ const TransferExecution = () => {
                             <RotateCcw size={14} /> Clear filters
                         </button>
                     )}
+                </div>
+            )}
+
+            {selectionGroup && (
+                <div className="transfer-selection-backdrop" role="dialog" aria-modal="true" aria-labelledby="transfer-selection-title" onClick={closeSelection}>
+                    <div className="transfer-selection-modal" onClick={(event) => event.stopPropagation()}>
+                        <div className="transfer-selection-header">
+                            <span className="transfer-selection-header__icon"><Layers size={20} /></span>
+                            <div className="flex-grow-1 min-w-0">
+                                <span className="transfer-eyebrow text-primary">Choose pallets</span>
+                                <h5 id="transfer-selection-title" className="mb-1">Transfer to {selectionTarget.label}</h5>
+                                <p className="mb-0">{selectionGroup.productName} · {selectionGroup.petName} · {formatDate(selectionGroup.dateKey)}</p>
+                            </div>
+                            <button type="button" className="transfer-selection-close" onClick={closeSelection} aria-label="Close selection">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="transfer-selection-toolbar">
+                            <label className="form-check d-flex align-items-center gap-2 mb-0">
+                                <input
+                                    className="form-check-input mt-0"
+                                    type="checkbox"
+                                    checked={selectedUnitKeys.size > 0 && selectedUnitKeys.size === selectionGroup.units.length}
+                                    onChange={toggleAllUnits}
+                                />
+                                <span className="fw-semibold">Select all {selectionGroup.units.length} pallets</span>
+                            </label>
+                            <span className="transfer-selection-count">{selectedUnitKeys.size} selected</span>
+                        </div>
+
+                        <div className="table-responsive transfer-selection-table-wrap">
+                            <table className="table align-middle mb-0 transfer-selection-table">
+                                <thead>
+                                    <tr>
+                                        <th aria-label="Select" />
+                                        <th>Barcode / RFID</th>
+                                        <th>Product</th>
+                                        <th>PET Line</th>
+                                        <th className="text-end">Packs</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {selectionGroup.units.map((unit) => {
+                                        const key = getUnitKey(unit);
+                                        const isSelected = selectedUnitKeys.has(key);
+                                        return (
+                                            <tr key={key} className={isSelected ? 'is-selected' : ''} onClick={() => toggleUnit(unit)}>
+                                                <td>
+                                                    <input
+                                                        className="form-check-input"
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => toggleUnit(unit)}
+                                                        onClick={(event) => event.stopPropagation()}
+                                                        aria-label={`Select ${getBarcode(unit)}`}
+                                                    />
+                                                </td>
+                                                <td><code>{getBarcode(unit)}</code></td>
+                                                <td>{getProductName(unit)}</td>
+                                                <td>{getPetName(unit)}</td>
+                                                <td className="text-end fw-semibold">{getPacks(unit).toLocaleString()}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="transfer-selection-footer">
+                            <div>
+                                <strong>{selectedUnitKeys.size}</strong>
+                                <span>pallet{selectedUnitKeys.size === 1 ? '' : 's'} selected</span>
+                            </div>
+                            <div className="d-flex gap-2">
+                                <button type="button" className="btn btn-outline-secondary" onClick={closeSelection}>Cancel</button>
+                                <button type="button" className="btn btn-primary d-flex align-items-center gap-2" disabled={selectedUnitKeys.size === 0} onClick={continueWithSelection}>
+                                    <CheckCircle2 size={16} /> Continue to transfer form
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

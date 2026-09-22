@@ -13,11 +13,21 @@ const BatchPrintTransfer = () => {
     // page, which passes navigation state. Direct URL access has no state and is
     // redirected back to the transfer list.
     const cameFromTransferList = Boolean(location.state && location.state.fromTransferList);
+    const transferState = location.state || {};
+    const selectedScanValues = Array.isArray(transferState.selectedScanValues) ? transferState.selectedScanValues : [];
+    const hasLockedSelection = selectedScanValues.length > 0;
+    const targetStage = transferState.targetStage || STAGING_WAREHOUSE_STAGE;
+    const targetLabel = transferState.targetLabel || 'Staging Warehouse';
+    const sourceLabel = transferState.sourceLabel || 'Production';
+    const sourceSupervisorLabel = `${sourceLabel} Supervisor`;
+    const targetSupervisorLabel = `${targetLabel} Supervisor`;
 
     const printRef = useRef();
     const today = new Date().toISOString().split('T')[0];
     const [loading, setLoading] = useState(false);
-    const [barcodes, setBarcodes] = useState([]);
+    const [barcodes, setBarcodes] = useState(() => (
+        Array.isArray(transferState.selectedUnits) ? transferState.selectedUnits : []
+    ));
     const [pets, setPets] = useState([]);
     const [products, setProducts] = useState([]);
     const [shifts] = useState([
@@ -26,10 +36,10 @@ const BatchPrintTransfer = () => {
     ]);
 
     const [filters, setFilters] = useState({
-        startDate: today,
-        endDate: today,
-        productType: '',
-        petName: '',
+        startDate: transferState.date && transferState.date !== 'unknown' ? transferState.date : today,
+        endDate: transferState.date && transferState.date !== 'unknown' ? transferState.date : today,
+        productType: transferState.productName || '',
+        petName: transferState.petName || '',
         shift: '',
     });
 
@@ -104,20 +114,27 @@ const BatchPrintTransfer = () => {
     const handleSearch = async ({ preserveCompletion = false } = {}) => {
         setLoading(true);
         try {
-            const params = {};
-            if (filters.startDate) params.start_date = filters.startDate;
-            if (filters.endDate) params.end_date = filters.endDate;
-            if (filters.productType) params.product_type = filters.productType;
-            if (filters.petName) params.pet_name = filters.petName;
-
-            const response = await inventoryApi.getBulkBarcodes(params);
+            const response = await inventoryApi.getBulkBarcodes();
             const data = response.data?.data?.data || response.data?.data || response.data?.results || [];
             const list = Array.isArray(data) ? data : data.results || [];
 
-            // Filter by shift if selected
-            const filtered = filters.shift
-                ? list.filter(b => (b.shift || '').toUpperCase() === filters.shift.toUpperCase())
-                : list;
+            const norm = (value) => String(value || '').trim().toLowerCase();
+            const scanValue = (unit) => String(unit.current_barcode || unit.barcode || unit.rfid_number || unit.id || unit.internal_id || '');
+            const selectedSet = new Set(selectedScanValues.map(String));
+            const filtered = list.filter((unit) => {
+                if (selectedSet.size > 0) return selectedSet.has(scanValue(unit));
+
+                const created = unit.created_at || unit.created;
+                const dateKey = created ? new Date(created).toISOString().split('T')[0] : 'unknown';
+                const product = unit.product_name || unit.product?.name || unit.product || '';
+                const pet = unit.pet_name || unit.pet?.pet_name || unit.pet?.name || unit.pet || '';
+                if (filters.startDate && (dateKey === 'unknown' || dateKey < filters.startDate)) return false;
+                if (filters.endDate && (dateKey === 'unknown' || dateKey > filters.endDate)) return false;
+                if (filters.productType && norm(product) !== norm(filters.productType)) return false;
+                if (filters.petName && norm(pet) !== norm(filters.petName)) return false;
+                if (filters.shift && norm(unit.shift) !== norm(filters.shift)) return false;
+                return true;
+            });
 
             setBarcodes(filtered);
             if (!preserveCompletion) {
@@ -169,7 +186,7 @@ const BatchPrintTransfer = () => {
     const handleCompleteTransfer = async () => {
         setCompleteError('');
         if (!productionSupervisor || !warehouseSupervisor) {
-            setCompleteError('Select both a Production Supervisor and a Warehouse Supervisor before completing the transfer.');
+            setCompleteError(`Select both a ${sourceSupervisorLabel} and a ${targetSupervisorLabel} before completing the transfer.`);
             return;
         }
         if (barcodes.length === 0) {
@@ -179,7 +196,7 @@ const BatchPrintTransfer = () => {
 
         setCompleting(true);
         try {
-            const TARGET_STAGE = STAGING_WAREHOUSE_STAGE;
+            const TARGET_STAGE = targetStage;
             const unitStage = (b) =>
                 String(b.stage || b.current_status || b.current_stage || '').toUpperCase();
 
@@ -191,7 +208,7 @@ const BatchPrintTransfer = () => {
 
             if (movable.length === 0) {
                 setCompleteError(
-                    `All ${barcodes.length} loaded pallet(s) are already in the Staging Warehouse — nothing to transfer.`
+                    `All ${barcodes.length} loaded pallet(s) are already in the ${targetLabel} — nothing to transfer.`
                 );
                 return;
             }
@@ -262,7 +279,7 @@ const BatchPrintTransfer = () => {
                 if (verifiedMoved === 0) {
                     setCompleteError(
                         'The server accepted the request but no pallets changed stage. ' +
-                        'They may not be eligible for transfer to the Staging Warehouse from their current stage. ' +
+                        `They may not be eligible for transfer to the ${targetLabel} from their current stage. ` +
                         'Please check the pallet stages or contact an administrator.'
                     );
                     return;
@@ -365,7 +382,7 @@ const BatchPrintTransfer = () => {
                         </button>
                         <div>
                             <h4 className="fw-bold mb-1">Batch Print — Transfer Form</h4>
-                            <p className="text-muted mb-0">Production to Warehouse transfer documentation</p>
+                            <p className="text-muted mb-0">{sourceLabel} to {targetLabel} transfer documentation</p>
                         </div>
                     </div>
                     <button
@@ -406,6 +423,12 @@ const BatchPrintTransfer = () => {
 
                 {activeTab === 'form' && (
                 <>
+                {hasLockedSelection && (
+                    <div className="alert alert-primary d-flex align-items-center gap-2 py-2 px-3 mb-3">
+                        <CheckCircle2 size={17} />
+                        <span><strong>{selectedScanValues.length} selected pallet{selectedScanValues.length === 1 ? '' : 's'}</strong> loaded from the transfer card.</span>
+                    </div>
+                )}
                 <div className="card">
                     <div className="card-body">
                         <div className="row g-3 align-items-end">
@@ -417,6 +440,7 @@ const BatchPrintTransfer = () => {
                                         type="date"
                                         className="form-control form-control-sm"
                                         value={filters.startDate}
+                                        disabled={hasLockedSelection}
                                         onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))}
                                     />
                                 </div>
@@ -427,6 +451,7 @@ const BatchPrintTransfer = () => {
                                     type="date"
                                     className="form-control form-control-sm"
                                     value={filters.endDate}
+                                    disabled={hasLockedSelection}
                                     onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))}
                                 />
                             </div>
@@ -435,6 +460,7 @@ const BatchPrintTransfer = () => {
                                 <select
                                     className="form-select form-select-sm"
                                     value={filters.productType}
+                                    disabled={hasLockedSelection}
                                     onChange={(e) => setFilters(f => ({ ...f, productType: e.target.value }))}
                                 >
                                     <option value="">All Products</option>
@@ -448,6 +474,7 @@ const BatchPrintTransfer = () => {
                                 <select
                                     className="form-select form-select-sm"
                                     value={filters.petName}
+                                    disabled={hasLockedSelection}
                                     onChange={(e) => setFilters(f => ({ ...f, petName: e.target.value }))}
                                 >
                                     <option value="">All Lines</option>
@@ -461,6 +488,7 @@ const BatchPrintTransfer = () => {
                                 <select
                                     className="form-select form-select-sm"
                                     value={filters.shift}
+                                    disabled={hasLockedSelection}
                                     onChange={(e) => setFilters(f => ({ ...f, shift: e.target.value }))}
                                 >
                                     <option value="">All Shifts</option>
@@ -508,11 +536,11 @@ const BatchPrintTransfer = () => {
                         </div>
                         <div className="card-body">
                             <p className="text-muted fs-13 mb-3">
-                                Assign the supervisors signing off this Staging&nbsp;→&nbsp;Main transfer, then complete it.
+                                Assign the supervisors signing off this {sourceLabel}&nbsp;→&nbsp;{targetLabel} transfer, then complete it.
                             </p>
                             <div className="row g-3 align-items-end">
                                 <div className="col-md-4">
-                                    <label className="form-label">Production Supervisor</label>
+                                    <label className="form-label">{sourceSupervisorLabel}</label>
                                     <select
                                         className="form-select form-select-sm"
                                         value={productionSupervisor}
@@ -528,7 +556,7 @@ const BatchPrintTransfer = () => {
                                     </select>
                                 </div>
                                 <div className="col-md-4">
-                                    <label className="form-label">Warehouse Supervisor</label>
+                                    <label className="form-label">{targetSupervisorLabel}</label>
                                     <select
                                         className="form-select form-select-sm"
                                         value={warehouseSupervisor}
@@ -564,9 +592,9 @@ const BatchPrintTransfer = () => {
                             )}
                             {completed && (
                                 <div className="alert alert-success py-2 px-3 mt-3 mb-0 fs-13">
-                                    Transfer <strong>{documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from Production to the Staging Warehouse.
+                                    Transfer <strong>{documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from {sourceLabel} to {targetLabel}.
                                     {transferSummary.alreadyThere > 0 && (
-                                        <> ({transferSummary.alreadyThere} pallet(s) were already in the Staging Warehouse and were skipped.)</>
+                                        <> ({transferSummary.alreadyThere} pallet(s) were already in the {targetLabel} and were skipped.)</>
                                     )}
                                 </div>
                             )}
@@ -753,7 +781,7 @@ const BatchPrintTransfer = () => {
                                 <h5 className="company-name">TWELLIUM INDUSTRIAL COMPANY LTD.</h5>
                             </div>
                             <div className="header-center">
-                                <h4 className="report-title" style={{ fontSize: '14px' }}>Transfer Form from Production to Warehouse</h4>
+                                <h4 className="report-title" style={{ fontSize: '14px' }}>Transfer Form from {sourceLabel} to {targetLabel}</h4>
                                 <span className="doc-ref" style={{ fontSize: '13px', fontWeight: 'bold' }}>{documentCode}</span>
                             </div>
                             <div className="header-right">
@@ -843,10 +871,10 @@ const BatchPrintTransfer = () => {
                         <div className="sign-off-section">
                             <div className="sign-off-row">
                                 <div className="sign-off-field">
-                                    <label>Production Supervisor</label>
+                                    <label>{sourceSupervisorLabel}</label>
                                 </div>
                                 <div className="sign-off-field">
-                                    <label>Warehouse Supervisor</label>
+                                    <label>{targetSupervisorLabel}</label>
                                 </div>
                             </div>
                             <div className="sign-off-row">
