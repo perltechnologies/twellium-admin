@@ -36,8 +36,12 @@ const BatchPrintTransfer = () => {
     ]);
 
     const [filters, setFilters] = useState({
-        startDate: transferState.date && transferState.date !== 'unknown' ? transferState.date : today,
-        endDate: transferState.date && transferState.date !== 'unknown' ? transferState.date : today,
+        startDate: transferState.startDate && transferState.startDate !== 'unknown'
+            ? transferState.startDate
+            : (transferState.date && transferState.date !== 'unknown' ? transferState.date : today),
+        endDate: transferState.endDate && transferState.endDate !== 'unknown'
+            ? transferState.endDate
+            : (transferState.date && transferState.date !== 'unknown' ? transferState.date : today),
         productType: transferState.productName || '',
         petName: transferState.petName || '',
         shift: '',
@@ -464,6 +468,9 @@ const BatchPrintTransfer = () => {
                                     onChange={(e) => setFilters(f => ({ ...f, productType: e.target.value }))}
                                 >
                                     <option value="">All Products</option>
+                                    {hasLockedSelection && filters.productType && !products.some((p) => p.name === filters.productType) && (
+                                        <option value={filters.productType}>{filters.productType}</option>
+                                    )}
                                     {products.map(p => (
                                         <option key={p.id} value={p.name}>{p.name}</option>
                                     ))}
@@ -478,6 +485,9 @@ const BatchPrintTransfer = () => {
                                     onChange={(e) => setFilters(f => ({ ...f, petName: e.target.value }))}
                                 >
                                     <option value="">All Lines</option>
+                                    {hasLockedSelection && filters.petName && !pets.some((p) => p.pet_name === filters.petName) && (
+                                        <option value={filters.petName}>{filters.petName}</option>
+                                    )}
                                     {pets.map(p => (
                                         <option key={p.id} value={p.pet_name}>{p.label}</option>
                                     ))}

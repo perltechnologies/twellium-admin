@@ -73,6 +73,7 @@ const TransferExecution = () => {
     const [lastUpdated, setLastUpdated] = useState(null);
     const [selectionGroup, setSelectionGroup] = useState(null);
     const [selectedUnitKeys, setSelectedUnitKeys] = useState(() => new Set());
+    const [selectedGroupKeys, setSelectedGroupKeys] = useState(() => new Set());
 
     const [filters, setFilters] = useState({
         startDate: '',
@@ -139,6 +140,7 @@ const TransferExecution = () => {
     // A selection from one warehouse may not exist in another warehouse.
     useEffect(() => {
         setFilters((current) => ({ ...current, petName: '', productName: '' }));
+        setSelectedGroupKeys(new Set());
     }, [activeTab]);
 
     const activeTabConfig = WAREHOUSE_TABS.find((tab) => tab.id === activeTab) || WAREHOUSE_TABS[0];
@@ -209,6 +211,8 @@ const TransferExecution = () => {
             : '—';
 
     const totalPalletsAll = filteredTransfers.reduce((s, t) => s + t.totalPallets, 0);
+    const selectedGroups = filteredTransfers.filter((transfer) => selectedGroupKeys.has(transfer.key));
+    const selectedGroupPallets = selectedGroups.reduce((sum, transfer) => sum + transfer.totalPallets, 0);
 
     const activeFilterCount =
         (filters.startDate || filters.endDate ? 1 : 0) +
@@ -225,6 +229,41 @@ const TransferExecution = () => {
         if (!canSelectForTransfer) return;
         setSelectionGroup(transfer);
         setSelectedUnitKeys(new Set());
+    };
+
+    const toggleGroup = (transfer) => {
+        if (!canSelectForTransfer) return;
+        setSelectedGroupKeys((current) => {
+            const next = new Set(current);
+            if (next.has(transfer.key)) next.delete(transfer.key);
+            else next.add(transfer.key);
+            return next;
+        });
+    };
+
+    const toggleAllGroups = () => {
+        const visibleKeys = filteredTransfers.map((transfer) => transfer.key);
+        const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((key) => selectedGroupKeys.has(key));
+        setSelectedGroupKeys(allVisibleSelected ? new Set() : new Set(visibleKeys));
+    };
+
+    const openBulkSelection = () => {
+        const selectedGroups = filteredTransfers.filter((transfer) => selectedGroupKeys.has(transfer.key));
+        const selectedUnits = selectedGroups.flatMap((transfer) => transfer.units);
+        const dates = selectedGroups.map((transfer) => transfer.dateKey).filter((date) => date && date !== 'unknown').sort();
+        if (selectedUnits.length === 0) return;
+
+        setSelectionGroup({
+            key: 'multi-group-selection',
+            productName: selectedGroups.length === 1 ? selectedGroups[0].productName : 'Multiple products',
+            petName: selectedGroups.length === 1 ? selectedGroups[0].petName : 'Multiple PET lines',
+            dateKey: selectedGroups.length === 1 ? selectedGroups[0].dateKey : 'unknown',
+            startDate: dates[0] || '',
+            endDate: dates[dates.length - 1] || '',
+            units: selectedUnits,
+            selectedGroupCount: selectedGroups.length,
+        });
+        setSelectedUnitKeys(new Set(selectedUnits.map(getUnitKey).filter(Boolean)));
     };
 
     const closeSelection = () => {
@@ -257,6 +296,8 @@ const TransferExecution = () => {
             state: {
                 fromTransferList: true,
                 date: selectionGroup.dateKey,
+                startDate: selectionGroup.startDate || selectionGroup.dateKey,
+                endDate: selectionGroup.endDate || selectionGroup.dateKey,
                 productName: selectionGroup.productName,
                 petName: selectionGroup.petName,
                 selectedUnits,
@@ -493,11 +534,46 @@ const TransferExecution = () => {
 
             {/* Transfer Summary Cards */}
             {!loading && filteredTransfers.length > 0 && (
+                <>
+                {canSelectForTransfer && (
+                    <div className={`transfer-bulk-bar mb-3 ${selectedGroups.length === 0 ? 'is-idle' : ''}`}>
+                        <div className="transfer-bulk-bar__summary">
+                            <label className="transfer-select-all mb-0" title="Select all visible transfer cards">
+                                <input
+                                    type="checkbox"
+                                    className="form-check-input mt-0"
+                                    checked={filteredTransfers.length > 0 && selectedGroups.length === filteredTransfers.length}
+                                    onChange={toggleAllGroups}
+                                />
+                            </label>
+                            <div>
+                                <strong>
+                                    {selectedGroups.length > 0
+                                        ? `${selectedGroups.length} transfer card${selectedGroups.length === 1 ? '' : 's'} selected`
+                                        : 'Select transfer cards'}
+                                </strong>
+                                <small>
+                                    {selectedGroups.length > 0
+                                        ? `${selectedGroupPallets} pallet${selectedGroupPallets === 1 ? '' : 's'} ready for review`
+                                        : 'Choose one or more TR IDs, or select all visible cards'}
+                                </small>
+                            </div>
+                        </div>
+                        {selectedGroups.length > 0 && (
+                            <div className="d-flex align-items-center gap-2">
+                                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setSelectedGroupKeys(new Set())}>Clear</button>
+                                <button type="button" className="btn btn-primary btn-sm d-flex align-items-center gap-2" onClick={openBulkSelection}>
+                                    Transfer selected cards <ArrowRight size={14} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="row g-3">
                     {filteredTransfers.map((t) => (
                         <div className="col-xl-3 col-lg-4 col-md-6" key={t.key}>
                             <div
-                                className={`card h-100 transfer-group-card is-${activeTabConfig.tone}`}
+                                className={`card h-100 transfer-group-card is-${activeTabConfig.tone} ${selectedGroupKeys.has(t.key) ? 'is-selected' : ''}`}
                                 role={canSelectForTransfer ? 'button' : undefined}
                                 tabIndex={canSelectForTransfer ? 0 : undefined}
                                 onClick={() => openSelection(t)}
@@ -510,9 +586,22 @@ const TransferExecution = () => {
                             >
                                 <div className="card-body">
                                     <div className="d-flex justify-content-between align-items-start mb-3">
-                                        <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
-                                            <Hash size={12} /> {t.transferId}
-                                        </span>
+                                        <div className="d-flex align-items-center gap-2 min-w-0">
+                                            {canSelectForTransfer && (
+                                                <input
+                                                    type="checkbox"
+                                                    className="form-check-input transfer-group-checkbox mt-0"
+                                                    checked={selectedGroupKeys.has(t.key)}
+                                                    onChange={() => toggleGroup(t)}
+                                                    onClick={(event) => event.stopPropagation()}
+                                                    title={`Select ${t.transferId}`}
+                                                    aria-label={`Select transfer group ${t.transferId}`}
+                                                />
+                                            )}
+                                            <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
+                                                <Hash size={12} /> {t.transferId}
+                                            </span>
+                                        </div>
                                         <span className="badge bg-soft-success text-success">
                                             {activeTab === 'transfer' ? 'Production → Staging' : activeTabConfig.label}
                                         </span>
@@ -548,6 +637,7 @@ const TransferExecution = () => {
                         </div>
                     ))}
                 </div>
+                </>
             )}
 
             {/* Empty state */}
@@ -572,7 +662,11 @@ const TransferExecution = () => {
                         <div className="transfer-selection-header">
                             <span className="transfer-selection-header__icon"><Layers size={20} /></span>
                             <div className="flex-grow-1 min-w-0">
-                                <span className="transfer-eyebrow text-primary">Choose pallets</span>
+                                <span className="transfer-eyebrow text-primary">
+                                    {selectionGroup.selectedGroupCount
+                                        ? `${selectionGroup.selectedGroupCount} groups combined`
+                                        : 'Choose pallets'}
+                                </span>
                                 <h5 id="transfer-selection-title" className="mb-1">Transfer to {selectionTarget.label}</h5>
                                 <p className="mb-0">{selectionGroup.productName} · {selectionGroup.petName} · {formatDate(selectionGroup.dateKey)}</p>
                             </div>

@@ -69,7 +69,19 @@
 .transfer-group-card.is-green { --card-color: #059669; }
 .transfer-group-card[role='button']:hover,
 .transfer-group-card[role='button']:focus-visible { transform: translateY(-3px); border-color: color-mix(in srgb, var(--card-color) 38%, #e5eaf1); box-shadow: 0 12px 28px rgba(15, 23, 42, .1); outline: none; }
+.transfer-group-card.is-selected { border-color: var(--card-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-color) 15%, transparent), 0 10px 24px rgba(15, 23, 42, .08); }
+.transfer-group-checkbox { width: 1.05rem; height: 1.05rem; flex: 0 0 auto; cursor: pointer; }
 .transfer-card-footer { display: flex; align-items: center; justify-content: space-between; margin: 1rem -1rem -1rem; padding: .7rem 1rem; color: var(--card-color); background: #fafbfd; border-top: 1px solid #eef1f5; font-size: .72rem; font-weight: 700; }
+
+.transfer-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem .9rem; color: #1e3a8a; background: linear-gradient(90deg, #eff6ff, #f8fbff); border: 1px solid #bfdbfe; border-radius: 12px; box-shadow: 0 5px 16px rgba(37, 99, 235, .07); }
+.transfer-bulk-bar.is-idle { color: #334155; background: #fff; border-color: #dfe5ed; box-shadow: 0 4px 14px rgba(15, 23, 42, .035); }
+.transfer-bulk-bar__summary { display: flex; align-items: center; gap: .65rem; }
+.transfer-select-all { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; background: #dbeafe; border-radius: 9px; cursor: pointer; }
+.transfer-bulk-bar.is-idle .transfer-select-all { background: #f1f5f9; }
+.transfer-select-all .form-check-input { width: 1.05rem; height: 1.05rem; cursor: pointer; }
+.transfer-bulk-bar__summary strong, .transfer-bulk-bar__summary small { display: block; }
+.transfer-bulk-bar__summary strong { font-size: .8rem; }
+.transfer-bulk-bar__summary small { margin-top: .05rem; color: #64748b; font-size: .68rem; }
 
 .transfer-empty-state { display: flex; min-height: 260px; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 1rem; text-align: center; background: rgba(255,255,255,.45); border: 1px dashed #cbd5e1; border-radius: 15px; }
 .transfer-empty-state__icon { width: 58px; height: 58px; display: grid; place-items: center; margin-bottom: .85rem; color: #2563eb; background: #eff6ff; border-radius: 16px; }
@@ -114,6 +126,9 @@
     .transfer-hero__icon { width: 42px; height: 42px; }
     .transfer-hero p { align-items: flex-start; flex-direction: column; }
     .transfer-hero__actions { justify-content: space-between; width: 100%; }
+    .transfer-bulk-bar { align-items: stretch; flex-direction: column; }
+    .transfer-bulk-bar > .d-flex { width: 100%; }
+    .transfer-bulk-bar .btn-primary { flex: 1; justify-content: center; }
     .transfer-selection-footer { align-items: stretch; flex-direction: column; }
     .transfer-selection-footer .d-flex { width: 100%; }
     .transfer-selection-footer .btn { flex: 1; justify-content: center; }
