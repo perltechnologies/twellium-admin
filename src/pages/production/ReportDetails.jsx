@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Clock, Activity, AlertTriangle, Layers, User, Box, Package } from 'lucide-react';
+import { Clock, Activity, AlertTriangle, Layers, User, Box, Package, ChevronDown } from 'lucide-react';
 
 import { productionApi } from '../../api/production';
 import { inventoryApi } from '../../api/inventory';
@@ -48,6 +48,81 @@ const MaterialsView = ({ materials }) => {
                     )}
                 </div>
             ))}
+        </div>
+    );
+};
+
+const getMaterialConsumptionList = (payload) => {
+    const candidates = [
+        payload,
+        payload?.data,
+        payload?.results,
+        payload?.data?.data,
+        payload?.data?.results,
+        payload?.data?.data?.results,
+    ];
+
+    return candidates.find(Array.isArray) || [];
+};
+
+const MaterialConsumptionsView = ({ records, loading, error }) => {
+    if (loading) {
+        return <div className="text-muted text-center py-5">Loading material consumption records...</div>;
+    }
+
+    if (error) {
+        return <div className="text-danger text-center py-5">Unable to load material consumption records.</div>;
+    }
+
+    if (!records.length) {
+        return <div className="text-muted text-center py-5">No material consumption records found for this report</div>;
+    }
+
+    const number = (value) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const displayNumber = (value) => number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+    return (
+        <div className="table-responsive">
+            <table className="table table-hover align-middle mb-0">
+                <thead className="table-light">
+                    <tr>
+                        <th>Material</th>
+                        <th className="text-end">Used</th>
+                        <th className="text-end">Losses</th>
+                        <th className="text-end">Net Consumption</th>
+                        <th className="text-end">Yield</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {records.map((record, index) => {
+                        const used = number(record.used ?? record.total_used);
+                        const losses = number(record.losses ?? record.total_losses);
+                        const calculatedYield = used > 0 ? ((used - losses) / used) * 100 : 0;
+                        const yieldValue = number(record.yield_percentage ?? calculatedYield);
+                        const unit = record.unit || 'pcs';
+
+                        return (
+                            <tr key={record.id ?? `${record.material_type}-${index}`}>
+                                <td>
+                                    <div className="fw-semibold">{record.material_type_display || record.material_name || record.material_type || '-'}</div>
+                                    {record.batch_number && <small className="text-muted">Batch {record.batch_number}</small>}
+                                </td>
+                                <td className="text-end">{displayNumber(used)} <small className="text-muted">{unit}</small></td>
+                                <td className="text-end text-danger">{displayNumber(losses)} <small className="text-muted">{unit}</small></td>
+                                <td className="text-end fw-medium">{displayNumber(Math.max(used - losses, 0))} <small className="text-muted">{unit}</small></td>
+                                <td className="text-end">
+                                    <span className={`badge ${yieldValue >= 98 ? 'bg-soft-success text-success' : yieldValue >= 95 ? 'bg-soft-warning text-warning' : 'bg-soft-danger text-danger'}`}>
+                                        {yieldValue.toFixed(1)}%
+                                    </span>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
         </div>
     );
 };
@@ -311,17 +386,34 @@ const StoppageLogsView = ({ logs }) => {
 };
 
 const StoppageTimeline = ({ logs }) => {
+    const [isExpanded, setIsExpanded] = useState(true);
+
     if (!logs || logs.length === 0) return null;
 
     return (
         <div className="card mb-4">
-            <div className="card-header bg-soft-primary">
-                <h6 className="mb-0 d-flex align-items-center gap-2 text-primary">
+            <button
+                type="button"
+                className="card-header bg-soft-primary border-0 d-flex align-items-center justify-content-between text-start w-100"
+                onClick={() => setIsExpanded((expanded) => !expanded)}
+                aria-expanded={isExpanded}
+                aria-controls="stoppage-event-timeline"
+            >
+                <span className="mb-0 d-flex align-items-center gap-2 text-primary fw-semibold">
                     <Clock className="h-4 w-4" />
                     Stoppage Event Timeline
-                </h6>
-            </div>
-            <div className="card-body">
+                    <span className="badge bg-primary rounded-pill">{logs.length}</span>
+                </span>
+                <ChevronDown
+                    className="h-4 w-4 text-primary"
+                    aria-hidden="true"
+                    style={{
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s ease',
+                    }}
+                />
+            </button>
+            {isExpanded && <div id="stoppage-event-timeline" className="card-body">
                 <div className="position-relative border-start border-2 border-primary ms-3 ps-4">
                     {logs.slice().sort((a, b) => (a.hour_index - b.hour_index)).map((log, idx) => (
                         <div key={idx} className="position-relative mb-4">
@@ -375,7 +467,7 @@ const StoppageTimeline = ({ logs }) => {
                         </div>
                     ))}
                 </div>
-            </div>
+            </div>}
         </div>
     );
 };
@@ -495,6 +587,9 @@ const ReportDetails = () => {
     const [shiftData, setShiftData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('batches');
+    const [materialConsumptions, setMaterialConsumptions] = useState([]);
+    const [materialConsumptionsLoading, setMaterialConsumptionsLoading] = useState(true);
+    const [materialConsumptionsError, setMaterialConsumptionsError] = useState(false);
 
     useEffect(() => {
         const fetchProducts = async () => {
@@ -577,6 +672,40 @@ const ReportDetails = () => {
             }
         };
         fetchReport();
+    }, [id]);
+
+    useEffect(() => {
+        let active = true;
+
+        const fetchMaterialConsumptions = async () => {
+            setMaterialConsumptionsLoading(true);
+            setMaterialConsumptionsError(false);
+
+            try {
+                const response = await productionApi.getMaterialConsumptions({ report: id, page_size: 1000 });
+                const records = getMaterialConsumptionList(response?.data);
+                const reportRecords = records.filter((record) => {
+                    const reportReference = record?.report?.id ?? record?.report ?? record?.report_id ?? record?.production_report;
+                    return reportReference == null || String(reportReference) === String(id);
+                });
+
+                if (active) setMaterialConsumptions(reportRecords);
+            } catch (err) {
+                console.error('Failed to load material consumption records:', err);
+                if (active) {
+                    setMaterialConsumptions([]);
+                    setMaterialConsumptionsError(true);
+                }
+            } finally {
+                if (active) setMaterialConsumptionsLoading(false);
+            }
+        };
+
+        fetchMaterialConsumptions();
+
+        return () => {
+            active = false;
+        };
     }, [id]);
 
     // Calculate Stats & Chart Data
@@ -820,6 +949,7 @@ const ReportDetails = () => {
     const tabs = [
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
         { id: 'materials', label: 'Materials', count: report.materials?.length || 0 }, // Materials is an array of groups, count might be misleading if just groups, but OK for now.
+        { id: 'material-consumptions', label: 'Material Consumption', count: materialConsumptions.length },
         { id: 'stoppages', label: 'Stoppages', count: report.stoppage_logs?.length || 0 },
         { id: 'workers', label: 'Workers', count: report.workers?.length || 0 },
     ];
@@ -1392,6 +1522,16 @@ const ReportDetails = () => {
                         {activeTab === 'materials' && (
                             <div className="tab-pane fade show active">
                                 <MaterialsView materials={report.materials} />
+                            </div>
+                        )}
+
+                        {activeTab === 'material-consumptions' && (
+                            <div className="tab-pane fade show active">
+                                <MaterialConsumptionsView
+                                    records={materialConsumptions}
+                                    loading={materialConsumptionsLoading}
+                                    error={materialConsumptionsError}
+                                />
                             </div>
                         )}
 
