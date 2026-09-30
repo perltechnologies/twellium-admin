@@ -80,6 +80,7 @@ const ProductionReportFormV2 = () => {
     const [pets, setPets] = useState([]);
     const [shifts, setShifts] = useState([]);
     const [products, setProducts] = useState([]);
+    const [assemblySheet, setAssemblySheet] = useState('');
 
     const storedFilters = getStoredFilters();
     const [selectedPet, setSelectedPet] = useState(storedFilters?.selectedPet || '');
@@ -204,6 +205,10 @@ const ProductionReportFormV2 = () => {
     useEffect(() => {
         fetchData(selectedDate, selectedPet, selectedShift, selectedProduct);
     }, [selectedDate, selectedPet, selectedShift, selectedProduct]);
+
+    useEffect(() => {
+        setAssemblySheet(data?.assembly_sheet || '');
+    }, [data?.assembly_sheet]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -365,10 +370,18 @@ const ProductionReportFormV2 = () => {
                             </div>
 
                             {/* Active Filters Display */}
-                            <div className="active-filters-strip" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', padding: '6px 10px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontSize: '11px' }}>
-                                <span><strong>Date:</strong> {selectedDate}</span>
-                                <span><strong>Line:</strong> {selectedPet ? (pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '') : 'All Lines'}</span>
-                                <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || 'All Shifts') : 'All Shifts'}</span>
+                            <div className="active-filters-strip" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: '12px', padding: '6px 10px', backgroundColor: '#f8f9fa', borderBottom: '1px solid #dee2e6', fontSize: '11px' }}>
+                                <span className="text-nowrap"><strong>Date:</strong> {selectedDate}</span>
+                                <span className="text-nowrap"><strong>Line:</strong> {selectedPet ? (pets.find(p => String(p.id) === String(selectedPet))?.pet_name || '') : 'All Lines'}</span>
+                                <span className="d-inline-flex align-items-center gap-3 text-nowrap">
+                                    <span><strong>Shift:</strong> {selectedShift ? (shifts.find(s => String(s.id) === String(selectedShift))?.name || 'All Shifts') : 'All Shifts'}</span>
+                                    <span className="d-inline-flex align-items-center gap-1">
+                                        <strong>Assembly Sheet:</strong>
+                                        <span style={{ width: '120px', minHeight: '1.6rem', borderBottom: assemblySheet ? 'none' : '1px dotted #495057' }}>
+                                            <EditableField value={assemblySheet} onChange={setAssemblySheet} />
+                                        </span>
+                                    </span>
+                                </span>
                             </div>
 
                             {/* Product Details - shown when a product or specific PET is selected */}

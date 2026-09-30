@@ -3,14 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Clock, Activity, AlertTriangle, Layers, User, Box, Package, ChevronDown } from 'lucide-react';
 
 import { productionApi } from '../../api/production';
-import { inventoryApi } from '../../api/inventory';
 import {
     PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList
 } from 'recharts';
 import { useTheme } from '../../context/ThemeContext';
 import {
-    aggregateDowntimeCategories,
     classifyDowntime,
     DOWNTIME_CLASSIFICATION,
     parseDowntimeMinutes,
@@ -52,19 +50,6 @@ const MaterialsView = ({ materials }) => {
     );
 };
 
-const getMaterialConsumptionList = (payload) => {
-    const candidates = [
-        payload,
-        payload?.data,
-        payload?.results,
-        payload?.data?.data,
-        payload?.data?.results,
-        payload?.data?.data?.results,
-    ];
-
-    return candidates.find(Array.isArray) || [];
-};
-
 const MaterialConsumptionsView = ({ records, loading, error }) => {
     if (loading) {
         return <div className="text-muted text-center py-5">Loading material consumption records...</div>;
@@ -101,7 +86,7 @@ const MaterialConsumptionsView = ({ records, loading, error }) => {
                         const used = number(record.used ?? record.total_used);
                         const losses = number(record.losses ?? record.total_losses);
                         const calculatedYield = used > 0 ? ((used - losses) / used) * 100 : 0;
-                        const yieldValue = number(record.yield_percentage ?? calculatedYield);
+                        const yieldValue = number(record.yield ?? record.yield_percentage ?? calculatedYield);
                         const unit = record.unit || 'pcs';
 
                         return (
@@ -297,12 +282,36 @@ const PetlineMaterialsGroup = ({ items }) => {
 };
 
 
-const StoppageLogsView = ({ logs }) => {
+const getLogDowntimeSplit = (log) => (log?.incidents || []).reduce((totals, incident) => {
+    const minutes = parseDowntimeMinutes(incident.incident_duration);
+    const classification = classifyDowntime(incident);
+    if (classification === DOWNTIME_CLASSIFICATION.PLANNED) totals.planned += minutes;
+    if (classification === DOWNTIME_CLASSIFICATION.MECHANICAL) totals.mechanical += minutes;
+    return totals;
+}, { planned: 0, mechanical: 0 });
+
+const StoppageLogsView = ({ logs, totalDowntime, plannedDowntime, mechanicalDowntime }) => {
     if (!logs || logs.length === 0) return <div className="text-muted text-center py-5">No stoppage logs recorded</div>;
 
     return (
         <div className="vstack gap-3">
-            {logs.map((log) => (
+            <div className="row g-3">
+                {[
+                    { label: 'Total Downtime', value: totalDowntime, className: 'bg-soft-warning text-warning' },
+                    { label: 'Planned Downtime', value: plannedDowntime, className: 'bg-soft-primary text-primary' },
+                    { label: 'Mechanical Downtime', value: mechanicalDowntime, className: 'bg-soft-danger text-danger' },
+                ].map((item) => (
+                    <div className="col-md-4" key={item.label}>
+                        <div className={`rounded border p-3 ${item.className}`}>
+                            <small className="d-block text-uppercase fw-semibold">{item.label}</small>
+                            <strong className="fs-5">{Number(item.value || 0).toFixed(0)} min</strong>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            {logs.map((log) => {
+                const downtimeSplit = getLogDowntimeSplit(log);
+                return (
                 <div key={log.id} className="card border">
                     {/* Header Summary */}
                     <div className="card-header bg-light">
@@ -323,10 +332,10 @@ const StoppageLogsView = ({ logs }) => {
                                 </div>
                             </div>
                             <div className="col-md">
-                                <small className="text-muted text-uppercase d-block mb-1">Downtime</small>
-                                <div className="d-flex align-items-center gap-2">
-                                    <AlertTriangle className="h-3 w-3 text-warning" />
-                                    <span className="fw-medium text-warning">{log.downtime_minutes} min</span>
+                                <small className="text-muted text-uppercase d-block mb-1">This Hour's Downtime</small>
+                                <div className="d-flex flex-column gap-1 small">
+                                    <span className="text-primary fw-medium">Planned: {downtimeSplit.planned} min</span>
+                                    <span className="text-danger fw-medium">Mechanical: {downtimeSplit.mechanical} min</span>
                                 </div>
                             </div>
                             <div className="col-md">
@@ -368,7 +377,7 @@ const StoppageLogsView = ({ logs }) => {
                                         <div key={i} className="bg-white p-2 rounded border small d-flex align-items-start gap-2">
                                             <span className="text-muted">•</span>
                                             <div>
-                                                <strong>{inc.incident_category_name || 'Uncategorized'}:</strong>
+                                                <strong>{inc.downtime_category_name || inc.incident_category_name || 'Uncategorized'}:</strong>
                                                 {' '}{inc.incident_description}
                                             </div>
                                         </div>
@@ -380,7 +389,8 @@ const StoppageLogsView = ({ logs }) => {
                         )}
                     </div>
                 </div>
-            ))}
+                );
+            })}
         </div>
     );
 };
@@ -489,9 +499,9 @@ const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) =
                 <div className="row g-3">
                     {fields.map((field) => (
                         <div key={field.key} className="col-md-4">
-                            <div className="bg-light p-3 rounded border">
+                            <div className="bg-body-tertiary p-3 rounded border">
                                 <small className="text-muted text-uppercase d-block mb-1">{field.label}</small>
-                                <span className="fw-medium">
+                                <span className="fw-semibold text-body-emphasis">
                                     {data[field.key] !== null && data[field.key] !== undefined ? data[field.key] : '-'}
                                 </span>
                             </div>
@@ -499,9 +509,9 @@ const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) =
                     ))}
                 </div>
                 {data.remarks && (
-                    <div className="mt-3 bg-light p-3 rounded border">
+                    <div className="mt-3 bg-body-tertiary p-3 rounded border">
                         <small className="text-muted text-uppercase d-block mb-1">Remarks</small>
-                        <p className="mb-0 small">{data.remarks}</p>
+                        <p className="mb-0 small text-body-emphasis">{data.remarks}</p>
                     </div>
                 )}
             </div>
@@ -557,7 +567,8 @@ const MeterReadingsView = ({ productionReadings, syrupReadings, co2Readings }) =
                     <button
                         key={tab.id}
                         onClick={() => setActiveReadingTab(tab.id)}
-                        className={`btn ${activeReadingTab === tab.id ? 'btn-primary' : 'btn-outline-primary'}`}
+                        className={`btn ${activeReadingTab === tab.id ? 'btn-primary' : 'btn-outline-secondary'}`}
+                        aria-pressed={activeReadingTab === tab.id}
                     >
                         {tab.label}
                     </button>
@@ -583,88 +594,22 @@ const ReportDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [report, setReport] = useState(null);
-    const [products, setProducts] = useState([]);
-    const [shiftData, setShiftData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('batches');
-    const [materialConsumptions, setMaterialConsumptions] = useState([]);
-    const [materialConsumptionsLoading, setMaterialConsumptionsLoading] = useState(true);
-    const [materialConsumptionsError, setMaterialConsumptionsError] = useState(false);
-
-    useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                const res = await inventoryApi.getProducts({ page_size: 100 });
-                const productList = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
-                setProducts(Array.isArray(productList) ? productList : productList.results || []);
-            } catch (err) {
-                console.error('Failed to fetch products:', err);
-            }
-        };
-        fetchProducts();
-    }, []);
 
     useEffect(() => {
         const fetchReport = async () => {
             try {
-                const res = await productionApi.getReport(id);
-                const data = res.data.data;
-
-                let productionSummary = null;
-                if (data.production_date) {
-                    const summaryParams = {
-                        start_date: data.production_date,
-                        end_date: data.production_date,
-                    };
-                    if (data.pet) summaryParams.pet = data.pet;
-                    if (data.shift) summaryParams.shift = data.shift;
-                    if (data.product_name) summaryParams.product = data.product_name;
-
-                    try {
-                        const summaryRes = await productionApi.getProductionSummary(summaryParams);
-                        productionSummary = summaryRes?.data?.data?.data ?? summaryRes?.data?.data ?? summaryRes?.data ?? null;
-                    } catch (err) {
-                        console.warn('Failed to load production summary; using report data fallbacks.', err);
-                    }
-                }
-
-                const summary = productionSummary?.summary;
-                const matchingPetEntries = (productionSummary?.daily_breakdown || [])
-                    .flatMap(day => day.pets || [])
-                    .filter(entry => {
-                        const samePet = !data.pet || String(entry.pet_id) === String(data.pet);
-                        const sameShift = !data.shift_name || entry.shift === data.shift_name;
-                        const sameProduct = !data.product_name || entry.product_name === data.product_name;
-                        return samePet && sameShift && sameProduct;
-                    });
-                const cumulativeHourlyOutput = matchingPetEntries.reduce((total, entry) => {
-                    const value = entry.total_bottles ?? entry.total_output ?? entry.total_units;
-                    return total + (Number(value) || 0);
-                }, 0);
-                const metrics = summary ? {
-                    oee: summary.oee,
-                    efficiency: summary.avg_efficiency,
-                    availability: summary.avg_availability,
-                    performance: summary.avg_performance,
-                    quality: summary.avg_quality,
-                    details: {
-                        ...(data.metrics?.details || {}),
-                        // `total_bottles` is the cumulative hourly-entry output. Some
-                        // summary payloads expose it only on the matching PET row.
-                        total_output_pcs: cumulativeHourlyOutput ||
-                            Number(summary.total_bottles ?? summary.total_output) ||
-                            summary.total_bottles_produced,
-                        total_downtime_mins: summary.total_downtime_minutes,
-                        planned_downtime_mins: summary.planned_downtime_mins,
-                        mechanical_downtime_mins: summary.mechanical_downtime_mins,
-                    }
-                } : data.metrics;
-
-                setReport({ ...data, metrics, productionSummary });
-                if (data.shift) {
-                    const shiftRes = await productionApi.getShift(data.shift);
-                    setShiftData(shiftRes.data.data || shiftRes.data);
-                }
+                const [res, metricsRes] = await Promise.all([
+                    productionApi.getReport(id),
+                    productionApi.getReportOeeMetrics(id).catch((err) => {
+                        console.warn('Failed to load authoritative OEE metrics; using report fallbacks.', err);
+                        return null;
+                    }),
+                ]);
+                const data = res?.data?.data ?? res?.data;
+                const metrics = metricsRes?.data?.data ?? metricsRes?.data ?? data?.metrics;
+                setReport({ ...data, metrics });
             } catch (err) {
                 console.error("Failed to load report", err);
             } finally {
@@ -674,53 +619,21 @@ const ReportDetails = () => {
         fetchReport();
     }, [id]);
 
-    useEffect(() => {
-        let active = true;
-
-        const fetchMaterialConsumptions = async () => {
-            setMaterialConsumptionsLoading(true);
-            setMaterialConsumptionsError(false);
-
-            try {
-                const response = await productionApi.getMaterialConsumptions({ report: id, page_size: 1000 });
-                const records = getMaterialConsumptionList(response?.data);
-                const reportRecords = records.filter((record) => {
-                    const reportReference = record?.report?.id ?? record?.report ?? record?.report_id ?? record?.production_report;
-                    return reportReference == null || String(reportReference) === String(id);
-                });
-
-                if (active) setMaterialConsumptions(reportRecords);
-            } catch (err) {
-                console.error('Failed to load material consumption records:', err);
-                if (active) {
-                    setMaterialConsumptions([]);
-                    setMaterialConsumptionsError(true);
-                }
-            } finally {
-                if (active) setMaterialConsumptionsLoading(false);
-            }
-        };
-
-        fetchMaterialConsumptions();
-
-        return () => {
-            active = false;
-        };
-    }, [id]);
-
     // Calculate Stats & Chart Data
     const calculateStats = () => {
         if (!report) return { efficiencyData: [], downtimeData: [], totalDowntime: 0, totalOutput: 0, productionTime: 0, efficiency: 0 };
 
         let totalEfficiency = 0;
         let logCount = 0;
-        let totalDowntimeSum = 0;
-        let totalDowntime = 0;
-        let totalOutput = 0;
+        let loggedDowntime = 0;
         const categoryMap = {};
-        let plannedDowntime = 0;
-        let mechanicalDowntime = 0;
-        let hasIncidentDowntime = false;
+        const productionReadings = report.production_readings || report.meter_readings;
+        const readingsList = Array.isArray(productionReadings) ? productionReadings : (productionReadings ? [productionReadings] : []);
+        const fillerOutput = readingsList.reduce((sum, reading) => sum + (Number(reading.filler_reading) || 0), 0);
+        const totalOutput = fillerOutput || Number(report.total_bottles_produced) || 0;
+        const totalDowntime = Number(report.total_downtime_minutes) || 0;
+        const plannedDowntime = Number(report.planned_downtime_mins) || 0;
+        const mechanicalDowntime = Number(report.mechanical_downtime_mins) || 0;
 
         // Stoppage Logs Processing
         if (report.stoppage_logs && report.stoppage_logs.length > 0) {
@@ -732,30 +645,17 @@ const ReportDetails = () => {
                     logCount++;
                 }
                 const minutes = Number(log.downtime_minutes) || 0;
-                // Accumulate sum for average calculation
-                totalDowntimeSum += minutes;
-
-                // Bottles
-                if (log.bottles_produced) {
-                    totalOutput += (parseInt(log.bottles_produced) || 0);
-                }
+                loggedDowntime += minutes;
 
                 // Downtime Breakdown
                 if (log.incidents && log.incidents.length > 0) {
                     log.incidents.forEach(inc => {
-                        hasIncidentDowntime = true;
                         const catName = inc.downtime_category_name || 'Uncategorized';
                         const durationMinutes = parseDowntimeMinutes(inc.incident_duration);
                         
                         if (!categoryMap[catName]) categoryMap[catName] = 0;
                         categoryMap[catName] += durationMinutes;
 
-                        const classification = classifyDowntime(inc);
-                        if (classification === DOWNTIME_CLASSIFICATION.PLANNED) {
-                            plannedDowntime += durationMinutes;
-                        } else if (classification === DOWNTIME_CLASSIFICATION.MECHANICAL) {
-                            mechanicalDowntime += durationMinutes;
-                        }
                     });
                 } else if (minutes > 0) {
                     if (!categoryMap['Unspecified']) categoryMap['Unspecified'] = 0;
@@ -764,7 +664,6 @@ const ReportDetails = () => {
             });
 
 
-            totalDowntime = totalDowntimeSum;
         }
 
 
@@ -772,43 +671,30 @@ const ReportDetails = () => {
         const avgEff = logCount > 0 ? totalEfficiency / logCount : 0;
         const effVal = Math.min(Math.max(avgEff, 0), 100);
 
-        // OEE is authoritative API data; never derive it from hourly efficiency.
+        // Prefer API metrics when present; the report detail fields provide the fallback inputs.
         const apiMetrics = report.metrics || {};
-        const apiDetails = apiMetrics.details || {};
         const numericOr = (value, fallback) => {
             if (value === null || value === undefined || value === '') return fallback;
             const parsed = Number(value);
             return Number.isFinite(parsed) ? parsed : fallback;
         };
-        const apiOee = numericOr(apiMetrics.oee, null);
-        const clampedOee = apiOee === null ? null : Math.min(Math.max(apiOee, 0), 100);
-
-        let productionTime = 0;
-        if (Number(apiDetails.planned_time_mins) > 0) {
-            productionTime = Number((Number(apiDetails.planned_time_mins) / 60).toFixed(1));
-        } else if (shiftData?.start_time && shiftData?.end_time) {
-            const [sh, sm] = shiftData.start_time.slice(0, 5).split(':').map(Number);
-            const [eh, em] = shiftData.end_time.slice(0, 5).split(':').map(Number);
-            let mins = (eh * 60 + em) - (sh * 60 + sm);
-            if (mins <= 0) mins += 24 * 60;
-            productionTime = (mins / 60).toFixed(1);
-        } else if (report.user_defined_shift_start_time && report.user_defined_shift_end_time) {
+        let productionTime = Number(report.total_production_time_hours) || 0;
+        if (!productionTime && report.user_defined_shift_start_time && report.user_defined_shift_end_time) {
             const [sh, sm] = report.user_defined_shift_start_time.split(':').map(Number);
             const [eh, em] = report.user_defined_shift_end_time.split(':').map(Number);
             let mins = (eh * 60 + em) - (sh * 60 + sm);
             if (mins <= 0) mins += 24 * 60;
             productionTime = (mins / 60).toFixed(1);
-        } else if (report.total_production_time_hours && parseFloat(report.total_production_time_hours) > 0) {
-            productionTime = parseFloat(report.total_production_time_hours);
-        } else if (report.production_start_time && report.production_end_time) {
+        } else if (!productionTime && report.start_time && report.end_time) {
+            const [sh, sm] = report.start_time.split(':').map(Number);
+            const [eh, em] = report.end_time.split(':').map(Number);
+            let mins = (eh * 60 + em) - (sh * 60 + sm);
+            if (mins <= 0) mins += 24 * 60;
+            productionTime = Number((mins / 60).toFixed(1));
+        } else if (!productionTime && report.production_start_time && report.production_end_time) {
             const diffMs = new Date(report.production_end_time) - new Date(report.production_start_time);
             if (diffMs > 0) productionTime = (diffMs / (1000 * 60 * 60)).toFixed(1);
         }
-
-        const efficiencyData = clampedOee === null ? [] : [
-            { name: 'OEE', value: Number(clampedOee.toFixed(1)) },
-            { name: 'Loss', value: Number((100 - clampedOee).toFixed(1)) }
-        ];
 
         const localDowntimeTotal = Object.values(categoryMap).reduce((sum, value) => sum + value, 0);
         const localDowntimeData = Object.keys(categoryMap).map((key, index) => ({
@@ -818,38 +704,13 @@ const ReportDetails = () => {
             color: DOWNTIME_COLORS[index % DOWNTIME_COLORS.length],
         })).sort((a, b) => b.minutes - a.minutes);
 
-        const summaryDowntimeCategories = report.productionSummary?.downtime_breakdown?.categories;
-        const normalizedSummaryDowntime = aggregateDowntimeCategories(summaryDowntimeCategories || []);
-        const hasSummaryDowntime = Array.isArray(summaryDowntimeCategories) && summaryDowntimeCategories.length > 0;
-        if (hasSummaryDowntime) {
-            plannedDowntime = normalizedSummaryDowntime.totals.planned;
-            mechanicalDowntime = normalizedSummaryDowntime.totals.mechanical;
-            totalDowntime = Object.values(normalizedSummaryDowntime.totals).reduce((sum, minutes) => sum + minutes, 0);
-        }
-        const summaryDowntimeTotal = Object.values(normalizedSummaryDowntime.totals)
-            .reduce((sum, minutes) => sum + minutes, 0);
-        const classificationColors = {
-            [DOWNTIME_CLASSIFICATION.PLANNED]: '#3b82f6',
-            [DOWNTIME_CLASSIFICATION.MECHANICAL]: '#ef4444',
-            [DOWNTIME_CLASSIFICATION.UNPLANNED]: '#f59e0b',
-            [DOWNTIME_CLASSIFICATION.OTHER]: '#6b7280',
-        };
-        const downtimeData = Array.isArray(summaryDowntimeCategories) && summaryDowntimeCategories.length > 0
-            ? normalizedSummaryDowntime.entries
-                .map((entry) => ({
-                    name: entry.label,
-                    minutes: entry.duration,
-                    percentage: summaryDowntimeTotal > 0 ? (entry.duration / summaryDowntimeTotal) * 100 : 0,
-                    color: classificationColors[entry.classification],
-                }))
-                .filter(category => category.minutes > 0)
-                .sort((a, b) => b.minutes - a.minutes)
-            : localDowntimeData;
+        const downtimeData = localDowntimeData;
 
         // --- OEE CALCULATIONS (per /dashboard/formulas) ---
         
         const prodHours = report.total_production_time_hours ? parseFloat(report.total_production_time_hours) : (productionTime || 1);
-        const downtimeHours = totalDowntime / 60;
+        const effectiveDowntime = totalDowntime || loggedDowntime;
+        const downtimeHours = effectiveDowntime / 60;
         const plannedDowntimeHours = plannedDowntime / 60;
         const mechanicalDowntimeHours = mechanicalDowntime / 60;
         
@@ -862,7 +723,7 @@ const ReportDetails = () => {
         // Quality = (Total Production - Filler Reject) / Total Production × 100
         let fillerReading = 0;
         let fillerRejects = 0;
-        const readings = report.production_readings || report.meter_readings;
+        const readings = productionReadings;
         if (readings) {
             const readingsArr = Array.isArray(readings) ? readings : [readings];
             readingsArr.forEach(m => {
@@ -870,24 +731,14 @@ const ReportDetails = () => {
                 fillerRejects += (parseFloat(m.filler_rejects) || 0);
             });
         }
-        const qualVal = fillerReading > 0 ? ((fillerReading - fillerRejects) / fillerReading) * 100 : 0;
+        const qualityProduction = Number(report.total_bottles_produced) || fillerReading;
+        const qualVal = qualityProduction > 0
+            ? ((qualityProduction - fillerRejects) / qualityProduction) * 100
+            : 0;
 
-        // Performance = (Elapsed Time - Total Downtime) / (Elapsed Time - Planned Downtime) × 100
-        // Use elapsed shift time (capped at full shift duration) instead of full planned time
-        let elapsedHours = prodHours;
-        if (shiftData?.start_time) {
-            const shiftDate = report.production_date || report.log_date || new Date().toISOString().split('T')[0];
-            const shiftStart = new Date(`${shiftDate}T${shiftData.start_time.slice(0, 5)}:00`);
-            // Handle night shifts crossing midnight
-            if (shiftData.end_time && shiftData.start_time.slice(0, 5) > shiftData.end_time.slice(0, 5)) {
-                // If current time is before the start, shift started previous day
-            }
-            const now = new Date();
-            const elapsedMins = Math.min(prodHours * 60, Math.max(0, Math.round((now - shiftStart) / 60000)));
-            elapsedHours = elapsedMins / 60;
-        }
-        const perfNumerator = elapsedHours - downtimeHours;
-        const perfDenominator = elapsedHours - plannedDowntimeHours;
+        // Performance = (Production Time - Total Downtime) / (Production Time - Planned Downtime) × 100
+        const perfNumerator = prodHours - downtimeHours;
+        const perfDenominator = prodHours - plannedDowntimeHours;
         const perfVal = perfDenominator > 0 ? (perfNumerator / perfDenominator) * 100 : 0;
 
         // Prefer API-provided metrics when available, fall back to manual calculation
@@ -896,24 +747,27 @@ const ReportDetails = () => {
             quality: numericOr(apiMetrics.quality, Math.min(Math.max(qualVal || 0, 0), 100)).toFixed(1),
             performance: numericOr(apiMetrics.performance, Math.min(Math.max(perfVal || 0, 0), 100)).toFixed(1)
         };
-
-        const fallbackOutput = totalOutput || report.total_bottles_produced || 0;
-        const fallbackDowntime = totalDowntime || report.total_downtime_minutes || 0;
+        const calculatedOee = (
+            Number(oeeMetrics.availability) *
+            Number(oeeMetrics.performance) *
+            Number(oeeMetrics.quality)
+        ) / 10000;
+        const oee = Math.min(Math.max(numericOr(apiMetrics.oee, calculatedOee), 0), 100);
+        const efficiencyData = [
+            { name: 'OEE', value: Number(oee.toFixed(1)) },
+            { name: 'Loss', value: Number((100 - oee).toFixed(1)) }
+        ];
 
         return {
             efficiencyData,
             downtimeData,
-            totalOutput: numericOr(apiDetails.total_output_pcs, fallbackOutput),
-            totalDowntime: numericOr(apiDetails.total_downtime_mins, fallbackDowntime),
+            totalOutput,
+            totalDowntime: effectiveDowntime,
             efficiency: Number(numericOr(apiMetrics.efficiency, effVal).toFixed(1)),
-            productionTime: productionTime || report.total_production_time_hours || 0,
+            productionTime,
             oeeMetrics,
-            plannedDowntime: hasSummaryDowntime || hasIncidentDowntime
-                ? plannedDowntime
-                : numericOr(apiDetails.planned_downtime_mins, plannedDowntime),
-            mechanicalDowntime: hasSummaryDowntime || hasIncidentDowntime
-                ? mechanicalDowntime
-                : numericOr(apiDetails.mechanical_downtime_mins, mechanicalDowntime)
+            plannedDowntime,
+            mechanicalDowntime
         };
     };
 
@@ -929,19 +783,16 @@ const ReportDetails = () => {
         efficiencyData: [], downtimeData: [], totalOutput: 0, totalDowntime: 0, efficiency: 0, productionTime: 0, oeeMetrics: { availability: 0, quality: 0, performance: 0 }, plannedDowntime: 0, mechanicalDowntime: 0
     };
     const { efficiencyData, downtimeData, totalOutput, totalDowntime, efficiency, productionTime, oeeMetrics, plannedDowntime, mechanicalDowntime } = stats;
-    const chartDowntimeTotal = downtimeData.reduce((sum, category) => sum + category.minutes, 0);
 
     if (loading) return <div className="p-4 text-center text-muted">Loading details...</div>;
     if (!report) return <div className="p-4 text-center text-danger">Report not found</div>;
 
-    const catalogProduct = products.find(p => p.name === report.product_name || String(p.id) === String(report.product));
-    const bottleSize = report.bottle_size || (catalogProduct?.size ? `${catalogProduct.size}ml` : null);
+    const bottleSize = report.bottle_size;
     const totalBottlesProduced = Number(report.total_bottles_produced) || 0;
     const singlePacks = report.single_packs
         ?? report.total_single_packs
         ?? report.metrics?.details?.single_packs
-        ?? report.metrics?.details?.total_single_packs
-        ?? report.productionSummary?.summary?.single_packs;
+        ?? report.metrics?.details?.total_single_packs;
     const singlePacksDisplay = singlePacks === null || singlePacks === undefined || singlePacks === ''
         ? null
         : (Number.isFinite(Number(singlePacks)) ? Number(singlePacks).toLocaleString() : singlePacks);
@@ -949,7 +800,7 @@ const ReportDetails = () => {
     const tabs = [
         { id: 'batches', label: 'Syrup Batches', count: report.batches?.length || 0 },
         { id: 'materials', label: 'Materials', count: report.materials?.length || 0 }, // Materials is an array of groups, count might be misleading if just groups, but OK for now.
-        { id: 'material-consumptions', label: 'Material Consumption', count: materialConsumptions.length },
+        { id: 'material-consumptions', label: 'Material Consumption', count: report.consumptions?.length || 0 },
         { id: 'stoppages', label: 'Stoppages', count: report.stoppage_logs?.length || 0 },
         { id: 'workers', label: 'Workers', count: report.workers?.length || 0 },
     ];
@@ -975,7 +826,7 @@ const ReportDetails = () => {
                     </button>
                     <div>
                         <div className="d-flex align-items-center gap-3">
-                            <h4 className="mb-0">{report.report_code}</h4>
+                            <h4 className="mb-0">{report.report_code || report.actual_production_code}</h4>
                             <span className={`badge ${getStatusColor(report.status)}`}>
                                 {report.status}
                             </span>
@@ -1022,12 +873,13 @@ const ReportDetails = () => {
                             </h6>
                         </div>
                         <div className="card-body">
-                            <DetailRow label="Total Output" value={totalOutput.toLocaleString()} />
                             <DetailRow label="Total Bottles" value={totalBottlesProduced.toLocaleString()} />
                             <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
                             <DetailRow label="Single Pack" value={singlePacksDisplay} />
                             <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
-                            <DetailRow label="Line Speed" value={report.line_speed} />
+                            <DetailRow label="Packs Not Met" value={report.packs_not_met?.toLocaleString()} />
+                            <DetailRow label="Counter Range" value={`${report.counter_start ?? 0} – ${report.counter_end ?? 0}`} />
+                            <DetailRow label="Line Speed" value={report.line_speed?.toLocaleString()} />
                         </div>
                     </div>
                 </div>
@@ -1332,7 +1184,7 @@ const ReportDetails = () => {
                                         <AlertTriangle className="h-4 w-4 text-warning" /> Downtime Breakdown
                                     </h6>
                                     <span className="badge bg-soft-warning text-warning rounded-pill px-3 py-2">
-                                        {Number(chartDowntimeTotal).toFixed(0)} min total
+                                        {Number(totalDowntime).toFixed(0)} min total
                                     </span>
                                 </div>
                                 <div className="card-body p-4">
@@ -1409,9 +1261,9 @@ const ReportDetails = () => {
 
             {/* Meter Readings Section */}
             <div className="card mb-4">
-                <div className="card-header bg-soft-indigo">
-                    <h6 className="mb-0 text-indigo">Meter Readings</h6>
-                    <small className="text-muted">Production, Syrup, and CO2 consumption data</small>
+                <div className="card-header bg-primary-subtle border-bottom">
+                    <h6 className="mb-0 text-primary-emphasis">Meter Readings</h6>
+                    <small className="text-body-secondary">Production, Syrup, and CO2 consumption data</small>
                 </div>
                 <div className="card-body">
                 <MeterReadingsView
@@ -1528,16 +1380,19 @@ const ReportDetails = () => {
                         {activeTab === 'material-consumptions' && (
                             <div className="tab-pane fade show active">
                                 <MaterialConsumptionsView
-                                    records={materialConsumptions}
-                                    loading={materialConsumptionsLoading}
-                                    error={materialConsumptionsError}
+                                    records={report.consumptions || []}
                                 />
                             </div>
                         )}
 
                         {activeTab === 'stoppages' && (
                             <div className="tab-pane fade show active">
-                                <StoppageLogsView logs={report.stoppage_logs} />
+                                <StoppageLogsView
+                                    logs={report.stoppage_logs}
+                                    totalDowntime={totalDowntime}
+                                    plannedDowntime={plannedDowntime}
+                                    mechanicalDowntime={mechanicalDowntime}
+                                />
                             </div>
                         )}
 

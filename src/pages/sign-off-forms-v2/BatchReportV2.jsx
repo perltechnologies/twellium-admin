@@ -12,6 +12,15 @@ const getStoredFilters = () => {
     } catch { return null; }
 };
 
+const unwrapReportData = (response) => {
+    let data = response?.data ?? {};
+    while (data && typeof data === 'object' && 'data' in data
+        && (('status_code' in data) || ('message' in data))) {
+        data = data.data;
+    }
+    return data || {};
+};
+
 const BatchReportV2 = () => {
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
@@ -35,6 +44,7 @@ const BatchReportV2 = () => {
         return d.toISOString().split('T')[0];
     });
     const [reportData, setReportData] = useState({});
+    const [reportProducts, setReportProducts] = useState([]);
 
     // Persist filters to localStorage whenever they change
     useEffect(() => {
@@ -93,19 +103,37 @@ const BatchReportV2 = () => {
             setLoading(true);
             setError(null);
             try {
-                const params = { start_date: startDate, end_date: endDate };
-                if (selectedPets.length > 0) params.pet = parseInt(selectedPets[0], 10);
-                if (selectedShift) params.shift = parseInt(selectedShift, 10);
-                if (selectedProduct) params.product = selectedProduct;
-                const res = await productionApi.getSignOffBatchReport(params);
-                // Unwrap the envelope defensively — the endpoint may double-wrap
-                // as { status_code, message, data: { status_code, message, data: {...} } }.
-                let data = res?.data ?? {};
-                while (data && typeof data === 'object' && 'data' in data
-                    && (('status_code' in data) || ('message' in data))) {
-                    data = data.data;
+                const baseParams = { start_date: startDate, end_date: endDate };
+                // Selecting every line is equivalent to no PET filter. Previously
+                // it sent only the first selected PET and silently hid other lines.
+                if (selectedPets.length > 0 && selectedPets.length < pets.length) {
+                    baseParams.pet = parseInt(selectedPets[0], 10);
                 }
-                setReportData(data || {});
+                if (selectedShift) baseParams.shift = parseInt(selectedShift, 10);
+
+                const reportParams = selectedProduct
+                    ? { ...baseParams, product: selectedProduct }
+                    : baseParams;
+                const [reportResponse, productsResponse] = await Promise.all([
+                    productionApi.getSignOffBatchReport(reportParams),
+                    selectedProduct
+                        ? productionApi.getSignOffBatchReport(baseParams)
+                        : Promise.resolve(null),
+                ]);
+
+                const data = unwrapReportData(reportResponse);
+                const productsData = productsResponse ? unwrapReportData(productsResponse) : data;
+                const productNames = [
+                    ...(Array.isArray(productsData?.summary_by_product)
+                        ? productsData.summary_by_product.map(row => row.product_name)
+                        : []),
+                    ...(Array.isArray(productsData?.batches)
+                        ? productsData.batches.map(row => row.product_name)
+                        : []),
+                ];
+
+                setReportProducts([...new Set(productNames.filter(Boolean))].sort());
+                setReportData(data);
             } catch (err) {
                 console.error('Failed to fetch batch report:', err);
                 setError(err?.message || 'Failed to fetch data');
@@ -114,7 +142,7 @@ const BatchReportV2 = () => {
             }
         };
         fetchData();
-    }, [startDate, endDate, selectedShift, selectedProduct, selectedPets]);
+    }, [startDate, endDate, selectedShift, selectedProduct, selectedPets, pets.length]);
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -253,9 +281,6 @@ const BatchReportV2 = () => {
 
     // Total liters across all batch rows (sum of every shift entry).
     const totalLiters = rawBatches.reduce((sum, b) => sum + (parseFloat(b.syrup_liters) || 0), 0);
-
-    // Product list for the filter dropdown, derived from the returned summary
-    const reportProducts = [...new Set(summaryRows.map(r => r.product_name).filter(Boolean))].sort();
 
     // Whether the current start/end selection forms an invalid range.
     const dateRangeInvalid = Boolean(startDate && endDate && startDate > endDate);

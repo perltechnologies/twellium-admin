@@ -75,7 +75,7 @@ const Formulas = () => {
             description: "Percentage of good units out of total production.",
             formula: "\\frac{\\text{Total Production} - \\text{Filler Reject}}{\\text{Total Production}} \\times 100",
             variables: [
-                {name: "Total Production", desc: "Sum of meter_readings[].filler_reading across all meter readings"},
+                {name: "Total Production", desc: "Report total_bottles_produced (with filler reading used only as a legacy fallback)"},
                 {name: "Filler Reject", desc: "Sum of meter_readings[].filler_rejects across all meter readings"}
             ],
             icon: Award,
