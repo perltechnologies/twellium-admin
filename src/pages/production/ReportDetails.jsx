@@ -865,21 +865,20 @@ const ReportDetails = () => {
 
                 {/* Production Metrics */}
                 <div className="col-lg-4">
-                    <div className="card h-100">
-                        <div className="card-header bg-soft-success">
-                            <h6 className="mb-0 d-flex align-items-center gap-2 text-success">
+                    <div className="card h-100 shadow-sm border-0">
+                        <div className="card-header bg-soft-success border-0">
+                            <h6 className="mb-0 d-flex align-items-center gap-2 text-success fw-semibold">
                                 <Activity className="h-4 w-4" />
                                 Metrics & Counters
                             </h6>
                         </div>
-                        <div className="card-body">
-                            <DetailRow label="Total Bottles" value={totalBottlesProduced.toLocaleString()} />
-                            <DetailRow label="Total Packs" value={report.total_packs?.toLocaleString()} />
-                            <DetailRow label="Single Pack" value={singlePacksDisplay} />
-                            <DetailRow label="Total Pallets" value={report.total_pallets?.toLocaleString()} />
-                            <DetailRow label="Packs Not Met" value={report.packs_not_met?.toLocaleString()} />
-                            <DetailRow label="Counter Range" value={`${report.counter_start ?? 0} – ${report.counter_end ?? 0}`} />
-                            <DetailRow label="Line Speed" value={report.line_speed?.toLocaleString()} />
+                        <div className="card-body px-3 py-2">
+                            <DetailRow label="TOTAL OUTPUT" value={totalOutput.toLocaleString()} />
+                            <DetailRow label="TOTAL BOTTLES" value={totalBottlesProduced.toLocaleString()} />
+                            <DetailRow label="TOTAL PACKS" value={Number(report.total_packs ?? 0).toLocaleString()} />
+                            <DetailRow label="SINGLE PACK" value={singlePacksDisplay ?? '-'} />
+                            <DetailRow label="TOTAL PALLETS" value={Number(report.total_pallets ?? 0).toLocaleString()} />
+                            <DetailRow label="LINE SPEED" value={Number(report.line_speed ?? 0).toLocaleString()} />
                         </div>
                     </div>
                 </div>
