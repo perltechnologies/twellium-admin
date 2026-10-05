@@ -73,6 +73,26 @@ th{
   font-weight: 500;
 }
 
+.product-sign-off-report .form-table .input-cell,
+.product-sign-off-report .form-table .input-cell input {
+  text-align: center !important;
+}
+
+.product-sign-off-report .form-table input.manual-entry-input {
+  border-bottom: 1.5px dotted #333 !important;
+  appearance: textfield;
+}
+
+.product-sign-off-report .form-table input.manual-entry-input:not(:placeholder-shown) {
+  border-bottom-color: transparent !important;
+}
+
+.product-sign-off-report .form-table input.manual-entry-input::-webkit-inner-spin-button,
+.product-sign-off-report .form-table input.manual-entry-input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
 .product-sign-off-report .section-table .section-header-row th {
   height: 30px;
   padding: 6px 8px;

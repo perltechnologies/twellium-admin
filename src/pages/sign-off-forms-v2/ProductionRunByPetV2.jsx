@@ -76,6 +76,18 @@ const ReadOnlyField = ({ value, align = 'right' }) => (
     }} value={value ?? ''} readOnly />
 );
 
+const ManualEntryField = ({ label }) => (
+    <input
+        type="number"
+        min="0"
+        step="1"
+        className="manual-entry-input"
+        aria-label={`${label} manual entry`}
+        placeholder=" "
+        defaultValue=""
+    />
+);
+
 const PersistedField = ({ value, field, reportId, type = 'number', unit, onSaved }) => {
     const normalized = value ?? '';
     const [inputValue, setInputValue] = useState(normalized);
@@ -277,8 +289,6 @@ const ProductionRunByPetV2 = () => {
             || shifts.find((shift) => String(shift.id) === String(selectedShift))?.shift_name
             || 'All Shifts')
         : 'All Shifts';
-    const totalUnits = metric(['total_units']);
-    const totalUnitsUnit = metric(['total_units_unit'], 'bottles');
     const productionStartTime = firstValue(run, ['production_start_time']);
     const productionEndTime = firstValue(run, ['production_end_time']);
     const totalBatches = new Set(
@@ -395,14 +405,14 @@ const ProductionRunByPetV2 = () => {
             </div>
 
             <table className="form-table report-summary-table"><tbody>
-                <tr><td className="label-cell"><strong>Date</strong></td><td className="input-cell"><ReadOnlyField align="left" value={`${formatDate(startDate)} TO ${formatDate(endDate)}`} /></td><td className="label-cell"><strong>Line Speed</strong></td><td className="input-cell numeric"><ReadOnlyField value={formatValue(metric(['line_speed_bottles_per_hour', 'line_speed']))} /></td><td className="label-cell"><strong>Total Units</strong></td><td className="input-cell numeric"><ReadOnlyField value={formatValue(totalUnits, totalUnits !== '' ? totalUnitsUnit : '')} /></td></tr>
+                <tr><td className="label-cell"><strong>Date</strong></td><td className="input-cell"><ReadOnlyField align="left" value={`${formatDate(startDate)} TO ${formatDate(endDate)}`} /></td><td className="label-cell"><strong>Line Speed</strong></td><td className="input-cell numeric"><ReadOnlyField value={formatValue(metric(['line_speed_bottles_per_hour', 'line_speed']))} /></td><td className="label-cell"><strong>Total Units</strong></td><td className="input-cell"><ManualEntryField label="Total Units" /></td></tr>
                 <tr><td className="label-cell"><strong>Prod. Date(s)</strong></td><td className="input-cell" colSpan={5}><ReadOnlyField align="left" value={productionDates.map(formatDate).join(', ')} /></td></tr>
                 <tr><td className="label-cell"><strong>Shift</strong></td><td className="input-cell"><ReadOnlyField align="left" value={selectedShiftName} /></td><td className="label-cell"><strong>Total Batches</strong></td><td className="input-cell numeric" colSpan={3}><ReadOnlyField value={totalBatches} /></td></tr>
             </tbody></table>
 
             <table className="form-table section-table product-details-table"><thead><tr className="section-header-row"><th colSpan={5}>Product Details</th></tr><tr className="sub-header-row"><th>Product</th><th>Bottle Size</th><th>Line Speed (BPH)</th><th>Bottles/Pack</th><th>Packs/Pallet</th></tr></thead><tbody>
                 {(selectedProductData ? [selectedProductData] : products).map((product) => <tr key={productIdentity(product)}>
-                    <td className="label-cell">{productName(product)}</td>
+                    <td className="input-cell text-center">{productName(product)}</td>
                     <td className="input-cell numeric">{formatValue(firstValue(product, ['bottle_size', 'bottle_size_ml']))}</td>
                     <td className="input-cell numeric">{formatValue(firstValue(product, ['line_speed_bottles_per_hour', 'line_speed']))}</td>
                     <td className="input-cell numeric">{formatValue(firstValue(product, ['bottles_per_pack']))}</td>
@@ -420,7 +430,7 @@ const ProductionRunByPetV2 = () => {
                 <td className="label-cell"><strong>Total Pack</strong></td><td className="input-cell numeric"><ReadOnlyField value={formatValue(metric(['total_packs']))} /></td>
             </tr></tbody></table>
 
-            <table className="form-table section-table batch-details-table"><thead><tr className="section-header-row"><th colSpan={7}>Batch Details</th></tr><tr className="sub-header-row"><th>Date</th><th>Batch No.</th><th>Product</th><th>Production Details</th><th>Batch Liters</th><th>Tank / Line</th><th>Beverage (L)</th></tr></thead><tbody>
+            <table className="form-table section-table batch-details-table"><thead><tr className="section-header-row"><th colSpan={7}>Batch Details</th></tr><tr className="sub-header-row"><th>Date</th><th>Batch No.</th><th>Product</th><th>Production Details</th><th>Syrup Liters</th><th>Tank / Line</th><th>Beverage (L)</th></tr></thead><tbody>
                 {batchDetailRows.length ? batchDetailRows.map((detail) => <tr key={`${detail.date}-${detail.batchNumber}`}>
                     <td className="input-cell text-center">{formatDate(detail.date)}</td>
                     <td className="input-cell text-center">{detail.batchNumber}</td>
