@@ -14,6 +14,43 @@ const formatDuration = (mins) => {
     return `${h}h ${m}m`;
 };
 
+const normalizeIncidentDescription = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const descriptionSimilarity = (leftValue, rightValue) => {
+    const left = normalizeIncidentDescription(leftValue);
+    const right = normalizeIncidentDescription(rightValue);
+    if (!left || !right) return 0;
+    if (left === right) return 1;
+
+    const leftTokens = new Set(left.split(' '));
+    const rightTokens = new Set(right.split(' '));
+    const sharedTokens = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+    const tokenSimilarity = sharedTokens / (leftTokens.size + rightTokens.size - sharedTokens);
+
+    let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+        const current = [leftIndex];
+        for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+            const substitutionCost = left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1;
+            current[rightIndex] = Math.min(
+                current[rightIndex - 1] + 1,
+                previous[rightIndex] + 1,
+                previous[rightIndex - 1] + substitutionCost
+            );
+        }
+        previous = current;
+    }
+
+    const characterSimilarity = 1 - previous[right.length] / Math.max(left.length, right.length);
+    return Math.max(tokenSimilarity, characterSimilarity);
+};
+
+const SIMILAR_DESCRIPTION_THRESHOLD = 0.76;
+
 const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
     const navigate = useNavigate();
     const filterLogDate = dateFilter?.log_date || '';
@@ -333,6 +370,38 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
         }
     }), [chartData, showIncidentDetails]);
 
+    const groupedIncidentDetails = useMemo(() => {
+        const groups = [];
+
+        incidentDetails.forEach((incident) => {
+            let matchingGroup = null;
+            let bestScore = 0;
+
+            groups.forEach((group) => {
+                const score = Math.max(...group.variants.map((variant) => descriptionSimilarity(incident.description, variant)));
+                if (score >= SIMILAR_DESCRIPTION_THRESHOLD && score > bestScore) {
+                    matchingGroup = group;
+                    bestScore = score;
+                }
+            });
+
+            if (matchingGroup) {
+                matchingGroup.count += 1;
+                matchingGroup.totalDuration += incident.duration;
+                if (!matchingGroup.variants.includes(incident.description)) matchingGroup.variants.push(incident.description);
+            } else {
+                groups.push({
+                    label: incident.description,
+                    count: 1,
+                    totalDuration: incident.duration,
+                    variants: [incident.description],
+                });
+            }
+        });
+
+        return groups.sort((left, right) => right.totalDuration - left.totalDuration);
+    }, [incidentDetails]);
+
     const incidentDetailOptions = useMemo(() => ({
         chart: { type: 'bar', toolbar: { show: false } },
         plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '70%' } },
@@ -342,19 +411,26 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
             style: { fontSize: '10px' }
         },
         xaxis: {
-            categories: incidentDetails.map((incident) => incident.description),
+            categories: groupedIncidentDetails.map((group) => `${group.label} (${group.count})`),
             title: { text: 'Duration (minutes)' }
         },
         yaxis: { labels: { maxWidth: 280, style: { fontSize: '11px' } } },
-        tooltip: { y: { formatter: (value) => formatDuration(value) } },
+        tooltip: {
+            y: {
+                formatter: (value, { dataPointIndex }) => {
+                    const group = groupedIncidentDetails[dataPointIndex];
+                    return `${formatDuration(value)} · ${group?.count || 0} incident${group?.count === 1 ? '' : 's'}`;
+                }
+            }
+        },
         colors: ['#ef4444'],
         grid: { xaxis: { lines: { show: true } } }
-    }), [incidentDetails]);
+    }), [groupedIncidentDetails]);
 
     const incidentDetailSeries = useMemo(() => [{
         name: 'Duration',
-        data: incidentDetails.map((incident) => incident.duration)
-    }], [incidentDetails]);
+        data: groupedIncidentDetails.map((group) => group.totalDuration)
+    }], [groupedIncidentDetails]);
 
     const series = useMemo(() => [
         {
@@ -592,14 +668,20 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                                 ) : (
                                     <>
                                         <div className="d-flex justify-content-between align-items-center mb-3">
-                                            <span className="badge bg-primary-transparent text-primary">{incidentDetails.length} incidents</span>
+                                            <div>
+                                                <span className="badge bg-primary-transparent text-primary me-2">{incidentDetails.length} incidents</span>
+                                                <span className="badge bg-secondary-transparent text-secondary">{groupedIncidentDetails.length} similar-description groups</span>
+                                            </div>
                                             <strong>Total: {formatDuration(incidentDetails.reduce((sum, incident) => sum + incident.duration, 0))}</strong>
                                         </div>
+                                        <small className="text-muted d-block mb-2">
+                                            Similar descriptions are combined by spelling, casing, punctuation, and wording similarity. The number in brackets is the incident count.
+                                        </small>
                                         <ReactApexChart
                                             options={incidentDetailOptions}
                                             series={incidentDetailSeries}
                                             type="bar"
-                                            height={Math.max(360, incidentDetails.length * 42)}
+                                            height={Math.max(360, groupedIncidentDetails.length * 48)}
                                         />
                                         <div className="table-responsive mt-4">
                                             <table className="table table-sm table-striped align-middle mb-0">
