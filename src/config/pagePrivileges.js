@@ -76,6 +76,14 @@ export const PAGE_PRIVILEGES = [
 
 export const PAGE_PRIVILEGE_FIELD = 'page_privileges';
 const PAGE_PRIVILEGE_FIELD_NAMES = [PAGE_PRIVILEGE_FIELD, 'allowed_pages', 'page_permissions'];
+const BASE_ROLE_PRIVILEGES = Object.freeze({
+    DRIVER: new Set([
+        'post.dashboard',
+        'post.dispatch',
+        'post.vehicle-dispatch',
+        'post.lookup',
+    ]),
+});
 
 export const isAdministrator = (user) => Boolean(
     user && (user.role === 'ADMIN' || user.is_superuser === true)
@@ -84,7 +92,20 @@ export const isAdministrator = (user) => Boolean(
 const extractToken = (value) => {
     if (typeof value === 'string') return value;
     if (!value || typeof value !== 'object') return null;
-    return value.key || value.code || value.slug || value.permission || null;
+    return value.key || value.codename || value.code || value.slug || value.permission || null;
+};
+
+const normalizePermissionCollection = (value) => {
+    if (Array.isArray(value)) return value.map(extractToken).filter(Boolean);
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) return parsed.map(extractToken).filter(Boolean);
+        } catch {
+            return value.split(',').map((token) => token.trim()).filter(Boolean);
+        }
+    }
+    return [];
 };
 
 export const getPagePrivileges = (user) => {
@@ -98,12 +119,19 @@ export const getPagePrivileges = (user) => {
         return user.permissions.pages.map(extractToken).filter(Boolean);
     }
 
+    const effective = normalizePermissionCollection(user.effective_permissions);
+    if (effective.length) return effective;
+
+    const customRolePermissions = normalizePermissionCollection(user.custom_role_detail?.permissions);
+    if (customRolePermissions.length) return customRolePermissions;
+
     return [];
 };
 
 export const hasExplicitPagePrivileges = (user) => Boolean(user) && (
-    PAGE_PRIVILEGE_FIELD_NAMES.some((field) => Array.isArray(user[field])) ||
-    Array.isArray(user.permissions?.pages)
+    PAGE_PRIVILEGE_FIELD_NAMES.some((field) => Array.isArray(user[field]))
+    || Array.isArray(user.permissions?.pages)
+    || getPagePrivileges(user).some((key) => PAGE_PRIVILEGES.some((privilege) => privilege.key === key))
 );
 
 export const getPrivilegeForPath = (pathname) => PAGE_PRIVILEGES.find((privilege) =>
@@ -120,6 +148,9 @@ export const canAccessPrivilege = (user, privilegeKey) => {
     if (hasExplicitPagePrivileges(user)) {
         return getPagePrivileges(user).includes(privilegeKey);
     }
+
+    const baseRolePrivileges = BASE_ROLE_PRIVILEGES[String(user.role || '').toUpperCase()];
+    if (baseRolePrivileges) return baseRolePrivileges.has(privilegeKey);
 
     // Compatibility for accounts created before page privileges existed.
     // The backend's current coarse production flag remains authoritative until

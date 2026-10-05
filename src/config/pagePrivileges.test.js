@@ -37,6 +37,17 @@ describe('page privilege authorization', () => {
         expect(canAccessPath(denied, '/dashboard/production')).toBe(false);
     });
 
+    test('drivers only see their assigned logistics workflow by default', () => {
+        const driver = { role: 'DRIVER' };
+        expect(canAccessPath(driver, '/post-production')).toBe(true);
+        expect(canAccessPath(driver, '/post-production/logistics/dispatch')).toBe(true);
+        expect(canAccessPath(driver, '/post-production/lookup')).toBe(true);
+        expect(canAccessPath(driver, '/dashboard')).toBe(false);
+        expect(canAccessPath(driver, '/post-production/warehouse')).toBe(false);
+        expect(canAccessPath(driver, '/dashboard/users')).toBe(false);
+        expect(canAccessMode(driver, 'pre-production')).toBe(false);
+    });
+
     test('supported API aliases are normalized', () => {
         const user = { role: 'VIEWER', allowed_pages: [{ key: 'pre.analytics.co2' }] };
         expect(getPagePrivileges(user)).toEqual(['pre.analytics.co2']);

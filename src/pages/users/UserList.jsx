@@ -1,7 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../../api/users';
-import { getPagePrivileges, hasExplicitPagePrivileges } from '../../config/pagePrivileges';
 
 const UserList = ({ embedded = false, initialRole = '' }) => {
     const navigate = useNavigate();
@@ -18,7 +17,7 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
     const [itemToDelete, setItemToDelete] = React.useState(null);
     const [deleting, setDeleting] = React.useState(false);
 
-    const fetchUsers = async () => {
+    const fetchUsers = React.useCallback(async () => {
         setLoading(true);
         try {
             const requiresClientFiltering = Boolean(filters.role || filters.search.trim());
@@ -65,14 +64,14 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [filters]);
 
     React.useEffect(() => {
         const timeoutId = setTimeout(() => {
             fetchUsers();
         }, 500);
         return () => clearTimeout(timeoutId);
-    }, [filters]);
+    }, [fetchUsers]);
 
     const handlePageChange = (newPage) => {
         setFilters(prev => ({ ...prev, page: newPage }));
@@ -202,8 +201,9 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
                                         <th>Full Name</th>
                                         <th>Email</th>
                                         <th>Role</th>
+                                        <th>Custom Role</th>
                                         <th>Company</th>
-                                        <th>Page Access</th>
+                                        <th>Permissions</th>
                                         <th className="text-end">Actions</th>
                                     </tr>
                                 </thead>
@@ -215,19 +215,20 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
                                             <td>{row.email}</td>
                                             <td>
                                                 <span className={`badge bg-${getRoleBadge(row.role)}`}>
-                                                    {row.role}
+                                                    {row.role_display || row.role}
                                                 </span>
                                             </td>
+                                            <td>{row.custom_role_detail?.name || '-'}</td>
                                             <td>{row.company_name || '-'}</td>
                                             <td>
                                                 {row.role === 'ADMIN' ? (
-                                                    <span className="badge bg-danger-subtle text-danger">All pages</span>
-                                                ) : hasExplicitPagePrivileges(row) ? (
+                                                    <span className="badge bg-danger-subtle text-danger">Administrator</span>
+                                                ) : row.custom_role_detail ? (
                                                     <span className="badge bg-primary-subtle text-primary">
-                                                        {getPagePrivileges(row).length} assigned
+                                                        {row.custom_role_detail.permission_count ?? row.custom_role_detail.permissions?.length ?? 0} inherited
                                                     </span>
                                                 ) : (
-                                                    <span className="badge bg-warning-subtle text-warning">Legacy rules</span>
+                                                    <span className="badge bg-light text-dark">Base role only</span>
                                                 )}
                                             </td>
                                             <td className="text-end">

@@ -1,9 +1,9 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
 import { toLocalDateStr } from '../../utils/filterParams';
-import { classifyDowntime, DOWNTIME_CLASSIFICATION } from '../../utils/downtime';
+import { classifyDowntime, DOWNTIME_CLASSIFICATION, parseDowntimeMinutes } from '../../utils/downtime';
 
 const formatDuration = (mins) => {
     if (!Number.isFinite(mins) || mins <= 0) return '0m';
@@ -24,9 +24,14 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
     const [startDate, setStartDate] = useState(() => filterStartDate);
     const [endDate, setEndDate] = useState(() => filterEndDate);
     const [selectedPet, setSelectedPet] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('');
     const [downtimeBreakdown, setDowntimeBreakdown] = useState(null);
     const [loading, setLoading] = useState(false);
     const [fetchKey, setFetchKey] = useState(0);
+    const [selectedSubCategory, setSelectedSubCategory] = useState(null);
+    const [incidentDetails, setIncidentDetails] = useState([]);
+    const [incidentDetailsLoading, setIncidentDetailsLoading] = useState(false);
+    const [incidentDetailsError, setIncidentDetailsError] = useState('');
 
     useEffect(() => {
         const hasRange = Boolean(filterStartDate && filterEndDate);
@@ -108,15 +113,25 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
 
     const effectiveSelectedPet = petFilter || selectedPet;
 
-    // Build chart data from downtime_breakdown subcategories (Mechanical only)
+    const activeDateLabel = useMemo(() => {
+        if (useRange && startDate && endDate) return `${startDate} to ${endDate}`;
+        if (singleDate) return singleDate;
+
+        const now = new Date();
+        const ref = new Date(now);
+        if (now.toTimeString().slice(0, 5) < '06:00') ref.setDate(ref.getDate() - 1);
+        return toLocalDateStr(ref);
+    }, [endDate, singleDate, startDate, useRange]);
+
+    // Build chart data from planned and mechanical downtime subcategories.
     const chartData = useMemo(() => {
         if (!downtimeBreakdown?.categories) return [];
         const items = [];
         downtimeBreakdown.categories.forEach(cat => {
             (cat.sub_categories || []).forEach(sub => {
-                // A planned subcategory nested under a mechanical parent is still
-                // planned and must never enter the mechanical Pareto dataset.
-                if (classifyDowntime(sub, cat) !== DOWNTIME_CLASSIFICATION.MECHANICAL) return;
+                const classification = classifyDowntime(sub, cat);
+                if (![DOWNTIME_CLASSIFICATION.PLANNED, DOWNTIME_CLASSIFICATION.MECHANICAL].includes(classification)) return;
+                if (selectedCategory && classification !== selectedCategory) return;
                 let count = sub.incident_count || 0;
                 let duration = sub.total_duration_mins || 0;
                 
@@ -133,16 +148,102 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                 items.push({
                     label: sub.sub_category_name || 'Unknown',
                     category: cat.category_name,
+                    classification,
                     count,
                     totalDuration: duration,
                 });
             });
         });
-        return items.sort((a, b) => b.totalDuration - a.totalDuration).slice(0, 15);
-    }, [downtimeBreakdown, effectiveSelectedPet]);
+        return items.sort((a, b) => b.totalDuration - a.totalDuration);
+    }, [downtimeBreakdown, effectiveSelectedPet, selectedCategory]);
 
-    // Totals (Mechanical only) — derived from chartData so they always match
-    // the mechanical subcategory bars, with or without a PET filter.
+    const chartHeight = Math.max(700, chartData.length * 44);
+
+    const closeIncidentDetails = useCallback(() => {
+        setSelectedSubCategory(null);
+        setIncidentDetails([]);
+        setIncidentDetailsError('');
+    }, []);
+
+    const showIncidentDetails = useCallback(async (item) => {
+        if (!item) return;
+
+        setSelectedSubCategory(item);
+        setIncidentDetails([]);
+        setIncidentDetailsError('');
+        setIncidentDetailsLoading(true);
+
+        try {
+            const params = { page_size: 1000, ordering: '-log_date' };
+            let selectedStart;
+            let selectedEnd;
+
+            if (useRange && startDate && endDate) {
+                selectedStart = startDate;
+                selectedEnd = endDate;
+                params.start_datetime = `${startDate}T00:00:00Z`;
+                params.end_datetime = `${endDate}T23:59:59Z`;
+            } else {
+                let detailDate = singleDate;
+                if (!detailDate) {
+                    const now = new Date();
+                    const ref = new Date(now);
+                    if (now.toTimeString().slice(0, 5) < '06:00') ref.setDate(ref.getDate() - 1);
+                    detailDate = toLocalDateStr(ref);
+                }
+                selectedStart = detailDate;
+                selectedEnd = detailDate;
+                params.log_date = detailDate;
+            }
+
+            const response = await productionApi.getStoppages(params);
+            const payload = response?.data;
+            const stoppages = Array.isArray(payload) ? payload
+                : Array.isArray(payload?.results) ? payload.results
+                : Array.isArray(payload?.data) ? payload.data
+                : Array.isArray(payload?.data?.results) ? payload.data.results
+                : [];
+
+            const details = [];
+            stoppages.forEach((stoppage) => {
+                const rowDate = String(
+                    stoppage.log_date
+                    || stoppage.production_date
+                    || stoppage.datetime_start_time
+                    || stoppage.created_at
+                    || ''
+                ).slice(0, 10);
+                if (rowDate && (rowDate < selectedStart || rowDate > selectedEnd)) return;
+                if (effectiveSelectedPet && stoppage.pet_name !== effectiveSelectedPet) return;
+
+                (stoppage.incidents || []).forEach((incident) => {
+                    const subCategory = incident.sub_downtime_category_name || incident.sub_category_name || '';
+                    const category = incident.downtime_category_name || incident.category_name || '';
+                    if (subCategory !== item.label) return;
+                    if (item.category && category && category !== item.category) return;
+
+                    details.push({
+                        id: incident.id ?? `${stoppage.id}-${details.length}`,
+                        description: (incident.incident_description || '').trim() || `Incident ${details.length + 1}`,
+                        duration: parseDowntimeMinutes(incident.incident_duration),
+                        date: rowDate,
+                        time: incident.incident_time || stoppage.log_time || '',
+                        pet: stoppage.pet_name || 'Unknown',
+                        reportCode: stoppage.report_code || '',
+                    });
+                });
+            });
+
+            setIncidentDetails(details.sort((left, right) => right.duration - left.duration));
+        } catch (error) {
+            console.error('Failed to fetch incident details:', error);
+            setIncidentDetailsError('Unable to load the individual incidents. Please try again.');
+        } finally {
+            setIncidentDetailsLoading(false);
+        }
+    }, [effectiveSelectedPet, endDate, singleDate, startDate, useRange]);
+
+    // Totals are derived from chartData so they always match the visible bars.
     const totalIncidents = useMemo(
         () => chartData.reduce((sum, d) => sum + d.count, 0),
         [chartData]
@@ -157,7 +258,12 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
         chart: {
             type: 'bar',
             height: 800,
-            toolbar: { show: false }
+            toolbar: { show: false },
+            events: {
+                dataPointSelection: (_event, _chartContext, config) => {
+                    showIncidentDetails(chartData[config.dataPointIndex]);
+                }
+            }
         },
         grid: {
             yaxis: { lines: { show: true } },
@@ -186,12 +292,12 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
         yaxis: {
             labels: { 
                 style: { fontSize: '10px' },
-                maxWidth: 200,
+                maxWidth: 240,
                 formatter: (val) => {
                     if (!val || typeof val !== 'string') return val;
                     const words = val.split(' ');
                     if (words.length <= 1) return val;
-                    const chunkSize = Math.ceil(val.length / 4);
+                    const chunkSize = 28;
                     const lines = [];
                     let current = '';
                     for (const word of words) {
@@ -221,8 +327,34 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
             horizontalAlign: 'right',
             fontSize: '12px'
         },
-        colors: ['#3b82f6', '#ef4444']
-    }), [chartData]);
+        colors: ['#3b82f6', '#ef4444'],
+        states: {
+            hover: { filter: { type: 'darken', value: 0.08 } }
+        }
+    }), [chartData, showIncidentDetails]);
+
+    const incidentDetailOptions = useMemo(() => ({
+        chart: { type: 'bar', toolbar: { show: false } },
+        plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '70%' } },
+        dataLabels: {
+            enabled: true,
+            formatter: (value) => formatDuration(value),
+            style: { fontSize: '10px' }
+        },
+        xaxis: {
+            categories: incidentDetails.map((incident) => incident.description),
+            title: { text: 'Duration (minutes)' }
+        },
+        yaxis: { labels: { maxWidth: 280, style: { fontSize: '11px' } } },
+        tooltip: { y: { formatter: (value) => formatDuration(value) } },
+        colors: ['#ef4444'],
+        grid: { xaxis: { lines: { show: true } } }
+    }), [incidentDetails]);
+
+    const incidentDetailSeries = useMemo(() => [{
+        name: 'Duration',
+        data: incidentDetails.map((incident) => incident.duration)
+    }], [incidentDetails]);
 
     const series = useMemo(() => [
         {
@@ -236,12 +368,13 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
     ], [chartData]);
     
     return (
+        <>
         <div className="card">
             <div className="card-header">
                 <div className="d-flex align-items-center justify-content-between">
                     <div>
                         <h6 className="mb-0">Stoppage Incidents by Subcategory</h6>
-                        <small className="text-muted">Mechanical downtime — incident count and total duration by subcategory</small>
+                        <small className="text-muted">Planned and mechanical downtime — incident count and total duration by subcategory</small>
                     </div>
                     <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
                         <i className="ti ti-external-link me-1"></i>View All
@@ -292,7 +425,7 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                             </div>
                         )}
                     </div>
-                    <div className="col-md-4">
+                    <div className="col-md-3">
                         <label className="form-label small">PET</label>
                         <select
                             className="form-select form-select-sm"
@@ -306,6 +439,14 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                             {availablePets.map(pet => (
                                 <option key={pet} value={pet}>{pet}</option>
                             ))}
+                        </select>
+                    </div>
+                    <div className="col-md-3">
+                        <label className="form-label small">Category</label>
+                        <select className="form-select form-select-sm" value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)}>
+                            <option value="">All Categories</option>
+                            <option value={DOWNTIME_CLASSIFICATION.PLANNED}>Planned Downtime</option>
+                            <option value={DOWNTIME_CLASSIFICATION.MECHANICAL}>Mechanical Downtime</option>
                         </select>
                     </div>
                     <div className="col-md-2">
@@ -343,7 +484,7 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                     </div>
                 </div>
                 
-                {(singleDate || startDate || endDate || selectedPet) && (
+                {(singleDate || startDate || endDate || selectedPet || selectedCategory) && (
                     <div className="alert alert-info d-flex align-items-center mt-3 mb-0">
                         <i className="ti ti-filter fs-5 me-2"></i>
                         <div className="flex-grow-1">
@@ -352,6 +493,11 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                             {startDate && <span className="ms-2">From: {startDate}</span>}
                             {endDate && <span className="ms-2">To: {endDate}</span>}
                             {selectedPet && <span className="ms-2">• PET: {selectedPet}</span>}
+                            {selectedCategory && (
+                                <span className="ms-2">
+                                    • Category: {selectedCategory === DOWNTIME_CLASSIFICATION.PLANNED ? 'Planned Downtime' : 'Mechanical Downtime'}
+                                </span>
+                            )}
                         </div>
                         <button 
                             className="btn btn-sm btn-outline-info"
@@ -360,6 +506,7 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                                 setStartDate('');
                                 setEndDate('');
                                 setSelectedPet('');
+                                setSelectedCategory('');
                                 setUseRange(false);
                                 setFetchKey(k => k + 1);
                             }}
@@ -396,12 +543,100 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                                 </div>
                             </div>
                         </div>
-                        <ReactApexChart options={chartOptions} series={series} type="bar" height={700} />
+                        <small className="text-muted d-block mb-2">
+                            <i className="ti ti-pointer me-1"></i>Click a bar to view its individual incidents.
+                        </small>
+                        <div style={{ cursor: 'pointer' }}>
+                            <ReactApexChart options={chartOptions} series={series} type="bar" height={chartHeight} />
+                        </div>
 
                     </>
                 )}
             </div>
         </div>
+        {selectedSubCategory && (
+            <>
+                <div className="modal-backdrop fade show"></div>
+                <div className="modal fade show d-block" tabIndex="-1" role="dialog" aria-modal="true" aria-labelledby="incident-detail-title">
+                    <div className="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+                        <div className="modal-content">
+                            <div className="modal-header">
+                                <div>
+                                    <h5 className="modal-title" id="incident-detail-title">{selectedSubCategory.label}</h5>
+                                    <small className="text-muted">
+                                        Individual incidents · {selectedSubCategory.category || 'Uncategorized'}
+                                    </small>
+                                </div>
+                                <button type="button" className="btn-close" aria-label="Close" onClick={closeIncidentDetails}></button>
+                            </div>
+                            <div className="modal-body">
+                                <div className="alert alert-info py-2 mb-3">
+                                    <div className="d-flex flex-wrap align-items-center gap-2">
+                                        <strong className="me-1"><i className="ti ti-filter me-1"></i>Applicable Filters:</strong>
+                                        <span className="badge bg-info-transparent text-info">Date: {activeDateLabel}</span>
+                                        <span className="badge bg-info-transparent text-info">PET: {effectiveSelectedPet || 'All PETs'}</span>
+                                        <span className="badge bg-info-transparent text-info">
+                                            Category: {selectedSubCategory.classification === DOWNTIME_CLASSIFICATION.PLANNED ? 'Planned Downtime' : 'Mechanical Downtime'}
+                                        </span>
+                                    </div>
+                                </div>
+                                {incidentDetailsLoading ? (
+                                    <div className="text-center py-5">
+                                        <span className="spinner-border spinner-border-sm me-2"></span>
+                                        Loading incident details…
+                                    </div>
+                                ) : incidentDetailsError ? (
+                                    <div className="alert alert-danger mb-0">{incidentDetailsError}</div>
+                                ) : incidentDetails.length === 0 ? (
+                                    <div className="text-center text-muted py-5">No individual incident records were found for this subcategory.</div>
+                                ) : (
+                                    <>
+                                        <div className="d-flex justify-content-between align-items-center mb-3">
+                                            <span className="badge bg-primary-transparent text-primary">{incidentDetails.length} incidents</span>
+                                            <strong>Total: {formatDuration(incidentDetails.reduce((sum, incident) => sum + incident.duration, 0))}</strong>
+                                        </div>
+                                        <ReactApexChart
+                                            options={incidentDetailOptions}
+                                            series={incidentDetailSeries}
+                                            type="bar"
+                                            height={Math.max(360, incidentDetails.length * 42)}
+                                        />
+                                        <div className="table-responsive mt-4">
+                                            <table className="table table-sm table-striped align-middle mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Incident</th>
+                                                        <th>Date / Time</th>
+                                                        <th>PET</th>
+                                                        <th>Report</th>
+                                                        <th className="text-end">Duration</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {incidentDetails.map((incident, index) => (
+                                                        <tr key={`${incident.id}-${index}`}>
+                                                            <td>{incident.description}</td>
+                                                            <td>{[incident.date, incident.time].filter(Boolean).join(' ') || '—'}</td>
+                                                            <td>{incident.pet}</td>
+                                                            <td>{incident.reportCode || '—'}</td>
+                                                            <td className="text-end">{formatDuration(incident.duration)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <div className="modal-footer">
+                                <button type="button" className="btn btn-secondary" onClick={closeIncidentDetails}>Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </>
+        )}
+        </>
     );
 };
 
