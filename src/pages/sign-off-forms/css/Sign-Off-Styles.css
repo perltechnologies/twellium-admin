@@ -219,8 +219,9 @@ th{
   border-top-width: 2px;
 }
 
-.product-sign-off-report .materials-table tbody td:not(:first-child),
-.product-sign-off-report .materials-table tbody td:not(:first-child) input {
+.product-sign-off-report .materials-table th,
+.product-sign-off-report .materials-table tbody td,
+.product-sign-off-report .materials-table tbody td input {
   text-align: center !important;
 }
 

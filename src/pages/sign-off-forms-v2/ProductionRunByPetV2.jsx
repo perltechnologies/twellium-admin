@@ -88,7 +88,7 @@ const ManualEntryField = ({ label }) => (
     />
 );
 
-const PersistedField = ({ value, field, reportId, type = 'number', unit, onSaved }) => {
+const PersistedField = ({ value, field, reportId, type = 'number', unit, onSaved, onValueChange }) => {
     const normalized = value ?? '';
     const [inputValue, setInputValue] = useState(normalized);
     const [saving, setSaving] = useState(false);
@@ -117,7 +117,10 @@ const PersistedField = ({ value, field, reportId, type = 'number', unit, onSaved
         <input type={type} step={type === 'number' ? '0.001' : undefined} min={type === 'number' ? 0 : undefined}
             className="form-control form-control-sm rounded-0 shadow-none"
             style={{ minWidth: type === 'date' ? 135 : (type === 'time' ? 100 : 76), height: '1.8rem', fontSize: '0.8rem' }}
-            value={inputValue} disabled={saving} onChange={(event) => setInputValue(event.target.value)} onBlur={save} />
+            value={inputValue} disabled={saving} onChange={(event) => {
+                setInputValue(event.target.value);
+                onValueChange?.(event.target.value);
+            }} onBlur={save} />
         {unit && <span className="text-nowrap" style={{ fontSize: '0.72rem' }}>{unit}</span>}
         {saving && <Loader2 size={13} className="spinning no-print" />}
     </div>;
@@ -138,6 +141,7 @@ const ProductionRunByPetV2 = () => {
     const [report, setReport] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [materialPieceWeights, setMaterialPieceWeights] = useState({ LABELS: '', SHRINK: '' });
     const requestSequence = useRef(0);
 
     useEffect(() => {
@@ -235,10 +239,24 @@ const ProductionRunByPetV2 = () => {
     const productCalculations = selectedProductData && Array.isArray(report?.calculations?.products)
         ? report.calculations.products.find((entry) => belongsToProduct(entry, selectedProductData)) : null;
     const calculations = selectedProductData?.calculations || productCalculations || (!selectedProductData ? report?.calculations : {}) || {};
-    const allMaterials = Array.isArray(report?.materials) ? report.materials : [];
-    const materials = selectedProductData
-        ? (Array.isArray(selectedProductData.materials) ? selectedProductData.materials : allMaterials)
-        : allMaterials;
+    const materials = useMemo(() => {
+        const allMaterials = Array.isArray(report?.materials) ? report.materials : [];
+        return selectedProductData
+            ? (Array.isArray(selectedProductData.materials) ? selectedProductData.materials : allMaterials)
+            : allMaterials;
+    }, [report, selectedProductData]);
+
+    useEffect(() => {
+        const findMaterial = (...types) => materials.find((item) => (
+            types.includes(String(firstValue(item, ['material_type', 'type', 'code'])).toUpperCase())
+        )) || {};
+        const labelMaterial = findMaterial('LABELS');
+        const shrinkMaterial = findMaterial('SHRINK', 'SHRINKS', 'STRETCH_FILM');
+        setMaterialPieceWeights({
+            LABELS: firstValue(labelMaterial, ['label_weight_per_piece_g', 'weight_per_piece_g']),
+            SHRINK: firstValue(shrinkMaterial, ['shrink_weight_per_piece_g', 'weight_per_piece_g']),
+        });
+    }, [materials]);
     const allDetails = Array.isArray(report?.production_details) ? report.production_details
         : (Array.isArray(report?.batches) ? report.batches : []);
     const productionDetails = selectedProductData ? allDetails.filter((item) => {
@@ -282,6 +300,8 @@ const ProductionRunByPetV2 = () => {
     const workers = selectedProductData?.workers || report?.workers || {};
     const sourceReportId = reportIdFor(selectedProductData, run);
     const metric = (keys, fallback = '') => firstValue(scope, keys, firstValue(calculations, keys, fallback));
+    const totalPacksValue = metric(['total_packs']);
+    const totalPacks = Number(totalPacksValue);
     const materialFor = (...types) => materials.find((item) => types.includes(String(firstValue(item, ['material_type', 'type', 'code'])).toUpperCase())) || {};
     const selectedPetName = pets.find((pet) => String(pet.id) === String(selectedPet))?.pet_name || firstValue(run, ['pet_name', 'line_name']);
     const selectedShiftName = selectedShift
@@ -467,9 +487,40 @@ const ProductionRunByPetV2 = () => {
                     const material = materialFor(...(type === 'SHRINK' ? ['SHRINK', 'SHRINKS', 'STRETCH_FILM'] : [type]));
                     const isLabel = type === 'LABELS';
                     const isShrink = type === 'SHRINK';
+                    const pieceWeight = materialPieceWeights[type];
+                    const numericPieceWeight = Number(pieceWeight);
+                    const calculatedExpectedUsage = (isLabel || isShrink)
+                        && pieceWeight !== ''
+                        && totalPacksValue !== ''
+                        && Number.isFinite(numericPieceWeight)
+                        && Number.isFinite(totalPacks)
+                        ? (numericPieceWeight * totalPacks) / 1000
+                        : null;
+                    const expectedUsage = (isLabel || isShrink)
+                        ? (calculatedExpectedUsage === null ? '' : formatValue(calculatedExpectedUsage))
+                        : materialCell(material, ['expected_to_be_used', 'expected_usage']);
+                    const returnedValue = firstValue(material, ['returned', 'total_returned']);
+                    const lossesValue = firstValue(material, ['losses', 'total_losses']);
+                    const numericReturned = Number(returnedValue || 0);
+                    const numericLosses = Number(lossesValue || 0);
+                    const canReconcile = calculatedExpectedUsage !== null
+                        && Number.isFinite(numericReturned)
+                        && Number.isFinite(numericLosses);
+                    const calculatedReceived = canReconcile ? calculatedExpectedUsage + numericLosses : null;
+                    const calculatedUsed = canReconcile ? calculatedReceived - numericReturned : null;
+                    const calculatedLossPercent = calculatedUsed > 0 ? (numericLosses / calculatedUsed) * 100 : null;
+                    const receivedValue = (isLabel || isShrink) && canReconcile
+                        ? formatValue(calculatedReceived)
+                        : materialCell(material, ['received', 'total_received']);
+                    const usedValue = (isLabel || isShrink) && canReconcile
+                        ? formatValue(calculatedUsed)
+                        : materialCell(material, ['used', 'total_used']);
+                    const lossPercentValue = (isLabel || isShrink) && canReconcile
+                        ? (calculatedLossPercent === null ? '' : formatValue(calculatedLossPercent, '%'))
+                        : formatValue(firstValue(material, ['loss_percentage', 'loss_percent']), firstValue(material, ['loss_percentage', 'loss_percent']) !== '' ? '%' : '');
                     return <tr key={type}><td className="label-cell"><strong>{firstValue(material, ['material_name', 'material_type_display'], label)}</strong></td><td className="input-cell">
-                        {(isLabel || isShrink) && <PersistedField value={firstValue(material, isLabel ? ['label_weight_per_piece_g', 'weight_per_piece_g'] : ['shrink_weight_per_piece_g', 'weight_per_piece_g'])} field={isLabel ? 'label_weight_per_piece_g' : 'shrink_weight_per_piece_g'} reportId={reportIdFor(material, scope) || sourceReportId} unit="g/piece" onSaved={reloadReport} />}
-                    </td><td className="unit-cell text-center">{firstValue(material, ['unit'], defaultUnit)}</td><td className="input-cell numeric">{materialCell(material, ['expected_to_be_used', 'expected_usage'])}</td><td className="input-cell numeric">{materialCell(material, ['received', 'total_received'])}</td><td className="input-cell numeric">{materialCell(material, ['used', 'total_used'])}</td><td className="input-cell numeric">{materialCell(material, ['returned', 'total_returned'])}</td><td className="input-cell numeric">{materialCell(material, ['losses', 'total_losses'])}</td><td className="input-cell numeric">{formatValue(firstValue(material, ['loss_percentage', 'loss_percent']), firstValue(material, ['loss_percentage', 'loss_percent']) !== '' ? '%' : '')}</td></tr>;
+                        {(isLabel || isShrink) && <PersistedField value={pieceWeight} field={isLabel ? 'label_weight_per_piece_g' : 'shrink_weight_per_piece_g'} reportId={reportIdFor(material, scope) || sourceReportId} unit="g/piece" onSaved={reloadReport} onValueChange={(value) => setMaterialPieceWeights((current) => ({ ...current, [type]: value }))} />}
+                    </td><td className="unit-cell text-center">{firstValue(material, ['unit'], defaultUnit)}</td><td className="input-cell numeric">{expectedUsage}</td><td className="input-cell numeric">{receivedValue}</td><td className="input-cell numeric">{usedValue}</td><td className="input-cell numeric">{materialCell(material, ['returned', 'total_returned'])}</td><td className="input-cell numeric">{materialCell(material, ['losses', 'total_losses'])}</td><td className="input-cell numeric">{lossPercentValue}</td></tr>;
                 })}
             </tbody></table>
 
