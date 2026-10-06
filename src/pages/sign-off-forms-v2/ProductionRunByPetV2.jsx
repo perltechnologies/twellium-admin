@@ -300,6 +300,8 @@ const ProductionRunByPetV2 = () => {
     const workers = selectedProductData?.workers || report?.workers || {};
     const sourceReportId = reportIdFor(selectedProductData, run);
     const metric = (keys, fallback = '') => firstValue(scope, keys, firstValue(calculations, keys, fallback));
+    const totalPacksValue = metric(['total_packs']);
+    const totalPacks = Number(totalPacksValue);
     const materialFor = (...types) => materials.find((item) => types.includes(String(firstValue(item, ['material_type', 'type', 'code'])).toUpperCase())) || {};
     const preformsExpectedUsageValue = firstValue(materialFor('PREFORMS'), ['expected_to_be_used', 'expected_usage']);
     const preformsExpectedUsage = Number(preformsExpectedUsageValue);
@@ -489,12 +491,14 @@ const ProductionRunByPetV2 = () => {
                     const isShrink = type === 'SHRINK';
                     const pieceWeight = materialPieceWeights[type];
                     const numericPieceWeight = Number(pieceWeight);
+                    const usageBaseValue = isShrink ? totalPacksValue : preformsExpectedUsageValue;
+                    const usageBase = isShrink ? totalPacks : preformsExpectedUsage;
                     const calculatedExpectedUsage = (isLabel || isShrink)
                         && pieceWeight !== ''
-                        && preformsExpectedUsageValue !== ''
+                        && usageBaseValue !== ''
                         && Number.isFinite(numericPieceWeight)
-                        && Number.isFinite(preformsExpectedUsage)
-                        ? (preformsExpectedUsage * numericPieceWeight) / 1000
+                        && Number.isFinite(usageBase)
+                        ? (usageBase * numericPieceWeight) / 1000
                         : null;
                     const expectedUsage = (isLabel || isShrink)
                         ? (calculatedExpectedUsage === null ? '' : formatValue(calculatedExpectedUsage))
