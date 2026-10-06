@@ -300,9 +300,9 @@ const ProductionRunByPetV2 = () => {
     const workers = selectedProductData?.workers || report?.workers || {};
     const sourceReportId = reportIdFor(selectedProductData, run);
     const metric = (keys, fallback = '') => firstValue(scope, keys, firstValue(calculations, keys, fallback));
-    const totalPacksValue = metric(['total_packs']);
-    const totalPacks = Number(totalPacksValue);
     const materialFor = (...types) => materials.find((item) => types.includes(String(firstValue(item, ['material_type', 'type', 'code'])).toUpperCase())) || {};
+    const preformsExpectedUsageValue = firstValue(materialFor('PREFORMS'), ['expected_to_be_used', 'expected_usage']);
+    const preformsExpectedUsage = Number(preformsExpectedUsageValue);
     const selectedPetName = pets.find((pet) => String(pet.id) === String(selectedPet))?.pet_name || firstValue(run, ['pet_name', 'line_name']);
     const selectedShiftName = selectedShift
         ? (shifts.find((shift) => String(shift.id) === String(selectedShift))?.name
@@ -491,10 +491,10 @@ const ProductionRunByPetV2 = () => {
                     const numericPieceWeight = Number(pieceWeight);
                     const calculatedExpectedUsage = (isLabel || isShrink)
                         && pieceWeight !== ''
-                        && totalPacksValue !== ''
+                        && preformsExpectedUsageValue !== ''
                         && Number.isFinite(numericPieceWeight)
-                        && Number.isFinite(totalPacks)
-                        ? (numericPieceWeight * totalPacks) / 1000
+                        && Number.isFinite(preformsExpectedUsage)
+                        ? (preformsExpectedUsage * numericPieceWeight) / 1000
                         : null;
                     const expectedUsage = (isLabel || isShrink)
                         ? (calculatedExpectedUsage === null ? '' : formatValue(calculatedExpectedUsage))
