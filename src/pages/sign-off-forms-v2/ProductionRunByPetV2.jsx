@@ -32,6 +32,25 @@ const formatValue = (value, unit = '') => {
     return unit ? `${displayed} ${unit}` : displayed;
 };
 
+const roundUpToTwoDecimals = (value) => Math.ceil((Number(value) - Number.EPSILON) * 100) / 100;
+
+const normalizeTwoDecimalInput = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? roundUpToTwoDecimals(numeric).toFixed(2) : '';
+};
+
+const formatTwoDecimals = (value, unit = '') => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    const roundedUp = roundUpToTwoDecimals(numeric);
+    const displayed = roundedUp.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+    return unit ? `${displayed} ${unit}` : displayed;
+};
+
 const formatDate = (value) => {
     if (!value) return '';
     const date = new Date(value);
@@ -142,6 +161,7 @@ const ProductionRunByPetV2 = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [materialPieceWeights, setMaterialPieceWeights] = useState({ LABELS: '', SHRINK: '' });
+    const [materialLosses, setMaterialLosses] = useState({});
     const requestSequence = useRef(0);
 
     useEffect(() => {
@@ -255,6 +275,12 @@ const ProductionRunByPetV2 = () => {
         setMaterialPieceWeights({
             LABELS: firstValue(labelMaterial, ['label_weight_per_piece_g', 'weight_per_piece_g']),
             SHRINK: firstValue(shrinkMaterial, ['shrink_weight_per_piece_g', 'weight_per_piece_g']),
+        });
+        setMaterialLosses({
+            PREFORMS: normalizeTwoDecimalInput(firstValue(findMaterial('PREFORMS'), ['losses', 'total_losses'])),
+            CLOSURES: normalizeTwoDecimalInput(firstValue(findMaterial('CLOSURES'), ['losses', 'total_losses'])),
+            LABELS: normalizeTwoDecimalInput(firstValue(labelMaterial, ['losses', 'total_losses'])),
+            SHRINK: normalizeTwoDecimalInput(firstValue(shrinkMaterial, ['losses', 'total_losses'])),
         });
     }, [materials]);
     const allDetails = Array.isArray(report?.production_details) ? report.production_details
@@ -501,10 +527,10 @@ const ProductionRunByPetV2 = () => {
                         ? (usageBase * numericPieceWeight) / 1000
                         : null;
                     const expectedUsage = (isLabel || isShrink)
-                        ? (calculatedExpectedUsage === null ? '' : formatValue(calculatedExpectedUsage))
+                        ? (calculatedExpectedUsage === null ? '' : formatTwoDecimals(calculatedExpectedUsage))
                         : materialCell(material, ['expected_to_be_used', 'expected_usage']);
                     const returnedValue = firstValue(material, ['returned', 'total_returned']);
-                    const lossesValue = firstValue(material, ['losses', 'total_losses']);
+                    const lossesValue = materialLosses[type] ?? firstValue(material, ['losses', 'total_losses']);
                     const numericReturned = Number(returnedValue || 0);
                     const numericLosses = Number(lossesValue || 0);
                     const canReconcile = calculatedExpectedUsage !== null
@@ -512,19 +538,27 @@ const ProductionRunByPetV2 = () => {
                         && Number.isFinite(numericLosses);
                     const calculatedReceived = canReconcile ? calculatedExpectedUsage + numericLosses : null;
                     const calculatedUsed = canReconcile ? calculatedReceived - numericReturned : null;
-                    const calculatedLossPercent = calculatedUsed > 0 ? (numericLosses / calculatedUsed) * 100 : null;
                     const receivedValue = (isLabel || isShrink) && canReconcile
-                        ? formatValue(calculatedReceived)
+                        ? formatTwoDecimals(calculatedReceived)
                         : materialCell(material, ['received', 'total_received']);
                     const usedValue = (isLabel || isShrink) && canReconcile
-                        ? formatValue(calculatedUsed)
+                        ? formatTwoDecimals(calculatedUsed)
                         : materialCell(material, ['used', 'total_used']);
-                    const lossPercentValue = (isLabel || isShrink) && canReconcile
-                        ? (calculatedLossPercent === null ? '' : formatValue(calculatedLossPercent, '%'))
-                        : formatValue(firstValue(material, ['loss_percentage', 'loss_percent']), firstValue(material, ['loss_percentage', 'loss_percent']) !== '' ? '%' : '');
+                    const numericUsedForLoss = (isLabel || isShrink) && canReconcile
+                        ? calculatedUsed
+                        : Number(firstValue(material, ['used', 'total_used']));
+                    const calculatedLossPercent = lossesValue !== '' && numericUsedForLoss > 0
+                        ? (numericLosses / numericUsedForLoss) * 100
+                        : null;
+                    const lossPercentValue = calculatedLossPercent === null ? '' : formatTwoDecimals(calculatedLossPercent, '%');
                     return <tr key={type}><td className="label-cell"><strong>{firstValue(material, ['material_name', 'material_type_display'], label)}</strong></td><td className="input-cell">
                         {(isLabel || isShrink) && <PersistedField value={pieceWeight} field={isLabel ? 'label_weight_per_piece_g' : 'shrink_weight_per_piece_g'} reportId={reportIdFor(material, scope) || sourceReportId} unit="g/piece" onSaved={reloadReport} onValueChange={(value) => setMaterialPieceWeights((current) => ({ ...current, [type]: value }))} />}
-                    </td><td className="unit-cell text-center">{firstValue(material, ['unit'], defaultUnit)}</td><td className="input-cell numeric">{expectedUsage}</td><td className="input-cell numeric">{receivedValue}</td><td className="input-cell numeric">{usedValue}</td><td className="input-cell numeric">{materialCell(material, ['returned', 'total_returned'])}</td><td className="input-cell numeric">{materialCell(material, ['losses', 'total_losses'])}</td><td className="input-cell numeric">{lossPercentValue}</td></tr>;
+                    </td><td className="unit-cell text-center">{firstValue(material, ['unit'], defaultUnit)}</td><td className="input-cell numeric">{expectedUsage}</td><td className="input-cell numeric">{receivedValue}</td><td className="input-cell numeric">{usedValue}</td><td className="input-cell numeric">{materialCell(material, ['returned', 'total_returned'])}</td><td className="input-cell numeric"><input type="number" min="0" step="0.01" className="manual-entry-input" placeholder=" " value={lossesValue} aria-label={`${label} losses`} onChange={(event) => setMaterialLosses((current) => ({ ...current, [type]: event.target.value }))} onBlur={() => setMaterialLosses((current) => {
+                        const numericValue = Number(current[type]);
+                        return current[type] === '' || !Number.isFinite(numericValue)
+                            ? current
+                            : { ...current, [type]: normalizeTwoDecimalInput(numericValue) };
+                    })} /></td><td className="input-cell numeric">{lossPercentValue}</td></tr>;
                 })}
             </tbody></table>
 
