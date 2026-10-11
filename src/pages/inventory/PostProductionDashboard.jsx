@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { inventoryApi } from '../../api/inventory';
+import { productionApi } from '../../api/production';
 import { useTheme } from '../../context/ThemeContext';
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid
@@ -41,6 +42,48 @@ const extractData = (res) => {
     return [];
 };
 
+const pad2 = (n) => String(n).padStart(2, '0');
+const toLocalDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// Production day runs 06:00 -> 06:00. Before 06:00 we are still in the previous day's NIGHT shift.
+const getProductionContext = (shifts = []) => {
+    const now = new Date();
+    const currentTime = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+    const day = new Date(now);
+    if (currentTime < '06:00') day.setDate(day.getDate() - 1);
+
+    const match = shifts.find((shift) => {
+        const start = shift.start_time?.slice(0, 5);
+        const end = shift.end_time?.slice(0, 5);
+        if (!start || !end) return false;
+        if (start > end) return currentTime >= start || currentTime < end; // overnight shift
+        return currentTime >= start && currentTime < end;
+    });
+
+    const shiftName = match?.name || ((currentTime >= '06:00' && currentTime < '18:00') ? 'DAY' : 'NIGHT');
+    return { date: toLocalDateStr(day), shiftName };
+};
+
+// Cumulative pallets / packs / bottles across all PET entries of the current shift's PR report(s).
+// Pass shiftName = null to sum every shift of the day.
+const aggregateShiftTotals = (summaryRes, shiftName) => {
+    const envelope = summaryRes?.data?.data?.data ?? summaryRes?.data?.data ?? summaryRes?.data ?? {};
+    const breakdown = Array.isArray(envelope.daily_breakdown) ? envelope.daily_breakdown : [];
+    const pets = breakdown.flatMap((d) => (Array.isArray(d.pets) ? d.pets : []))
+        .filter((p) => !shiftName || String(p.shift || '').toLowerCase() === String(shiftName).toLowerCase());
+
+    return pets.reduce((acc, p) => {
+        const packs = Number(p.total_packs) || 0;
+        const ppp = Number(p.packs_per_pallet) || 0;
+        let pallets = p.total_pallets != null && p.total_pallets !== '' ? Number(p.total_pallets) || 0 : 0;
+        if (pallets === 0 && ppp > 0) pallets = Math.floor(packs / ppp);
+        acc.pallets += pallets;
+        acc.packs += packs;
+        acc.bottles += Number(p.total_bottles_produced) || Number(p.total_bottles) || 0;
+        return acc;
+    }, { pallets: 0, packs: 0, bottles: 0 });
+};
+
 const PostProductionDashboard = () => {
     const navigate = useNavigate();
     const { theme } = useTheme();
@@ -50,6 +93,9 @@ const PostProductionDashboard = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [refreshInterval, setRefreshInterval] = useState(30);
+    // '' = current production day (live, current shift). A past date shows all shifts of that day.
+    const [selectedDate, setSelectedDate] = useState('');
+    const [scopeLabel, setScopeLabel] = useState('');
 
     const [stats, setStats] = useState({
         palletsToday: 0,
@@ -71,11 +117,27 @@ const PostProductionDashboard = () => {
         else setRefreshing(true);
 
         try {
-            const [overviewRes, stageRes, activityRes, unitsRes] = await Promise.allSettled([
+            // Resolve current production day + shift (DAY / NIGHT) for the PR report totals
+            let shiftList = [];
+            try {
+                const shiftsRes = await productionApi.getShifts();
+                const shiftsEnvelope = shiftsRes?.data?.data ?? shiftsRes?.data ?? [];
+                shiftList = Array.isArray(shiftsEnvelope) ? shiftsEnvelope : (shiftsEnvelope.results ?? []);
+            } catch (e) {
+                console.warn('Failed to fetch shifts, using default DAY/NIGHT window:', e);
+            }
+            const { date: currentPrDate, shiftName: currentShiftName } = getProductionContext(shiftList);
+            const prDate = selectedDate || currentPrDate;
+            const isCurrentDay = prDate === currentPrDate;
+            const shiftName = isCurrentDay ? currentShiftName : null;
+            setScopeLabel(isCurrentDay ? `${currentShiftName} shift` : 'All shifts');
+
+            const [overviewRes, stageRes, activityRes, unitsRes, summaryRes] = await Promise.allSettled([
                 inventoryApi.getTodayOverview(),
                 inventoryApi.getStageCounts(),
                 inventoryApi.getActivityLogs({ page_size: 10 }),
                 inventoryApi.getHandlingUnits({ page_size: 8, ordering: '-created_at' }),
+                productionApi.getProductionSummary({ start_date: prDate, end_date: prDate }),
             ]);
 
             const overview = overviewRes.status === 'fulfilled' ? (overviewRes.value?.data?.data ?? overviewRes.value?.data ?? {}) : {};
@@ -86,11 +148,17 @@ const PostProductionDashboard = () => {
             const counts = stageData.stage_counts || {};
             const totalActive = stageData.total_units || overview.total_units_active || Object.values(counts).reduce((s, c) => s + (Number(c) || 0), 0);
 
+            // Pallets/packs/bottles = cumulative totals of all PETs in the current shift's PR report.
+            // Fall back to the inventory overview only if the production summary is unavailable.
+            const shiftTotals = summaryRes.status === 'fulfilled'
+                ? aggregateShiftTotals(summaryRes.value, shiftName)
+                : null;
+
             setStats({
-                palletsToday: overview.new_pallets_produced || overview.total_pallets || 0,
+                palletsToday: shiftTotals ? shiftTotals.pallets : (overview.new_pallets_produced || overview.total_pallets || 0),
                 activeUnits: totalActive,
-                bottlesToday: overview.total_bottles || 0,
-                packsToday: overview.total_packs || 0,
+                bottlesToday: shiftTotals ? shiftTotals.bottles : (overview.total_bottles || 0),
+                packsToday: shiftTotals ? shiftTotals.packs : (overview.total_packs || 0),
                 qualifiedCount: counts.QUALIFIED || 0,
                 faultyCount: (counts.FAULTY || 0) + (counts.DAMAGED || 0),
                 activitiesCount: activityData.length,
@@ -106,7 +174,7 @@ const PostProductionDashboard = () => {
             setLoading(false);
             setRefreshing(false);
         }
-    }, []);
+    }, [selectedDate]);
 
     useEffect(() => {
         fetchDashboardData();
@@ -223,6 +291,29 @@ const PostProductionDashboard = () => {
                 </div>
 
                 <div className="d-flex flex-wrap align-items-center gap-2">
+                    {/* Date Filter (pallets / packs / bottles card) */}
+                    <div className="d-flex align-items-center gap-2 bg-light px-3 py-1 rounded border">
+                        <small className="text-muted">Date:</small>
+                        <input
+                            type="date"
+                            className="form-control form-control-sm border-0 bg-transparent py-0 px-1"
+                            style={{ width: 'auto', fontSize: '0.8rem' }}
+                            value={selectedDate}
+                            max={toLocalDateStr(new Date())}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                        />
+                        {selectedDate && (
+                            <button
+                                type="button"
+                                className="btn btn-link btn-sm p-0 text-decoration-none"
+                                style={{ fontSize: '0.8rem' }}
+                                onClick={() => setSelectedDate('')}
+                            >
+                                Today
+                            </button>
+                        )}
+                    </div>
+
                     {/* Auto Refresh Toggle */}
                     <div className="d-flex align-items-center gap-2 bg-light px-3 py-1.5 rounded border">
                         <small className="text-muted">Auto-sync:</small>
@@ -275,14 +366,16 @@ const PostProductionDashboard = () => {
                     <div className="card h-100 border-start border-4 border-success shadow-none border-top-0 border-end-0 border-bottom-0">
                         <div className="card-body p-3">
                             <div className="d-flex align-items-center justify-content-between mb-2">
-                                <span className="text-muted small fw-semibold text-uppercase">Pallets Today</span>
+                                <span className="text-muted small fw-semibold text-uppercase">
+                                    {selectedDate ? `Pallets · ${selectedDate}` : 'Pallets Today'}
+                                </span>
                                 <div className="avatar avatar-sm bg-soft-success rounded-circle d-flex align-items-center justify-content-center">
                                     <Package size={16} className="text-success" />
                                 </div>
                             </div>
                             <div className="d-flex align-items-baseline gap-2">
                                 <h3 className="fw-bold mb-0 text-dark">{stats.palletsToday.toLocaleString()}</h3>
-                                <span className="badge bg-soft-success text-success small">New</span>
+                                <span className="badge bg-soft-success text-success small">{scopeLabel || 'New'}</span>
                             </div>
                             <div className="mt-2 text-muted small d-flex justify-content-between">
                                 <span>Bottles: {stats.bottlesToday > 0 ? stats.bottlesToday.toLocaleString() : '—'}</span>
