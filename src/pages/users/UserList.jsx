@@ -1,6 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../../api/users';
+import { FALLBACK_BASE_ROLES } from './accessControlUtils';
+
+const getInitials = (user) => {
+    const source = (user.full_name || user.username || '?').trim();
+    const parts = source.split(/\s+/).filter(Boolean);
+    return ((parts[0]?.[0] || '?') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+};
 
 const UserList = ({ embedded = false, initialRole = '' }) => {
     const navigate = useNavigate();
@@ -97,7 +104,8 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
         }
     };
 
-    const totalPages = Math.ceil(totalCount / filters.page_size);
+    const totalPages = Math.max(1, Math.ceil(totalCount / filters.page_size));
+    const hasActiveFilters = Boolean(filters.search || filters.role);
     const getRoleBadge = (role) => {
         const roleMap = {
             'ADMIN': 'danger',
@@ -125,49 +133,45 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
                 </button>
             </div>}
 
-            <div className="card mb-4">
-                <div className="card-body">
-                    <div className="row g-3">
-                        <div className="col-md-6">
-                            <label className="form-label">Search</label>
+            <div className="card mb-3">
+                <div className="card-body py-3">
+                    <div className="row g-2 align-items-center">
+                        <div className="col-lg-5 col-md-12">
                             <div className="input-group">
-                                <span className="input-group-text">
-                                    <i className="ti ti-search"></i>
-                                </span>
+                                <span className="input-group-text"><i className="ti ti-search"></i></span>
                                 <input
                                     type="text"
                                     className="form-control"
-                                    placeholder="Search by username, name, or email..."
+                                    placeholder="Search by username, name, email or company..."
                                     value={filters.search}
                                     onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value, page: 1 }))}
                                 />
+                                {filters.search && (
+                                    <button className="btn btn-outline-secondary" type="button" onClick={() => setFilters(prev => ({ ...prev, search: '', page: 1 }))} aria-label="Clear search">
+                                        <i className="ti ti-x"></i>
+                                    </button>
+                                )}
                             </div>
                         </div>
-                        <div className="col-md-3">
-                            <label className="form-label">Role</label>
+                        <div className="col-lg-3 col-md-6">
                             <select
                                 className="form-select"
+                                aria-label="Filter by role"
                                 value={filters.role}
                                 onChange={(e) => setFilters(prev => ({ ...prev, role: e.target.value, page: 1 }))}
                             >
-                                <option value="">All Roles</option>
-                                <option value="ADMIN">Admin</option>
-                                <option value="SUPERVISOR">Supervisor</option>
-                                <option value="OPERATOR">Operator</option>
-                                <option value="QUALITY_CONTROL">Quality Control</option>
-                                <option value="WAREHOUSE_CLERK">Warehouse Clerk</option>
-                                <option value="DRIVER">Driver</option>
-                                <option value="DISPATCHER">Dispatcher</option>
-                                <option value="VIEWER">Viewer</option>
+                                <option value="">All roles</option>
+                                {FALLBACK_BASE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                             </select>
                         </div>
-                        <div className="col-md-3 d-flex align-items-end gap-2">
-                            <button className="btn btn-outline-secondary flex-fill" onClick={fetchUsers}>
-                                <i className="ti ti-refresh me-2"></i>
-                                Refresh
-                            </button>
-                            <button className="btn btn-outline-danger" onClick={() => setFilters({ search: '', role: '', page: 1, page_size: 10 })}>
-                                <i className="ti ti-x"></i>
+                        <div className="col-lg-4 col-md-6 d-flex justify-content-lg-end gap-2">
+                            {hasActiveFilters && (
+                                <button className="btn btn-link text-danger text-decoration-none" onClick={() => setFilters(prev => ({ ...prev, search: '', role: '', page: 1 }))}>
+                                    <i className="ti ti-filter-off me-1"></i>Clear filters
+                                </button>
+                            )}
+                            <button className="btn btn-outline-secondary" onClick={fetchUsers} disabled={loading}>
+                                <i className={`ti ti-refresh me-1 ${loading ? 'spin' : ''}`}></i>Refresh
                             </button>
                         </div>
                     </div>
@@ -176,9 +180,18 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
 
             <div className="card">
                 <div className="card-header d-flex align-items-center justify-content-between">
-                    <h6 className="mb-0">All Users ({totalCount})</h6>
-                    <div className="text-muted small">
-                        Page {filters.page} of {totalPages}
+                    <h6 className="mb-0">{hasActiveFilters ? 'Matching users' : 'All users'} <span className="badge bg-primary-subtle text-primary ms-1">{totalCount}</span></h6>
+                    <div className="d-flex align-items-center gap-2 text-muted small">
+                        <label htmlFor="user-page-size" className="mb-0">Rows</label>
+                        <select
+                            id="user-page-size"
+                            className="form-select form-select-sm"
+                            style={{ width: 'auto' }}
+                            value={filters.page_size}
+                            onChange={(e) => setFilters(prev => ({ ...prev, page_size: Number(e.target.value), page: 1 }))}
+                        >
+                            {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+                        </select>
                     </div>
                 </div>
                 <div className="card-body p-0">
@@ -190,60 +203,77 @@ const UserList = ({ embedded = false, initialRole = '' }) => {
                     ) : users.length === 0 ? (
                         <div className="text-center py-5">
                             <i className="ti ti-users" style={{ fontSize: '3rem', color: '#ccc' }}></i>
-                            <p className="text-muted mt-3 mb-0">No users found</p>
+                            <p className="text-muted mt-3 mb-2">{hasActiveFilters ? 'No users match your filters' : 'No users found'}</p>
+                            {hasActiveFilters && (
+                                <button className="btn btn-outline-primary btn-sm" onClick={() => setFilters(prev => ({ ...prev, search: '', role: '', page: 1 }))}>Clear filters</button>
+                            )}
                         </div>
                     ) : (
                         <div className="table-responsive">
-                            <table className="table table-hover mb-0">
+                            <table className="table table-hover align-middle mb-0">
                                 <thead className="table-light">
                                     <tr>
-                                        <th>Username</th>
-                                        <th>Full Name</th>
-                                        <th>Email</th>
+                                        <th>User</th>
                                         <th>Role</th>
                                         <th>Custom Role</th>
                                         <th>Company</th>
-                                        <th>Permissions</th>
+                                        <th>Access</th>
                                         <th className="text-end">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {users.map((row) => (
                                         <tr key={row.id}>
-                                            <td className="fw-medium">{row.username}</td>
-                                            <td>{row.full_name}</td>
-                                            <td>{row.email}</td>
+                                            <td>
+                                                <div className="d-flex align-items-center gap-3">
+                                                    <span
+                                                        className={`rounded-circle bg-${getRoleBadge(row.role)}-subtle text-${getRoleBadge(row.role)} fw-bold d-flex align-items-center justify-content-center flex-shrink-0`}
+                                                        style={{ width: 38, height: 38, fontSize: '0.85rem' }}
+                                                    >
+                                                        {getInitials(row)}
+                                                    </span>
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div className="fw-semibold text-truncate">{row.full_name || row.username}</div>
+                                                        <div className="small text-muted text-truncate">
+                                                            {row.full_name && <span>@{row.username}</span>}
+                                                            {row.full_name && row.email && ' · '}
+                                                            {row.email}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
                                             <td>
                                                 <span className={`badge bg-${getRoleBadge(row.role)}`}>
                                                     {row.role_display || row.role}
                                                 </span>
                                             </td>
-                                            <td>{row.custom_role_detail?.name || '-'}</td>
-                                            <td>{row.company_name || '-'}</td>
+                                            <td>{row.custom_role_detail?.name || <span className="text-muted">—</span>}</td>
+                                            <td>{row.company_name || <span className="text-muted">—</span>}</td>
                                             <td>
                                                 {row.role === 'ADMIN' ? (
-                                                    <span className="badge bg-danger-subtle text-danger">Administrator</span>
+                                                    <span className="badge bg-danger-subtle text-danger">Full access</span>
                                                 ) : row.custom_role_detail ? (
                                                     <span className="badge bg-primary-subtle text-primary">
-                                                        {row.custom_role_detail.permission_count ?? row.custom_role_detail.permissions?.length ?? 0} inherited
+                                                        {row.custom_role_detail.permission_count ?? row.custom_role_detail.permissions?.length ?? 0} permissions
                                                     </span>
                                                 ) : (
-                                                    <span className="badge bg-light text-dark">Base role only</span>
+                                                    <span className="badge bg-light text-dark border">Base role only</span>
                                                 )}
                                             </td>
-                                            <td className="text-end">
+                                            <td className="text-end text-nowrap">
                                                 <div className="btn-group btn-group-sm">
                                                     <button
                                                         className="btn btn-outline-primary"
                                                         onClick={() => navigate(`/dashboard/users/${row.id}/edit`)}
                                                         title="Edit"
                                                     >
-                                                        <i className="ti ti-edit"></i>
+                                                        <i className="ti ti-edit me-1"></i>Edit
                                                     </button>
                                                     <button
                                                         className="btn btn-outline-danger"
                                                         onClick={() => handleDelete(row)}
                                                         title="Delete"
+                                                        aria-label={`Delete ${row.username}`}
                                                     >
                                                         <i className="ti ti-trash"></i>
                                                     </button>

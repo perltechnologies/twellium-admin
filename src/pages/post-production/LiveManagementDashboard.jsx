@@ -29,7 +29,12 @@ const LiveManagementDashboard = () => {
 
     const fetchMetrics = useCallback(async () => {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const now = new Date();
+            const today = [
+                now.getFullYear(),
+                String(now.getMonth() + 1).padStart(2, '0'),
+                String(now.getDate()).padStart(2, '0'),
+            ].join('-');
             const [overviewRes, stageRes, unitsRes, productsRes, summaryRes] = await Promise.all([
                 inventoryApi.getTodayOverview(),
                 inventoryApi.getStageCounts(),
@@ -102,9 +107,10 @@ const LiveManagementDashboard = () => {
         return {
             scanned: overview?.total_units || units.length,
             pallets: overview?.total_pallets || units.filter(u => u.unit_type === 'PALLET').length,
-            bottles: productionSummary?.total_bottles
-                ?? productionSummary?.total_bottles_produced
-                ?? units.reduce((s, u) => s + bottlesForUnit(u), 0),
+            bottles: Number(productionSummary?.total_bottles_produced) > 0
+                ? Number(productionSummary.total_bottles_produced)
+                : (productionSummary?.total_bottles
+                    ?? units.reduce((s, u) => s + bottlesForUnit(u), 0)),
             packs: overview?.total_packs || units.reduce((s, u) => s + (u.quantity || 0), 0),
         };
     }, [overview, productionSummary, units, bottlesForUnit]);
