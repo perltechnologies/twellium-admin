@@ -24,7 +24,7 @@ const yieldBadge = (v) => {
 };
 
 const SyrupReport = () => {
-    const { filters } = useFilters();
+    const { filters, updateFilters } = useFilters();
     const [rawData, setRawData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [timeRange, setTimeRange] = useState('yesterday');
@@ -78,7 +78,7 @@ const SyrupReport = () => {
         } finally {
             setLoading(false);
         }
-    }, [filters, timeRange]);
+    }, [filters.pet, filters.log_date, filters.start_date, filters.end_date, timeRange]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -102,6 +102,24 @@ const SyrupReport = () => {
         return num ? `Pet ${num[1]}` : name;
     };
 
+    // Products present in the loaded data (before product filtering), for the filter dropdown.
+    const productFilterOptions = useMemo(() => {
+        const names = new Set();
+        (rawData?.daily_breakdown || []).forEach(day => {
+            (day.pets || []).forEach(p => {
+                if (!(p.pet_name || '').toLowerCase().includes('can') && p.product_name) names.add(p.product_name);
+            });
+        });
+        return [...names].sort((a, b) => a.localeCompare(b));
+    }, [rawData]);
+
+    // Drop a stale product selection that doesn't exist in the current dataset.
+    useEffect(() => {
+        if (rawData && filters.product && !productFilterOptions.includes(filters.product)) {
+            updateFilters({ product: null });
+        }
+    }, [filters.product, productFilterOptions, rawData, updateFilters]);
+
     // Build per-pet syrup yield data (aggregated across all dates/shifts)
     // Build detailed table — the single source of truth for "Syrup Yield Details".
     // Each row is a per-report syrup_yield exactly as returned by the API.
@@ -109,6 +127,7 @@ const SyrupReport = () => {
         const rows = [];
         (rawData?.daily_breakdown || []).forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                if (filters.product && p.product_name !== filters.product) return;
                 if (p.syrup_yield !== null && p.syrup_yield !== undefined && p.syrup_yield > 0) {
                     rows.push({
                         date: day.date,
@@ -122,7 +141,7 @@ const SyrupReport = () => {
             });
         });
         return rows.sort((a, b) => a.date.localeCompare(b.date) || a.pet.localeCompare(b.pet));
-    }, [rawData]);
+    }, [rawData, filters.product]);
 
     // Distinct products present in the syrup detail rows, for the detail tabs.
     const products = useMemo(() => {
@@ -159,6 +178,7 @@ const SyrupReport = () => {
 
         (rawData?.daily_breakdown || []).forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                if (filters.product && p.product_name !== filters.product) return;
                 // Only running pets (had production activity) contribute.
                 const producedOutput = p.total_bottles_produced || p.total_bottles || p.total_packs || 0;
                 if (producedOutput <= 0) return;
@@ -196,7 +216,7 @@ const SyrupReport = () => {
                 const bNum = parseInt(b.pet.match(/(\d+)/)?.[0] || '999');
                 return aNum - bNum;
             });
-    }, [rawData]);
+    }, [rawData, filters.product]);
 
     // Headline Avg Syrup Yield = CUMULATIVE Σ standard / Σ actual × 100 across all
     // running lines, using the same std + derived-actual as the per-line badges.
@@ -218,6 +238,7 @@ const SyrupReport = () => {
             const row = { date: day.date.slice(5) }; // MM-DD format
             const petYields = {};
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                if (filters.product && p.product_name !== filters.product) return;
                 const name = normalizePet(p.pet_name);
                 if (p.syrup_yield !== null && p.syrup_yield !== undefined && p.syrup_yield > 0) {
                     if (!petYields[name]) petYields[name] = { sum: 0, count: 0 };
@@ -230,7 +251,7 @@ const SyrupReport = () => {
             });
             return row;
         });
-    }, [rawData]);
+    }, [rawData, filters.product]);
 
     const handleExport = () => {
         const exportData = tableData.map(d => ({
@@ -307,7 +328,7 @@ const SyrupReport = () => {
                 </div>
             </div>
 
-            <FilterInputs />
+            <FilterInputs showProduct productOptions={productFilterOptions} />
 
             {dateRangeLabel && (
                 <div className="alert alert-light mb-3 py-2">
