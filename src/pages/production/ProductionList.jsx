@@ -6,6 +6,17 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { useFilters } from '../../context/FilterContext';
 import { SkeletonStatCards, SkeletonDonut } from '../../components/ui/Skeletons';
 
+const toNum = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+};
+
+const safeFormatDate = (value, pattern = 'MMM dd, yyyy') => {
+    if (!value) return '-';
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? '-' : format(d, pattern);
+};
+
 const ProductionList = () => {
     const navigate = useNavigate();
     const { filters: globalFilters, updateFilters } = useFilters();
@@ -177,7 +188,7 @@ const ProductionList = () => {
             const name = entry.pet_name;
             if (!name) return;
             // Use efficiency as the quality contribution metric
-            const q = parseFloat(entry.efficiency) || parseFloat(entry.quality) || (entry.metrics?.quality ?? 0);
+            const q = parseFloat(entry.efficiency) || parseFloat(entry.quality) || toNum(entry.metrics?.quality);
             if (!grouped[name]) grouped[name] = { total: 0, count: 0 };
             grouped[name].total += q;
             grouped[name].count += 1;
@@ -212,7 +223,7 @@ const ProductionList = () => {
             }
             
             const res = await productionApi.getReports(params);
-            const responseData = res.data;
+            const responseData = res?.data && typeof res.data === 'object' ? res.data : [];
             let listData = [];
             let count = 0;
             let next = null;
@@ -239,7 +250,7 @@ const ProductionList = () => {
             }
 
             // Filter out canlines
-            listData = listData.filter(r => !r.pet_name?.toLowerCase().includes('can'));
+            listData = listData.filter(r => r && !r.pet_name?.toLowerCase().includes('can'));
 
             // Sort by PET line number (Pet 1, Pet 2, Pet 3, ...)
             listData.sort((a, b) => {
@@ -271,7 +282,7 @@ const ProductionList = () => {
                 ]);
 
                 const summaryEnvelope = summaryRes?.data?.data?.data ?? summaryRes?.data?.data ?? summaryRes?.data ?? {};
-                const summaryTotalOutput = summaryEnvelope.summary?.total_bottles_produced || summaryEnvelope.total_bottles_produced || 0;
+                const summaryTotalOutput = toNum(summaryEnvelope.summary?.total_bottles_produced || summaryEnvelope.total_bottles_produced);
 
                 const oeeRaw = oeeRes?.data?.data?.data ?? oeeRes?.data?.data ?? oeeRes?.data ?? {};
                 const oeeEntries = typeof oeeRaw === 'object' && !Array.isArray(oeeRaw) ? Object.entries(oeeRaw) : [];
@@ -279,8 +290,8 @@ const ProductionList = () => {
                 let oeeTotalOutput = 0;
                 let totalDowntime = 0;
                 oeeEntries.forEach(([, val]) => {
-                    oeeTotalOutput += val?.total_bottles_produced || val?.total_output || 0;
-                    totalDowntime += val?.downtime || 0;
+                    oeeTotalOutput += toNum(val?.total_bottles_produced || val?.total_output);
+                    totalDowntime += toNum(val?.downtime);
                 });
 
                 const totalOutput = summaryTotalOutput || oeeTotalOutput;
@@ -301,7 +312,7 @@ const ProductionList = () => {
                 });
             } catch (oeeErr) {
                 console.error('Failed to fetch stats:', oeeErr);
-                const totalOutput = listData.reduce((sum, r) => sum + (r.total_bottles_produced || 0), 0);
+                const totalOutput = listData.reduce((sum, r) => sum + toNum(r.total_bottles_produced), 0);
                 setStats({
                     totalReports: count,
                     completedReports: completed,
@@ -319,7 +330,7 @@ const ProductionList = () => {
                 productionApi.getPets({ page_size: 100 })
                     .then(petsRes => {
                         const petsData = Array.isArray(petsRes.data) ? petsRes.data : petsRes.data?.results || [];
-                        setPets(petsData.filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
+                        setPets((Array.isArray(petsData) ? petsData : []).filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
                     })
                     .catch(err => console.error('Failed to load pets:', err));
             }
@@ -378,16 +389,16 @@ const ProductionList = () => {
 
             const res = await productionApi.getProductionSummary({ start_date: start, end_date: end });
             const envelope = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? {};
-            const dailyBreakdown = envelope.daily_breakdown || [];
+            const dailyBreakdown = Array.isArray(envelope.daily_breakdown) ? envelope.daily_breakdown : [];
 
             // Aggregate bottles per PET from production_summary daily_breakdown
             dailyBreakdown.forEach(day => {
-                (day.pets || [])
+                (Array.isArray(day.pets) ? day.pets : [])
                     .filter(p => !p.pet_name?.toLowerCase().includes('can'))
                     .forEach(p => {
                         const name = p.pet_name || 'Unknown';
                         if (!lineMap[name]) lineMap[name] = { name, bottles: 0, planned: 0, actual: 0 };
-                        const bottles = p.total_bottles_produced || p.total_bottles || p.total_output || p.total_units || 0;
+                        const bottles = toNum(p.total_bottles_produced || p.total_bottles || p.total_output || p.total_units);
                         lineMap[name].bottles += bottles;
                         lineMap[name].actual += bottles;
                     });
@@ -567,7 +578,7 @@ const ProductionList = () => {
                                 onChange={(e) => setFilters(prev => ({ ...prev, pet: e.target.value, page: 1 }))}
                             >
                                 <option value="">All Lines</option>
-                                {pets.sort((a, b) => {
+                                {[...pets].sort((a, b) => {
                                     const aNum = parseInt(a.pet_name?.match(/(\d+)/)?.[0] || '999');
                                     const bNum = parseInt(b.pet_name?.match(/(\d+)/)?.[0] || '999');
                                     return aNum - bNum;
@@ -618,7 +629,7 @@ const ProductionList = () => {
                             <div className="d-flex align-items-start justify-content-between">
                                 <div>
                                     <p className="fs-14 mb-1">Total Output</p>
-                                    <h2 className="mb-1 fs-16">{loading ? '...' : stats.totalOutput.toLocaleString()}</h2>
+                                    <h2 className="mb-1 fs-16">{loading ? '...' : toNum(stats.totalOutput).toLocaleString()}</h2>
                                 </div>
                                 <span className="avatar avatar-md rounded-circle bg-soft-info border border-info">
                                     <i className="ti ti-bottle fs-16 text-info"></i>
@@ -783,7 +794,7 @@ const ProductionList = () => {
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip formatter={(v) => [v.toLocaleString() + ' bottles', 'Production']} />
+                                            <Tooltip formatter={(v) => [toNum(v).toLocaleString() + ' bottles', 'Production']} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="mt-3">
@@ -796,7 +807,7 @@ const ProductionList = () => {
                                                         <i className="ti ti-circle-filled me-1" style={{ color: DONUT_COLORS[idx % DONUT_COLORS.length], fontSize: 8 }}></i>
                                                         {l.name}
                                                     </p>
-                                                    <p className="f-14 fw-medium text-dark mb-0">{pct}% ({l.bottles.toLocaleString()})</p>
+                                                    <p className="f-14 fw-medium text-dark mb-0">{pct}% ({toNum(l.bottles).toLocaleString()})</p>
                                                 </div>
                                             );
                                         })}
@@ -918,7 +929,7 @@ const ProductionList = () => {
                                                 data={qualityChartData}
                                                 cx="50%" cy="50%" outerRadius={90}
                                                 paddingAngle={2} dataKey="quality" 
-                                                label={(entry) => `${entry.name}: ${entry.quality.toFixed(1)}%`}>
+                                                label={(entry) => `${entry.name}: ${toNum(entry.quality).toFixed(1)}%`}>
                                                 {qualityChartData.map((entry, idx) => (
                                                     <Cell key={entry.name} fill={DONUT_COLORS[idx % DONUT_COLORS.length]} />
                                                 ))}
@@ -936,7 +947,7 @@ const ProductionList = () => {
                                                         {l.name}
                                                     </p>
                                                     <span className={`badge bg-soft-${qualityBadge} text-${qualityBadge} fs-10`}>
-                                                        {l.quality.toFixed(1)}%
+                                                        {toNum(l.quality).toFixed(1)}%
                                                     </span>
                                                 </div>
                                             );
@@ -1035,7 +1046,7 @@ const ProductionList = () => {
                                                     <span className="fw-medium">{row.report_code}</span>
                                                 </div>
                                             </td>
-                                            <td>{format(new Date(row.production_date), 'MMM dd, yyyy')}</td>
+                                            <td>{safeFormatDate(row.production_date)}</td>
                                             <td>{row.pet_name || '-'}</td>
                                             <td>
                                                 <span className="badge bg-light text-dark border">
@@ -1045,7 +1056,7 @@ const ProductionList = () => {
                                             <td>
                                                 <span className="text-success fw-medium">
                                                     <i className="ti ti-trending-up me-1"></i>
-                                                    {row.total_bottles_produced?.toLocaleString() || 0}
+                                                    {toNum(row.total_bottles_produced).toLocaleString()}
                                                 </span>
                                             </td>
                                             <td>{row.packs_per_pallet || '-'}</td>

@@ -4,6 +4,46 @@ import { Save, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { usersApi } from '../../api/users';
 
+const READING_SECTIONS = [
+    {
+        key: 'production',
+        title: 'Production Meters',
+        save: 'addProductionReading',
+        fields: [
+            ['filler_reading', 'Filler Reading'],
+            ['filler_rejects', 'Filler Rejects'],
+            ['blower_rejects', 'Blower Rejects'],
+            ['shrink_reading', 'Shrink Reading'],
+            ['start_reading', 'Start Reading'],
+            ['end_reading', 'End Reading'],
+        ],
+    },
+    {
+        key: 'syrup',
+        title: 'Syrup Meters',
+        save: 'addSyrupReading',
+        fields: [
+            ['start_reading', 'Start Reading'],
+            ['end_reading', 'End Reading'],
+        ],
+    },
+    {
+        key: 'co2',
+        title: 'CO2 Meters',
+        save: 'addCO2Reading',
+        fields: [
+            ['start_reading', 'Start Reading'],
+            ['end_reading', 'End Reading'],
+        ],
+    },
+];
+
+const pickReading = (section, data) => {
+    const out = { remarks: data?.remarks ?? '' };
+    section.fields.forEach(([name]) => { out[name] = data?.[name] ?? ''; });
+    return out;
+};
+
 const CreateReport = () => {
     const navigate = useNavigate();
     const { id } = useParams();
@@ -37,6 +77,8 @@ const CreateReport = () => {
     const [materials, setMaterials] = useState([]);
     const [stoppages, setStoppages] = useState([]);
     const [meterReadings, setMeterReadings] = useState([]);
+    const [readings, setReadings] = useState({ production: null, syrup: null, co2: null });
+    const [dirtyReadings, setDirtyReadings] = useState({});
 
     // Lookup data
     const [pets, setPets] = useState([]);
@@ -83,13 +125,21 @@ const CreateReport = () => {
 
             setStoppages((report.stoppage_logs || []).map(s => ({
                 id: s.id,
-                start_time: s.start_time ? s.start_time.slice(0, 16) : new Date().toISOString().slice(0, 16),
-                end_time: s.end_time ? s.end_time.slice(0, 16) : new Date().toISOString().slice(0, 16),
+                hour_index: s.hour_index ?? '',
+                minute_index: s.minute_index ?? '',
+                log_time: s.log_time || '',
                 downtime_minutes: s.downtime_minutes || 0,
                 bottles_produced: s.bottles_produced ?? '',
                 comments: s.comments || '',
                 incidents: s.incidents || []
             })));
+
+            setReadings({
+                production: report.production_readings ? pickReading(READING_SECTIONS[0], report.production_readings) : null,
+                syrup: report.syrup_readings ? pickReading(READING_SECTIONS[1], report.syrup_readings) : null,
+                co2: report.co2_readings ? pickReading(READING_SECTIONS[2], report.co2_readings) : null,
+            });
+            setDirtyReadings({});
 
             setMeterReadings((report.meter_readings || []).map(m => ({
                 reading_type: m.reading_type || 'CO2',
@@ -171,8 +221,8 @@ const CreateReport = () => {
 
     const addStoppage = () => {
         setStoppages([...stoppages, {
-            start_time: new Date().toISOString(),
-            end_time: new Date().toISOString(),
+            hour_index: '',
+            minute_index: 0,
             downtime_minutes: 0,
             bottles_produced: '',
             comments: '',
@@ -209,6 +259,11 @@ const CreateReport = () => {
         setMeterReadings(updated);
     };
 
+    const updateReading = (sectionKey, field, value) => {
+        setReadings(prev => ({ ...prev, [sectionKey]: { ...(prev[sectionKey] || {}), [field]: value } }));
+        setDirtyReadings(prev => ({ ...prev, [sectionKey]: true }));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
@@ -219,8 +274,8 @@ const CreateReport = () => {
             const stoppageLogs = stoppages.map(s => {
                 const log = {
                     id: s.id || null,
-                    start_time: s.start_time?.includes('T') ? s.start_time.split('T')[1].slice(0, 5) : s.start_time?.slice(0, 5),
-                    end_time: s.end_time?.includes('T') ? s.end_time.split('T')[1].slice(0, 5) : s.end_time?.slice(0, 5),
+                    hour_index: s.hour_index !== '' && s.hour_index != null ? Number(s.hour_index) : null,
+                    minute_index: s.minute_index !== '' && s.minute_index != null ? Number(s.minute_index) : null,
                     downtime_minutes: Number(s.downtime_minutes) || 0,
                     bottles_produced: s.bottles_produced !== '' ? Number(s.bottles_produced) : null,
                     comments: s.comments || '',
@@ -264,13 +319,25 @@ const CreateReport = () => {
                 // Update existing stoppages individually
                 await Promise.all(stoppageLogs.filter(s => s.id).map(s =>
                     productionApi.updateStoppage(s.id, {
-                        start_time: s.start_time,
-                        end_time: s.end_time,
+                        hour_index: s.hour_index,
+                        minute_index: s.minute_index,
                         downtime_minutes: s.downtime_minutes,
                         bottles_produced: s.bottles_produced,
                         comments: s.comments
                     })
                 ));
+                // Save meter reading sections that were changed
+                for (const section of READING_SECTIONS) {
+                    const values = readings[section.key];
+                    if (!dirtyReadings[section.key] || !values) continue;
+                    const body = {};
+                    Object.entries(values).forEach(([k, v]) => {
+                        if (k === 'remarks') body[k] = v || '';
+                        else if (v !== '' && v != null) body[k] = v;
+                    });
+                    await productionApi[section.save](id, body);
+                }
+                setDirtyReadings({});
             } else {
                 const payload = {
                     ...reportPayload,
@@ -323,11 +390,13 @@ const CreateReport = () => {
         }
     };
 
+    const readingsCount = isEditMode ? Object.values(readings).filter(Boolean).length + meterReadings.length : meterReadings.length;
+
     const tabs = [
         { id: 'basic', label: 'Basic Info', icon: 'ti-file' },
         { id: 'batches', label: 'Batches', icon: 'ti-flask', count: batches.length },
         { id: 'stoppages', label: 'Stoppages', icon: 'ti-alert-circle', count: stoppages.length },
-        { id: 'meters', label: 'Meter Readings', icon: 'ti-gauge', count: meterReadings.length }
+        { id: 'meters', label: 'Meter Readings', icon: 'ti-gauge', count: readingsCount }
     ];
 
     return (
@@ -420,6 +489,9 @@ const CreateReport = () => {
 
                         {activeTab === 'meters' && (
                             <MeterReadingsTab
+                                isEditMode={isEditMode}
+                                readings={readings}
+                                updateReading={updateReading}
                                 meterReadings={meterReadings}
                                 addMeterReading={addMeterReading}
                                 removeMeterReading={removeMeterReading}
@@ -590,22 +662,30 @@ const StoppagesTab = ({ stoppages, addStoppage, removeStoppage, updateStoppage, 
                         <div className="card">
                             <div className="card-body">
                                 <div className="row g-3">
-                                    <div className="col-md-3">
-                                        <label className="form-label">Start Time</label>
+                                    <div className="col-md-2">
+                                        <label className="form-label">Hour</label>
                                         <input
-                                            type="datetime-local"
-                                            value={stoppage.start_time.slice(0, 16)}
-                                            onChange={(e) => updateStoppage(index, 'start_time', e.target.value)}
+                                            type="number"
+                                            min="0"
+                                            value={stoppage.hour_index ?? ''}
+                                            onChange={(e) => updateStoppage(index, 'hour_index', e.target.value)}
                                             className="form-control"
+                                            placeholder="Hour"
                                         />
+                                        {stoppage.log_time && (
+                                            <small className="text-muted">Logged at {stoppage.log_time.slice(0, 5)}</small>
+                                        )}
                                     </div>
-                                    <div className="col-md-3">
-                                        <label className="form-label">End Time</label>
+                                    <div className="col-md-2">
+                                        <label className="form-label">Minute</label>
                                         <input
-                                            type="datetime-local"
-                                            value={stoppage.end_time.slice(0, 16)}
-                                            onChange={(e) => updateStoppage(index, 'end_time', e.target.value)}
+                                            type="number"
+                                            min="0"
+                                            max="59"
+                                            value={stoppage.minute_index ?? ''}
+                                            onChange={(e) => updateStoppage(index, 'minute_index', e.target.value)}
                                             className="form-control"
+                                            placeholder="0"
                                         />
                                     </div>
                                     <div className="col-md-2">
@@ -627,18 +707,39 @@ const StoppagesTab = ({ stoppages, addStoppage, removeStoppage, updateStoppage, 
                                             placeholder="0"
                                         />
                                     </div>
-                                    <div className="col-md-2 d-flex align-items-end gap-1">
-                                        <input
-                                            type="text"
-                                            value={stoppage.comments}
+                                    <div className="col-md-2 d-flex align-items-start justify-content-end">
+                                        <button type="button" className="btn btn-outline-danger mt-4" onClick={() => removeStoppage(index)} title="Remove stoppage">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                    <div className="col-12">
+                                        <label className="form-label">Comments</label>
+                                        <textarea
+                                            rows="2"
+                                            value={stoppage.comments || ''}
                                             onChange={(e) => updateStoppage(index, 'comments', e.target.value)}
                                             className="form-control"
                                             placeholder="Comments"
                                         />
-                                        <button type="button" className="btn btn-outline-danger flex-shrink-0" onClick={() => removeStoppage(index)}>
-                                            <Trash2 size={16} />
-                                        </button>
                                     </div>
+                                    {(stoppage.incidents || []).length > 0 && (
+                                        <div className="col-12">
+                                            <label className="form-label">Incidents</label>
+                                            <ul className="list-group">
+                                                {stoppage.incidents.map((inc, i) => (
+                                                    <li key={inc.id ?? i} className="list-group-item small">
+                                                        <strong>{[inc.downtime_category_name, inc.sub_downtime_category_name, inc.incident_category_name].filter(Boolean).join(' / ') || 'Incident'}</strong>
+                                                        {inc.incident_description && <span> - {inc.incident_description}</span>}
+                                                        {(inc.incident_time || inc.incident_duration) && (
+                                                            <span className="text-muted">
+                                                                {' '}({inc.incident_time ? inc.incident_time.slice(0, 5) : ''}{inc.incident_time && inc.incident_duration ? ', ' : ''}{inc.incident_duration ? `${inc.incident_duration} min` : ''})
+                                                            </span>
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -649,8 +750,52 @@ const StoppagesTab = ({ stoppages, addStoppage, removeStoppage, updateStoppage, 
     </div>
 );
 
-const MeterReadingsTab = ({ meterReadings, addMeterReading, removeMeterReading, updateMeterReading }) => (
+const ReadingSections = ({ readings, updateReading }) => (
+    <div className="mb-4">
+        {READING_SECTIONS.map(section => {
+            const values = readings[section.key];
+            return (
+                <div key={section.key} className="card mb-3">
+                    <div className="card-header"><h6 className="mb-0">{section.title}</h6></div>
+                    <div className="card-body">
+                        {!values ? (
+                            <div className="text-muted small">No {section.title.toLowerCase()} recorded for this report</div>
+                        ) : (
+                            <div className="row g-3">
+                                {section.fields.map(([name, label]) => (
+                                    <div key={name} className="col-md-3">
+                                        <label className="form-label">{label}</label>
+                                        <input
+                                            type="number"
+                                            step="any"
+                                            value={values[name] ?? ''}
+                                            onChange={(e) => updateReading(section.key, name, e.target.value)}
+                                            className="form-control"
+                                        />
+                                    </div>
+                                ))}
+                                <div className="col-12">
+                                    <label className="form-label">Remarks</label>
+                                    <input
+                                        type="text"
+                                        value={values.remarks ?? ''}
+                                        onChange={(e) => updateReading(section.key, 'remarks', e.target.value)}
+                                        className="form-control"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        })}
+    </div>
+);
+
+const MeterReadingsTab = ({ isEditMode, readings, updateReading, meterReadings, addMeterReading, removeMeterReading, updateMeterReading }) => (
     <div>
+        {isEditMode && <ReadingSections readings={readings} updateReading={updateReading} />}
+        {(!isEditMode || meterReadings.length > 0) && (<>
         <div className="d-flex justify-content-between align-items-center mb-3">
             <h6 className="mb-0">Meter Readings</h6>
             <button type="button" className="btn btn-sm btn-primary" onClick={addMeterReading}>
@@ -719,6 +864,7 @@ const MeterReadingsTab = ({ meterReadings, addMeterReading, removeMeterReading, 
                 ))}
             </div>
         )}
+        </>)}
     </div>
 );
 

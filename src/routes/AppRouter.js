@@ -33,6 +33,7 @@ const ProductAnalysis = React.lazy(() => import('../pages/post-production/Produc
 const PetPerformance = React.lazy(() => import('../pages/post-production/PetPerformance'));
 const LiveManagementDashboard = React.lazy(() => import('../pages/post-production/LiveManagementDashboard'));
 const TrendAnalysis = React.lazy(() => import('../pages/post-production/TrendAnalysis'));
+const TransferAnalytics = React.lazy(() => import('../pages/post-production/TransferAnalytics'));
 const VehicleDispatchDetails = React.lazy(() => import('../pages/post-production/VehicleDispatchDetails'));
 const PlantOverview = React.lazy(() => import('../pages/post-production/PlantOverview'));
 const PostProductionDashboard = React.lazy(() => import('../pages/inventory/PostProductionDashboard'));
@@ -146,6 +147,7 @@ export const AppRouter = () => {
                                 <Route path="pet-performance" element={<PetPerformance />} />
                                 <Route path="live-dashboard" element={<LiveManagementDashboard />} />
                                 <Route path="trends" element={<TrendAnalysis />} />
+                                <Route path="transfers" element={<TransferAnalytics />} />
                                 <Route path="vehicle-dispatch" element={<VehicleDispatchDetails />} />
                             </Route>
                             <Route path="logistics">

@@ -1,26 +1,49 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Printer, Loader2, Calendar, Search, CheckCircle2, UserCheck, ArrowLeft, FileText, Warehouse, RefreshCw, Package, Layers, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Printer, Loader2, Calendar, Search, CheckCircle2, UserCheck, ArrowLeft, FileText, Warehouse, RefreshCw, Package, Layers, X, Hash } from 'lucide-react';
 import { inventoryApi, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { usersApi } from '../../api/users';
 import { formatAndSortPets } from '../../utils/petUtils';
+import {
+    DIRECTION_LABELS,
+    extractUnitList,
+    findTransfersById,
+    groupUnitsIntoTransfers,
+    getStage,
+    getTransferRoute,
+    getUnitDirection,
+    normalizeTransferId,
+} from '../../utils/transferUtils';
 
 const BatchPrintTransfer = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    // This page is only reachable via the Production Transfer (Transfer Execution)
-    // page, which passes navigation state. Direct URL access has no state and is
-    // redirected back to the transfer list.
-    const cameFromTransferList = Boolean(location.state && location.state.fromTransferList);
+    const [searchParams] = useSearchParams();
+    // The page can be opened from the Production Transfer list (navigation
+    // state), or directly: use the Transfer ID finder to load a transfer.
     const transferState = location.state || {};
-    const selectedScanValues = Array.isArray(transferState.selectedScanValues) ? transferState.selectedScanValues : [];
-    const hasLockedSelection = selectedScanValues.length > 0;
-    const targetStage = transferState.targetStage || STAGING_WAREHOUSE_STAGE;
-    const targetLabel = transferState.targetLabel || 'Staging Warehouse';
-    const sourceLabel = transferState.sourceLabel || 'Production';
+    const initialLocked = Array.isArray(transferState.selectedScanValues) ? transferState.selectedScanValues : [];
+    const defaultRoute = {
+        targetStage: transferState.targetStage || STAGING_WAREHOUSE_STAGE,
+        targetLabel: transferState.targetLabel || 'Staging Warehouse',
+        sourceLabel: transferState.sourceLabel || 'Production',
+    };
+    const [route, setRoute] = useState(defaultRoute);
+    const { targetStage, targetLabel, sourceLabel } = route;
+    // Pallets locked to the loaded transfer (barcodes/RFIDs from the list, or unit ids from the finder)
+    const [lockedValues, setLockedValues] = useState(initialLocked);
+    const hasLockedSelection = lockedValues.length > 0;
     const sourceSupervisorLabel = `${sourceLabel} Supervisor`;
     const targetSupervisorLabel = `${targetLabel} Supervisor`;
+
+    // Transfer ID finder
+    const [finderInput, setFinderInput] = useState(searchParams.get('transfer_id') || '');
+    const [finding, setFinding] = useState(false);
+    const [finderError, setFinderError] = useState('');
+    const [foundTransfer, setFoundTransfer] = useState(null); // { transferId, dateKey, productName, petName }
+    const [finderMatches, setFinderMatches] = useState([]);
+    const searchSeq = useRef(0);
 
     const printRef = useRef();
     const today = new Date().toISOString().split('T')[0];
@@ -116,6 +139,7 @@ const BatchPrintTransfer = () => {
     };
 
     const handleSearch = async ({ preserveCompletion = false } = {}) => {
+        const seq = ++searchSeq.current;
         setLoading(true);
         try {
             const response = await inventoryApi.getBulkBarcodes();
@@ -124,9 +148,9 @@ const BatchPrintTransfer = () => {
 
             const norm = (value) => String(value || '').trim().toLowerCase();
             const scanValue = (unit) => String(unit.current_barcode || unit.barcode || unit.rfid_number || unit.id || unit.internal_id || '');
-            const selectedSet = new Set(selectedScanValues.map(String));
+            const selectedSet = new Set(lockedValues.map(String));
             const filtered = list.filter((unit) => {
-                if (selectedSet.size > 0) return selectedSet.has(scanValue(unit));
+                if (selectedSet.size > 0) return selectedSet.has(scanValue(unit)) || selectedSet.has(String(unit.id ?? ''));
 
                 const created = unit.created_at || unit.created;
                 const dateKey = created ? new Date(created).toISOString().split('T')[0] : 'unknown';
@@ -140,6 +164,7 @@ const BatchPrintTransfer = () => {
                 return true;
             });
 
+            if (seq !== searchSeq.current) return; // a newer search/finder result superseded this one
             setBarcodes(filtered);
             if (!preserveCompletion) {
                 setCompleted(false);
@@ -147,11 +172,89 @@ const BatchPrintTransfer = () => {
             }
         } catch (error) {
             console.error('Failed to fetch barcodes:', error);
-            setBarcodes([]);
+            if (seq === searchSeq.current) setBarcodes([]);
         } finally {
-            setLoading(false);
+            if (seq === searchSeq.current) setLoading(false);
         }
     };
+
+    // ----- Transfer ID finder -----
+    const applyTransfer = (group) => {
+        searchSeq.current += 1; // drop any in-flight search
+        const lock = group.units
+            .map((u) => String(u.id ?? u.internal_id ?? u.current_barcode ?? u.barcode ?? u.rfid_number ?? ''))
+            .filter(Boolean);
+        setLockedValues(lock);
+        setRoute(getTransferRoute(group.units));
+        setFoundTransfer({
+            transferId: group.transferId,
+            dateKey: group.dateKey,
+            productName: group.productName,
+            petName: group.petName,
+        });
+        setFilters((f) => ({
+            ...f,
+            startDate: group.dateKey !== 'unknown' ? group.dateKey : f.startDate,
+            endDate: group.dateKey !== 'unknown' ? group.dateKey : f.endDate,
+            productType: group.productName,
+            petName: group.petName,
+            shift: '',
+        }));
+        setBarcodes(group.units);
+        setFinderMatches([]);
+        setFinderError('');
+        setCompleted(false);
+        setCompleteError('');
+        setLoading(false);
+        setActiveTab('form');
+    };
+
+    const handleFindTransfer = async (value = finderInput) => {
+        const wanted = normalizeTransferId(value);
+        if (!wanted) {
+            setFinderError('Enter a Transfer ID, for example TR260908-RUSH-P02.');
+            return;
+        }
+        setFinding(true);
+        setFinderError('');
+        setFinderMatches([]);
+        try {
+            const response = await inventoryApi.getBulkBarcodes();
+            const matches = findTransfersById(extractUnitList(response), wanted);
+            if (matches.length === 0) {
+                setFinderError(`No transfer found with ID "${String(value).trim()}". Check the ID and try again.`);
+            } else if (matches.length === 1) {
+                applyTransfer(matches[0]);
+            } else {
+                setFinderMatches(matches);
+            }
+        } catch (error) {
+            console.error('Failed to find transfer:', error);
+            setFinderError('Could not search for the transfer. Please try again.');
+        } finally {
+            setFinding(false);
+        }
+    };
+
+    const handleClearTransfer = () => {
+        searchSeq.current += 1;
+        setFoundTransfer(null);
+        setFinderMatches([]);
+        setFinderError('');
+        setFinderInput('');
+        setLockedValues([]);
+        setRoute(defaultRoute);
+        setBarcodes([]);
+        setCompleted(false);
+        setCompleteError('');
+    };
+
+    // Open directly from a link such as ?transfer_id=TR260908-RUSH-P02
+    useEffect(() => {
+        const idFromUrl = searchParams.get('transfer_id');
+        if (idFromUrl) handleFindTransfer(idFromUrl);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Auto-load data when filters change
     useEffect(() => {
@@ -366,10 +469,29 @@ const BatchPrintTransfer = () => {
         ? new Date(filters.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : `${new Date(filters.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} - ${new Date(filters.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
 
-    // Block direct URL access — must come from the Production Transfer page.
-    if (!cameFromTransferList) {
-        return <Navigate to="/post-production/transfer-execution" replace />;
-    }
+    // Transfer ID(s) of the pallets on the form, printed so the transfer can be looked up later.
+    const formTransferId = useMemo(() => {
+        const ids = groupUnitsIntoTransfers(barcodes).map((g) => g.transferId);
+        return [...new Set(ids)].join(', ');
+    }, [barcodes]);
+
+    // Details of the loaded transfer (live: updates after the transfer completes)
+    const stageBreakdown = useMemo(() => {
+        const counts = {};
+        barcodes.forEach((b) => {
+            const stage = getStage(b) || 'UNKNOWN';
+            counts[stage] = (counts[stage] || 0) + 1;
+        });
+        return counts;
+    }, [barcodes]);
+    const directionBreakdown = useMemo(() => {
+        const counts = {};
+        barcodes.forEach((b) => {
+            const d = getUnitDirection(b);
+            counts[d] = (counts[d] || 0) + 1;
+        });
+        return counts;
+    }, [barcodes]);
 
     return (
         <div>
@@ -427,10 +549,98 @@ const BatchPrintTransfer = () => {
 
                 {activeTab === 'form' && (
                 <>
-                {hasLockedSelection && (
+                {/* Transfer ID finder */}
+                <div className="card mb-3 border-0 shadow-sm">
+                    <div className="card-body">
+                        <label className="form-label fw-semibold d-flex align-items-center gap-2 mb-2">
+                            <Hash size={16} className="text-primary" /> Find Transfer by ID
+                        </label>
+                        <form
+                            className="d-flex flex-wrap gap-2"
+                            onSubmit={(e) => { e.preventDefault(); handleFindTransfer(); }}
+                        >
+                            <div className="input-group" style={{ maxWidth: 420 }}>
+                                <span className="input-group-text bg-light"><Search size={15} className="text-muted" /></span>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    placeholder="Transfer ID, e.g. TR260908-RUSH-P02"
+                                    value={finderInput}
+                                    onChange={(e) => setFinderInput(e.target.value)}
+                                />
+                            </div>
+                            <button type="submit" className="btn btn-primary d-flex align-items-center gap-2" disabled={finding}>
+                                {finding ? <Loader2 size={16} className="spinning" /> : <Search size={16} />} Find Transfer
+                            </button>
+                            {(foundTransfer || finderInput) && (
+                                <button type="button" className="btn btn-outline-secondary d-flex align-items-center gap-2" onClick={handleClearTransfer}>
+                                    <X size={16} /> Clear
+                                </button>
+                            )}
+                        </form>
+                        {finderError && <div className="alert alert-warning py-2 px-3 mt-3 mb-0 fs-13">{finderError}</div>}
+                        {finderMatches.length > 1 && (
+                            <div className="mt-3">
+                                <p className="fs-13 text-muted mb-2">
+                                    {finderMatches.length} transfers share this ID. Choose the one you want to load:
+                                </p>
+                                <div className="list-group">
+                                    {finderMatches.map((m) => (
+                                        <button
+                                            type="button"
+                                            key={m.key}
+                                            className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                                            onClick={() => applyTransfer(m)}
+                                        >
+                                            <span>{m.productName} · {m.petName} · {m.dateKey}</span>
+                                            <span className="badge bg-soft-primary text-primary">{m.totalPallets} pallets</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Loaded transfer details */}
+                {foundTransfer && (
+                    <div className="card mb-3 border-0 shadow-sm">
+                        <div className="card-header bg-transparent d-flex align-items-center justify-content-between py-2">
+                            <span className="fw-semibold d-flex align-items-center gap-2">
+                                <Hash size={16} className="text-primary" /> Transfer {foundTransfer.transferId}
+                            </span>
+                            <span className="badge bg-soft-primary text-primary">{sourceLabel} → {targetLabel}</span>
+                        </div>
+                        <div className="card-body">
+                            <div className="row g-3">
+                                <div className="col-md-3"><small className="text-muted d-block">Product</small><strong>{foundTransfer.productName}</strong></div>
+                                <div className="col-md-2"><small className="text-muted d-block">PET Line</small><strong>{foundTransfer.petName}</strong></div>
+                                <div className="col-md-2">
+                                    <small className="text-muted d-block">Production Date</small>
+                                    <strong>{foundTransfer.dateKey !== 'unknown' ? new Date(foundTransfer.dateKey).toLocaleDateString('en-GB') : '—'}</strong>
+                                </div>
+                                <div className="col-md-2"><small className="text-muted d-block">Total Pallets</small><strong>{totalPallets.toLocaleString()}</strong></div>
+                                <div className="col-md-3"><small className="text-muted d-block">Total Packs</small><strong>{totalPacks.toLocaleString()}</strong></div>
+                                <div className="col-12">
+                                    <small className="text-muted d-block mb-1">Current status of pallets</small>
+                                    <div className="d-flex flex-wrap gap-2">
+                                        {Object.entries(directionBreakdown).map(([dir, n]) => (
+                                            <span key={dir} className="badge bg-light text-dark border">{DIRECTION_LABELS[dir]}: {n}</span>
+                                        ))}
+                                        {Object.entries(stageBreakdown).map(([stage, n]) => (
+                                            <span key={stage} className="badge bg-soft-primary text-primary">{stage}: {n}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {hasLockedSelection && !foundTransfer && (
                     <div className="alert alert-primary d-flex align-items-center gap-2 py-2 px-3 mb-3">
                         <CheckCircle2 size={17} />
-                        <span><strong>{selectedScanValues.length} selected pallet{selectedScanValues.length === 1 ? '' : 's'}</strong> loaded from the transfer card.</span>
+                        <span><strong>{lockedValues.length} selected pallet{lockedValues.length === 1 ? '' : 's'}</strong> loaded from the transfer card.</span>
                     </div>
                 )}
                 <div className="card">
@@ -602,7 +812,7 @@ const BatchPrintTransfer = () => {
                             )}
                             {completed && (
                                 <div className="alert alert-success py-2 px-3 mt-3 mb-0 fs-13">
-                                    Transfer <strong>{documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from {sourceLabel} to {targetLabel}.
+                                    Transfer <strong>{formTransferId || documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from {sourceLabel} to {targetLabel}. Search this Transfer ID on the Production Transfer page to view its details later.
                                     {transferSummary.alreadyThere > 0 && (
                                         <> ({transferSummary.alreadyThere} pallet(s) were already in the {targetLabel} and were skipped.)</>
                                     )}
@@ -793,6 +1003,9 @@ const BatchPrintTransfer = () => {
                             <div className="header-center">
                                 <h4 className="report-title" style={{ fontSize: '14px' }}>Transfer Form from {sourceLabel} to {targetLabel}</h4>
                                 <span className="doc-ref" style={{ fontSize: '13px', fontWeight: 'bold' }}>{documentCode}</span>
+                                {formTransferId && (
+                                    <span className="doc-ref d-block" style={{ fontSize: '11px' }}>Transfer ID: {formTransferId}</span>
+                                )}
                             </div>
                             <div className="header-right">
                                 <div className="header-info">
@@ -918,7 +1131,7 @@ const BatchPrintTransfer = () => {
                     <div className="text-muted mb-2">
                         <Search size={48} strokeWidth={1} />
                     </div>
-                    <p className="text-muted">Adjust filters above to load pallets for the transfer form.</p>
+                    <p className="text-muted">Find a transfer by its ID, or adjust the filters above, to load pallets for the transfer form.</p>
                 </div>
             )}
         </div>

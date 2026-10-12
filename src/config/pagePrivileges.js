@@ -62,6 +62,7 @@ export const PAGE_PRIVILEGES = [
     { key: 'post.product-analysis', label: 'Product Analysis', section: 'Post Production Analytics', mode: 'post-production', paths: [exact('/post-production/analytics/product-analysis')] },
     { key: 'post.pet-performance', label: 'PET Performance', section: 'Post Production Analytics', mode: 'post-production', paths: [exact('/post-production/analytics/pet-performance')] },
     { key: 'post.trends', label: 'Trend Analysis', section: 'Post Production Analytics', mode: 'post-production', paths: [exact('/post-production/analytics/trends')] },
+    { key: 'post.transfer-analytics', label: 'Transfer Analytics', section: 'Post Production Analytics', mode: 'post-production', paths: [exact('/post-production/analytics/transfers')] },
     { key: 'post.live-dashboard', label: 'Live Dashboard', section: 'Post Production Analytics', mode: 'post-production', paths: [exact('/post-production/analytics/live-dashboard')] },
     { key: 'post.dispatch', label: 'Loading and Dispatch', section: 'Post Production Logistics', mode: 'post-production', paths: [exact('/post-production/logistics/dispatch')] },
     { key: 'post.vehicle-dispatch', label: 'Vehicle Dispatch', section: 'Post Production Logistics', mode: 'post-production', paths: [exact('/post-production/analytics/vehicle-dispatch')] },

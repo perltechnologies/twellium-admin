@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3, X, CheckCircle2 } from 'lucide-react';
+import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3, X, CheckCircle2, Eye } from 'lucide-react';
 import { inventoryApi, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import { buildTransferId, findTransfersById, groupUnitsIntoTransfers, normalizeTransferId } from '../../utils/transferUtils';
+import TransferDetailModal from '../../components/post-production/TransferDetailModal';
 import './TransferExecution.css';
 
 /**
@@ -52,18 +54,6 @@ const WAREHOUSE_TABS = [
     },
 ];
 
-// Build a stable, human-readable Transfer ID from date + product + pet.
-// Mirrors the PDyymmddHHMM document-code style used on the transfer form.
-const buildTransferId = (dateKey, productName, petName) => {
-    const d = dateKey && dateKey !== 'unknown' ? new Date(dateKey) : null;
-    const datePart = d
-        ? `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-        : '000000';
-    const petPart = (String(petName).match(/\d+/)?.[0] || '0').padStart(2, '0');
-    const prodPart = String(productName).replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'PROD';
-    return `TR${datePart}-${prodPart}-P${petPart}`;
-};
-
 const TransferExecution = () => {
     const navigate = useNavigate();
 
@@ -71,6 +61,12 @@ const TransferExecution = () => {
     const [units, setUnits] = useState([]);
     const [activeTab, setActiveTab] = useState('transfer');
     const [lastUpdated, setLastUpdated] = useState(null);
+
+    // Look up any transfer (including completed ones) by Transfer ID
+    const [lookupInput, setLookupInput] = useState('');
+    const [lookupError, setLookupError] = useState('');
+    const [lookupMatches, setLookupMatches] = useState([]);
+    const [lookupDetail, setLookupDetail] = useState(null);
     const [selectionGroup, setSelectionGroup] = useState(null);
     const [selectedUnitKeys, setSelectedUnitKeys] = useState(() => new Set());
     const [selectedGroupKeys, setSelectedGroupKeys] = useState(() => new Set());
@@ -205,6 +201,45 @@ const TransferExecution = () => {
         setFilters((f) => ({ ...f, startDate: '', endDate: '' }));
     };
 
+    // Full transfer (pallets in every stage) for a card, so the details reflect the whole transfer.
+    const allTransfersByKey = useMemo(() => {
+        const map = {};
+        groupUnitsIntoTransfers(units).forEach((g) => { map[g.key] = g; });
+        return map;
+    }, [units]);
+
+    const openTransferDetails = (card) => {
+        const full = allTransfersByKey[card.key] || card;
+        setLookupDetail({ ...full, productionDate: full.dateKey });
+    };
+
+    const handleLookup = (e) => {
+        if (e) e.preventDefault();
+        setLookupError('');
+        setLookupMatches([]);
+        const wanted = normalizeTransferId(lookupInput);
+        if (!wanted) {
+            setLookupError('Enter a Transfer ID, for example TR260908-RUSH-P02.');
+            return;
+        }
+        if (/^PD\d{6,}$/.test(wanted)) {
+            setLookupError('PD codes are form document numbers and are not stored, so they cannot be searched. Use the Transfer ID (TR…) shown on the transfer form instead.');
+            return;
+        }
+        if (loading && units.length === 0) {
+            setLookupError('Transfers are still loading. Try again in a moment.');
+            return;
+        }
+        const matches = findTransfersById(units, wanted).map((g) => ({ ...g, productionDate: g.dateKey }));
+        if (matches.length === 0) {
+            setLookupError(`No transfer found with ID "${lookupInput.trim()}".`);
+        } else if (matches.length === 1) {
+            setLookupDetail(matches[0]);
+        } else {
+            setLookupMatches(matches);
+        }
+    };
+
     const formatDate = (dateKey) =>
         dateKey && dateKey !== 'unknown'
             ? new Date(dateKey).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -336,6 +371,68 @@ const TransferExecution = () => {
                     </button>
                 </div>
             </section>
+
+            {/* Transfer lookup: searches every stage, including completed transfers */}
+            <div className="card mb-3">
+                <div className="card-body py-3">
+                    <form className="d-flex flex-wrap align-items-center gap-2" onSubmit={handleLookup}>
+                        <span className="fw-semibold d-flex align-items-center gap-2 me-2">
+                            <Hash size={16} className="text-primary" /> Find a transfer
+                        </span>
+                        <div className="input-group input-group-sm" style={{ maxWidth: 380 }}>
+                            <span className="input-group-text bg-light"><Search size={14} className="text-muted" /></span>
+                            <input
+                                type="text"
+                                className="form-control"
+                                placeholder="Transfer ID, e.g. TR260908-RUSH-P02"
+                                aria-label="Transfer ID"
+                                value={lookupInput}
+                                onChange={(e) => setLookupInput(e.target.value)}
+                            />
+                        </div>
+                        <button type="submit" className="btn btn-primary btn-sm d-flex align-items-center gap-2">
+                            <Search size={14} /> View details
+                        </button>
+                        {(lookupInput || lookupError || lookupMatches.length > 0) && (
+                            <button
+                                type="button"
+                                className="btn btn-outline-secondary btn-sm"
+                                onClick={() => { setLookupInput(''); setLookupError(''); setLookupMatches([]); }}
+                            >
+                                <X size={14} /> Clear
+                            </button>
+                        )}
+                        <small className="text-muted">Searches pending and completed transfers in every warehouse.</small>
+                    </form>
+                    {lookupError && <div className="alert alert-warning py-2 px-3 mt-3 mb-0 fs-13">{lookupError}</div>}
+                    {lookupMatches.length > 1 && (
+                        <div className="mt-3">
+                            <p className="fs-13 text-muted mb-2">{lookupMatches.length} transfers share this ID. Choose one:</p>
+                            <div className="list-group">
+                                {lookupMatches.map((m) => (
+                                    <button
+                                        type="button"
+                                        key={m.key}
+                                        className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                                        onClick={() => { setLookupDetail(m); setLookupMatches([]); }}
+                                    >
+                                        <span>{m.productName} · {m.petName} · {m.dateKey}</span>
+                                        <span className="badge bg-soft-primary text-primary">{m.totalPallets} pallets</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {lookupDetail && (
+                <TransferDetailModal
+                    transfer={lookupDetail}
+                    onClose={() => setLookupDetail(null)}
+                    onOpenForm={() => navigate(`/post-production/batch-print-transfer?transfer_id=${encodeURIComponent(lookupDetail.transferId)}`)}
+                />
+            )}
 
             <div className="warehouse-tabs mb-3" role="tablist" aria-label="Warehouse views">
                 {WAREHOUSE_TABS.map((tab) => {
@@ -628,6 +725,16 @@ const TransferExecution = () => {
                                             <span className="badge bg-primary fs-13">{t.totalPallets}</span>
                                         </div>
                                     </div>
+                                    {activeTab !== 'transfer' && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-outline-primary w-100 mt-3 d-flex align-items-center justify-content-center gap-2"
+                                            onClick={(event) => { event.stopPropagation(); openTransferDetails(t); }}
+                                            onKeyDown={(event) => event.stopPropagation()}
+                                        >
+                                            <Eye size={14} /> View details
+                                        </button>
+                                    )}
                                     <div className="transfer-card-footer">
                                         <span>{canSelectForTransfer ? `Select pallets for ${selectionTarget.label}` : 'Inventory group'}</span>
                                         {canSelectForTransfer && <ArrowRight size={15} />}
