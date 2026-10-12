@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
 import { inventoryApi } from '../../api/inventory';
+import { useClearPageFilters } from '../../utils/useClearPageFilters';
 import './css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'productionReportForm_filters';
@@ -64,6 +65,7 @@ const getStoredFilters = () => {
 };
 
 const ProductionReportForm = () => {
+    useClearPageFilters(STORAGE_KEY);
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState(null);

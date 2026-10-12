@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Printer, Loader2, Calendar } from 'lucide-react';
 import { productionApi } from '../../api/production';
+import { useClearPageFilters } from '../../utils/useClearPageFilters';
 import '../sign-off-forms/css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'batchReportV2_filters';
@@ -22,6 +23,7 @@ const unwrapReportData = (response) => {
 };
 
 const BatchReportV2 = () => {
+    useClearPageFilters(STORAGE_KEY);
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);

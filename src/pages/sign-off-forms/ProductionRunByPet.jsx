@@ -5,6 +5,7 @@ import { workersApi } from '../../api/workers';
 import { inventoryApi } from '../../api/inventory';
 import './css/Sign-Off-Styles.css';
 import { aggregateDowntimeCategories } from '../../utils/downtime';
+import { useClearPageFilters } from '../../utils/useClearPageFilters';
 
 const STORAGE_KEY = 'productionRunByPet_filters';
 
@@ -63,6 +64,7 @@ const getStoredFilters = () => {
 };
 
 const ProductionRunByPet = () => {
+    useClearPageFilters(STORAGE_KEY);
     const printRef = useRef();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState(null);

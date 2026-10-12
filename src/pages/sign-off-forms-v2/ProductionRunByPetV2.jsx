@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, Loader2, Printer } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { productionApi } from '../../api/production';
+import { useClearPageFilters } from '../../utils/useClearPageFilters';
 import '../sign-off-forms/css/Sign-Off-Styles.css';
 
 const STORAGE_KEY = 'productionRunByPetV2_filters';
@@ -146,6 +147,7 @@ const PersistedField = ({ value, field, reportId, type = 'number', unit, onSaved
 };
 
 const ProductionRunByPetV2 = () => {
+    useClearPageFilters(STORAGE_KEY);
     const stored = useMemo(() => {
         try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
     }, []);
