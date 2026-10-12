@@ -325,16 +325,6 @@ const ProductionList = () => {
                 });
             }
 
-            // Fetch pets for dropdown if not already loaded
-            if (pets.length === 0) {
-                productionApi.getPets({ page_size: 100 })
-                    .then(petsRes => {
-                        const petsData = Array.isArray(petsRes.data) ? petsRes.data : petsRes.data?.results || [];
-                        setPets((Array.isArray(petsData) ? petsData : []).filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
-                    })
-                    .catch(err => console.error('Failed to load pets:', err));
-            }
-
         } catch (error) {
             console.error("Failed to fetch reports", error);
         } finally {
@@ -342,6 +332,21 @@ const ProductionList = () => {
             setRefreshing(false);
         }
     }, [filters, globalFilters.start_date, globalFilters.end_date, globalFilters.log_date]);
+
+    // Load PET lines for the dropdown (independent of the reports request)
+    useEffect(() => {
+        let cancelled = false;
+        productionApi.getPets({ page_size: 1000 })
+            .then(res => {
+                const raw = res?.data?.data?.data ?? res?.data?.data ?? res?.data ?? [];
+                const list = Array.isArray(raw) ? raw : (raw?.results || []);
+                if (!cancelled) {
+                    setPets(list.filter(pet => !pet.pet_name?.toLowerCase().includes('can')));
+                }
+            })
+            .catch(err => console.error('Failed to load pets:', err));
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         // Debounce search — only fetch when filters explicitly change
