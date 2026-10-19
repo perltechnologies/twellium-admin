@@ -2,8 +2,12 @@ import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, Printer, X, CheckCircle2, Clock3 } from 'lucide-react';
 import {
+    compareBySequence,
     getBarcode,
+    getDocumentCode,
+    getDocumentCodes,
     getPacks,
+    getSequence,
     getStage,
     getUpdatedAt,
     toDateKey,
@@ -19,7 +23,9 @@ const formatDate = (key) => (key && key !== 'unknown' ? new Date(key).toLocaleDa
  *             direction?, directionLabel?, directionColor?, transferDate? }
  */
 const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
-    const units = useMemo(() => transfer?.units || [], [transfer]);
+    const units = useMemo(() => [...(transfer?.units || [])].sort(compareBySequence), [transfer]);
+
+    const pdCodes = useMemo(() => getDocumentCodes(units), [units]);
 
     const summary = useMemo(() => {
         const stageCounts = {};
@@ -81,6 +87,14 @@ const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
                                     <strong>{formatDate(transfer.transferDate || summary.lastMoved)}</strong>
                                 </div>
                                 <div className="col-sm-6 col-md-4">
+                                    <small className="text-muted d-block">PD code{pdCodes.length > 1 ? 's' : ''}</small>
+                                    {pdCodes.length === 0 ? <strong>—</strong> : (
+                                        <div className="d-flex flex-wrap gap-1">
+                                            {pdCodes.map((code) => <code key={code}>{code}</code>)}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="col-sm-6 col-md-4">
                                     <small className="text-muted d-block">Pallets / Packs</small>
                                     <strong>{total.toLocaleString()} / {summary.packs.toLocaleString()}</strong>
                                 </div>
@@ -100,7 +114,9 @@ const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
                                         <tr>
                                             <th>#</th>
                                             <th>Barcode</th>
+                                            <th className="text-center">Sequence</th>
                                             <th>Stage</th>
+                                            <th>PD code</th>
                                             <th className="text-end">Packs</th>
                                             <th>Updated</th>
                                         </tr>
@@ -118,7 +134,9 @@ const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
                                                             </Link>
                                                         ) : '—'}
                                                     </td>
+                                                    <td className="text-center fw-semibold">{getSequence(u) || '—'}</td>
                                                     <td>{getStage(u) || '—'}</td>
+                                                    <td>{getDocumentCode(u) ? <code>{getDocumentCode(u)}</code> : '—'}</td>
                                                     <td className="text-end">{getPacks(u).toLocaleString()}</td>
                                                     <td>{getUpdatedAt(u) ? new Date(getUpdatedAt(u)).toLocaleString() : '—'}</td>
                                                 </tr>

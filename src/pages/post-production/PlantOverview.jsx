@@ -119,8 +119,8 @@ const PlantOverview = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [selectedDate, setSelectedDate] = useState(() => {
         const d = new Date();
-        d.setDate(d.getDate() - 1);
-        return d.toISOString().split('T')[0];
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     });
     const [selectedShift, setSelectedShift] = useState('');
     const [shifts, setShifts] = useState([]);

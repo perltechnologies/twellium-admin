@@ -24,6 +24,7 @@ import { toast } from 'react-hot-toast';
 import { inventoryApi, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { formatAndSortPets } from '../../utils/petUtils';
+import { compareBySequence, getSequence } from '../../utils/transferUtils';
 import { Pagination } from '../../components/ui/Pagination';
 import './StagingWarehouse.css';
 
@@ -209,6 +210,7 @@ const StagingWarehouse = () => {
             map[key].totalPacks += getQuantity(u);
             map[key].units.push(u);
         });
+        Object.values(map).forEach((g) => g.units.sort(compareBySequence));
         return Object.values(map).sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1));
     }, [filteredUnits]);
 
@@ -578,6 +580,7 @@ const StagingWarehouse = () => {
                                         <th>#</th>
                                         <th>Barcode</th>
                                         <th>RFID</th>
+                                        <th className="text-center">Sequence</th>
                                         <th className="text-end">Packs</th>
                                         <th>Added / Updated</th>
                                     </tr>
@@ -622,6 +625,13 @@ const StagingWarehouse = () => {
                                                     {u.rfid_number || '—'}
                                                 </td>
                                                 <td
+                                                    className="text-center fw-semibold"
+                                                    onClick={() => handleRowClick(barcode)}
+                                                    style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
+                                                >
+                                                    {getSequence(u) || '—'}
+                                                </td>
+                                                <td
                                                     className="text-end"
                                                     onClick={() => handleRowClick(barcode)}
                                                     style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
@@ -640,7 +650,7 @@ const StagingWarehouse = () => {
                                 </tbody>
                                 <tfoot>
                                     <tr className="fw-bold border-top">
-                                        <td colSpan={4}>TOTAL</td>
+                                        <td colSpan={5}>TOTAL</td>
                                         <td className="text-end">{selectedGroup.totalPacks.toLocaleString()}</td>
                                         <td>{selectedGroup.totalPallets.toLocaleString()} pallets</td>
                                     </tr>

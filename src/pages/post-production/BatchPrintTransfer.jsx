@@ -1,20 +1,39 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Printer, Loader2, Calendar, Search, CheckCircle2, UserCheck, ArrowLeft, FileText, Warehouse, RefreshCw, Package, Layers, X, Hash } from 'lucide-react';
-import { inventoryApi, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import { inventoryApi, loadAllHandlingUnits, SAVE_TRANSFER_DOCUMENT, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 import { productionApi } from '../../api/production';
 import { usersApi } from '../../api/users';
 import { formatAndSortPets } from '../../utils/petUtils';
+import { clearUnitsCache, mergeUnitsIntoCache } from '../../utils/unitsCache';
 import {
     DIRECTION_LABELS,
-    extractUnitList,
+    compareBySequence,
     findTransfersById,
+    getDocumentCode,
+    getSequence,
+    getStampTypes,
     groupUnitsIntoTransfers,
     getStage,
     getTransferRoute,
     getUnitDirection,
     normalizeTransferId,
 } from '../../utils/transferUtils';
+
+// Pallets are sent to the scan endpoint in chunks so one huge request cannot time out.
+const SCAN_CHUNK_SIZE = 100;
+
+// Stable identity of a pallet: its id survives a stage change, a barcode may not.
+const unitId = (u) => String(u.id ?? u.internal_id ?? u.current_barcode ?? u.barcode ?? u.rfid_number ?? '');
+// Document number printed on the form and sent with the transfer: PD + yyMMddHHmmss.
+// `withSuffix` adds two random digits, used when the server reports the code is taken.
+const buildDocumentCode = (withSuffix = false) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${String(now.getFullYear()).slice(-2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    return `PD${stamp}${withSuffix ? pad(Math.floor(Math.random() * 100)) : ''}`;
+};
+const scanValueOf = (u) => u.current_barcode || u.barcode || u.rfid_number || '';
 
 const BatchPrintTransfer = () => {
     const location = useLocation();
@@ -23,7 +42,9 @@ const BatchPrintTransfer = () => {
     // The page can be opened from the Production Transfer list (navigation
     // state), or directly: use the Transfer ID finder to load a transfer.
     const transferState = location.state || {};
-    const initialLocked = Array.isArray(transferState.selectedScanValues) ? transferState.selectedScanValues : [];
+    const initialLocked = Array.isArray(transferState.selectedUnits) && transferState.selectedUnits.length > 0
+        ? transferState.selectedUnits.map(unitId).filter(Boolean)
+        : (Array.isArray(transferState.selectedScanValues) ? transferState.selectedScanValues : []);
     const defaultRoute = {
         targetStage: transferState.targetStage || STAGING_WAREHOUSE_STAGE,
         targetLabel: transferState.targetLabel || 'Staging Warehouse',
@@ -81,7 +102,10 @@ const BatchPrintTransfer = () => {
     const [completing, setCompleting] = useState(false);
     const [completed, setCompleted] = useState(false);
     const [completeError, setCompleteError] = useState('');
-    const [transferSummary, setTransferSummary] = useState({ moved: 0, alreadyThere: 0 });
+    const completedRef = useRef(false);
+    useEffect(() => { completedRef.current = completed; }, [completed]);
+    const [transferSummary, setTransferSummary] = useState({ moved: 0, alreadyThere: 0, documentNotSaved: false });
+    const [transferProgress, setTransferProgress] = useState(null); // { done, total, verifying }
 
     // ----- Tabs -----
     const [activeTab, setActiveTab] = useState('form'); // 'form' | 'warehouse'
@@ -99,10 +123,20 @@ const BatchPrintTransfer = () => {
         generateDocumentCode();
     }, []);
 
-    const generateDocumentCode = () => {
-        const now = new Date();
-        const code = `PD${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    // Leaving a completed transfer starts a new one, which needs its own document number.
+    const resetCompletion = () => {
+        if (completedRef.current) {
+            completedRef.current = false;
+            generateDocumentCode();
+        }
+        setCompleted(false);
+        setCompleteError('');
+    };
+
+    const generateDocumentCode = (withSuffix = false) => {
+        const code = buildDocumentCode(withSuffix);
         setDocumentCode(code);
+        return code;
     };
 
     const fetchDropdownData = async () => {
@@ -138,13 +172,33 @@ const BatchPrintTransfer = () => {
         }
     };
 
+    // Loads handling units page by page. With a locked selection it stops as soon as
+    // every locked pallet has been found, so it rarely needs the whole list.
+    const fetchUnitList = async (lockedList = [], isStale = () => false) => {
+        const wanted = new Set(lockedList.map(String));
+        const matched = new Set();
+        const collected = new Map();
+        await loadAllHandlingUnits({}, {
+            isCancelled: () => isStale() || (wanted.size > 0 && matched.size >= wanted.size),
+            onPage: (items) => items.forEach((unit) => {
+                collected.set(unitId(unit) || `row-${collected.size}`, unit);
+                if (wanted.size === 0) return;
+                const scan = String(scanValueOf(unit));
+                const id = String(unit.id ?? '');
+                if (wanted.has(scan)) matched.add(scan);
+                if (wanted.has(id)) matched.add(id);
+            }),
+        });
+        return Array.from(collected.values());
+    };
+
+    // Returns the filtered pallet list that is now on the form (or null if superseded / failed).
     const handleSearch = async ({ preserveCompletion = false } = {}) => {
         const seq = ++searchSeq.current;
         setLoading(true);
         try {
-            const response = await inventoryApi.getBulkBarcodes();
-            const data = response.data?.data?.data || response.data?.data || response.data?.results || [];
-            const list = Array.isArray(data) ? data : data.results || [];
+            const list = await fetchUnitList(lockedValues, () => seq !== searchSeq.current);
+            mergeUnitsIntoCache(list);
 
             const norm = (value) => String(value || '').trim().toLowerCase();
             const scanValue = (unit) => String(unit.current_barcode || unit.barcode || unit.rfid_number || unit.id || unit.internal_id || '');
@@ -164,15 +218,15 @@ const BatchPrintTransfer = () => {
                 return true;
             });
 
-            if (seq !== searchSeq.current) return; // a newer search/finder result superseded this one
+            if (seq !== searchSeq.current) return null; // a newer search/finder result superseded this one
             setBarcodes(filtered);
-            if (!preserveCompletion) {
-                setCompleted(false);
-                setCompleteError('');
-            }
+            if (!preserveCompletion) resetCompletion();
+            return filtered;
         } catch (error) {
             console.error('Failed to fetch barcodes:', error);
-            if (seq === searchSeq.current) setBarcodes([]);
+            // After a transfer, keep the form as it is rather than blanking it.
+            if (seq === searchSeq.current && !preserveCompletion) setBarcodes([]);
+            return null;
         } finally {
             if (seq === searchSeq.current) setLoading(false);
         }
@@ -203,8 +257,7 @@ const BatchPrintTransfer = () => {
         setBarcodes(group.units);
         setFinderMatches([]);
         setFinderError('');
-        setCompleted(false);
-        setCompleteError('');
+        resetCompletion();
         setLoading(false);
         setActiveTab('form');
     };
@@ -219,8 +272,7 @@ const BatchPrintTransfer = () => {
         setFinderError('');
         setFinderMatches([]);
         try {
-            const response = await inventoryApi.getBulkBarcodes();
-            const matches = findTransfersById(extractUnitList(response), wanted);
+            const matches = findTransfersById(await fetchUnitList(), wanted);
             if (matches.length === 0) {
                 setFinderError(`No transfer found with ID "${String(value).trim()}". Check the ID and try again.`);
             } else if (matches.length === 1) {
@@ -245,8 +297,7 @@ const BatchPrintTransfer = () => {
         setLockedValues([]);
         setRoute(defaultRoute);
         setBarcodes([]);
-        setCompleted(false);
-        setCompleteError('');
+        resetCompletion();
     };
 
     // Open directly from a link such as ?transfer_id=TR260908-RUSH-P02
@@ -301,104 +352,123 @@ const BatchPrintTransfer = () => {
             return;
         }
 
+        const TARGET_STAGE = targetStage;
+        // Pallets already in the target stage are a no-op on the backend, so only
+        // send the ones that still have to move.
+        const movable = barcodes.filter((b) => getStage(b) !== TARGET_STAGE);
+        const alreadyThere = barcodes.length - movable.length;
+        if (movable.length === 0) {
+            setCompleteError(
+                `All ${barcodes.length} loaded pallet(s) are already in the ${targetLabel} — nothing to transfer.`
+            );
+            return;
+        }
+
+        // scan_values are barcodes / RFID numbers, not the internal UUIDs.
+        const scanValues = [...new Set(movable.map(scanValueOf).filter(Boolean))];
+        const withoutBarcode = movable.filter((b) => !scanValueOf(b)).length;
+        if (scanValues.length === 0) {
+            setCompleteError('Could not resolve barcodes for the loaded pallets; cannot complete the transfer.');
+            return;
+        }
+
         setCompleting(true);
+        let requestSent = false;
+        let freshLoaded = false;
         try {
-            const TARGET_STAGE = targetStage;
-            const unitStage = (b) =>
-                String(b.stage || b.current_status || b.current_stage || '').toUpperCase();
-
-            // Only move pallets that are not already in the target stage. Sending
-            // Units already in staging are a no-op on the backend, which
-            // is why "completing" appeared to do nothing.
-            const movable = barcodes.filter((b) => unitStage(b) !== TARGET_STAGE);
-            const alreadyThere = barcodes.length - movable.length;
-
-            if (movable.length === 0) {
-                setCompleteError(
-                    `All ${barcodes.length} loaded pallet(s) are already in the ${targetLabel} — nothing to transfer.`
-                );
-                return;
-            }
-
-            // scan_values are barcodes / RFID numbers, not the internal UUIDs.
-            const scanValues = movable
-                .map((b) => b.current_barcode || b.barcode || b.rfid_number)
-                .filter(Boolean);
-
-            if (scanValues.length === 0) {
-                setCompleteError('Could not resolve barcodes for the loaded pallets; cannot complete the transfer.');
-                return;
-            }
-
-            const res = await inventoryApi.completeTransfer({
-                scan_values: scanValues,
-                target_stage: TARGET_STAGE,
-            });
-
-            // The scan endpoint response envelope varies. Normalise it.
-            const result = res?.data?.data ?? res?.data ?? {};
-            const results = Array.isArray(result.results)
-                ? result.results
-                : Array.isArray(result)
-                    ? result
-                    : [];
-
-            // A per-unit failure is flagged by success === false OR an error field.
-            const failed = results.filter((r) => r && (r.success === false || r.error));
-
-            if (result.success === false && failed.length === 0) {
-                setCompleteError(result.message || 'The transfer could not be completed. Please try again.');
-                return;
-            }
-
-            if (failed.length > 0) {
-                const firstError = failed.find((f) => f.error)?.error;
-                const movedCount = scanValues.length - failed.length;
-                setCompleteError(
-                    `${failed.length} of ${scanValues.length} pallet(s) could not be transferred${firstError ? `: ${firstError}` : ''}.` +
-                    (movedCount > 0 ? ` ${movedCount} moved successfully.` : '') +
-                    ' Please review and retry.'
-                );
-                // Still refresh so any successful moves drop out of the list.
-                await handleSearch({ preserveCompletion: true });
-                return;
-            }
-
-            // Verify the move actually took effect by reloading and checking that the
-            // transferred barcodes are no longer outside the target stage.
-            let verifiedMoved = scanValues.length;
-            try {
-                const verifyParams = {};
-                if (filters.startDate) verifyParams.start_date = filters.startDate;
-                if (filters.endDate) verifyParams.end_date = filters.endDate;
-                if (filters.productType) verifyParams.product_type = filters.productType;
-                if (filters.petName) verifyParams.pet_name = filters.petName;
-                const verifyRes = await inventoryApi.getBulkBarcodes(verifyParams);
-                const vData = verifyRes.data?.data?.data || verifyRes.data?.data || verifyRes.data?.results || [];
-                const vList = Array.isArray(vData) ? vData : vData.results || [];
-                const movedSet = new Set(scanValues);
-                const stillOutside = vList.filter(
-                    (b) =>
-                        movedSet.has(b.current_barcode || b.barcode || b.rfid_number) &&
-                        unitStage(b) !== TARGET_STAGE
-                );
-                verifiedMoved = scanValues.length - stillOutside.length;
-                if (verifiedMoved === 0) {
-                    setCompleteError(
-                        'The server accepted the request but no pallets changed stage. ' +
-                        `They may not be eligible for transfer to the ${targetLabel} from their current stage. ` +
-                        'Please check the pallet stages or contact an administrator.'
-                    );
-                    return;
+            let rejected = 0;
+            let firstError = '';
+            let activeDocumentCode = documentCode;
+            let documentSaving = SAVE_TRANSFER_DOCUMENT;
+            let documentSkipped = false;
+            for (let i = 0; i < scanValues.length; i += SCAN_CHUNK_SIZE) {
+                const chunk = scanValues.slice(i, i + SCAN_CHUNK_SIZE);
+                setTransferProgress({ done: i, total: scanValues.length, verifying: false });
+                requestSent = true;
+                try {
+                    const send = (code, withDocument = SAVE_TRANSFER_DOCUMENT) => inventoryApi.completeTransfer({
+                        scan_values: chunk,
+                        target_stage: TARGET_STAGE,
+                        extra: withDocument ? {
+                            document_code: code,
+                            transfer_id: formTransferId || undefined,
+                            source_supervisor: productionSupervisor,
+                            target_supervisor: warehouseSupervisor,
+                        } : {},
+                    });
+                    let res;
+                    try {
+                        res = await send(activeDocumentCode, documentSaving);
+                    } catch (sendError) {
+                        const status = sendError?.response?.status;
+                        if (documentSaving && status === 409 && i === 0) {
+                            // The server says this code belongs to another transfer. Take a
+                            // fresh code once; later chunks reuse it.
+                            activeDocumentCode = generateDocumentCode(true);
+                            res = await send(activeDocumentCode, true);
+                        } else if (documentSaving && status === 400) {
+                            // The backend may not accept the document fields yet. Never let that
+                            // block the transfer: resend without them and flag it.
+                            documentSaving = false;
+                            documentSkipped = true;
+                            res = await send(activeDocumentCode, false);
+                        } else {
+                            throw sendError;
+                        }
+                    }
+                    // The scan endpoint response envelope varies. Normalise it.
+                    const result = res?.data?.data ?? res?.data ?? {};
+                    const results = Array.isArray(result.results)
+                        ? result.results
+                        : Array.isArray(result) ? result : [];
+                    // A per-unit failure is flagged by success === false OR an error field.
+                    const failed = results.filter((r) => r && (r.success === false || r.error));
+                    if (result.success === false && failed.length === 0) {
+                        rejected += chunk.length;
+                        if (!firstError) firstError = result.message || 'The transfer was rejected.';
+                    } else {
+                        rejected += failed.length;
+                        if (!firstError) firstError = failed.find((f) => f.error)?.error || '';
+                    }
+                } catch (chunkError) {
+                    rejected += chunk.length;
+                    if (!firstError) {
+                        firstError = chunkError?.response?.data?.message || chunkError?.message || 'Request failed';
+                    }
                 }
-            } catch (verifyErr) {
-                // Verification is best-effort; if it fails we still trust the scan result.
-                console.warn('Transfer verification skipped:', verifyErr);
             }
 
-            setTransferSummary({ moved: verifiedMoved, alreadyThere });
-            setCompleted(true);
-            await handleSearch({ preserveCompletion: true });
+            // The reloaded list is the source of truth: count what really changed stage
+            // instead of trusting the scan response.
+            setTransferProgress({ done: scanValues.length, total: scanValues.length, verifying: true });
+            const fresh = await handleSearch({ preserveCompletion: true });
+            freshLoaded = fresh !== null;
+
+            const movableIds = new Set(movable.map(unitId));
+            const moved = fresh
+                ? fresh.filter((u) => movableIds.has(unitId(u)) && getStage(u) === TARGET_STAGE).length
+                : Math.max(0, scanValues.length - rejected);
+            const notMoved = movable.length - moved;
+
+            setTransferSummary({ moved, alreadyThere, documentNotSaved: documentSkipped });
+
+            if (notMoved === 0) {
+                setCompleted(true);
+                return;
+            }
+
+            const reason = firstError ? ` Reason: ${firstError}` : '';
+            const skipped = withoutBarcode > 0 ? ` ${withoutBarcode} had no barcode/RFID and were skipped.` : '';
+            if (moved === 0) {
+                setCompleteError(
+                    `No pallets changed stage. They may not be eligible for transfer to the ${targetLabel} from their current stage.${reason}${skipped}`
+                );
+            } else {
+                setCompleteError(
+                    `${moved} of ${movable.length} pallet(s) moved to the ${targetLabel}; ${notMoved} did not.${reason}${skipped}` +
+                    ' The list above is up to date. Click Complete Transfer again to retry the remaining pallets.'
+                );
+            }
         } catch (error) {
             console.error('Failed to complete transfer:', error);
             setCompleteError(
@@ -407,6 +477,10 @@ const BatchPrintTransfer = () => {
                 'Could not complete the transfer. Please try again or contact an administrator.'
             );
         } finally {
+            // If the list could not be refreshed after moving pallets, the shared cache is
+            // out of date; drop it so the transfer list reloads from the server.
+            if (requestSent && !freshLoaded) clearUnitsCache();
+            setTransferProgress(null);
             setCompleting(false);
         }
     };
@@ -468,6 +542,12 @@ const BatchPrintTransfer = () => {
     const displayDate = filters.startDate === filters.endDate
         ? new Date(filters.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : `${new Date(filters.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} - ${new Date(filters.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+
+    // Stamp type(s) on the form; blank until the API returns it.
+    const stampTypeLabel = useMemo(() => getStampTypes(barcodes).join(', '), [barcodes]);
+
+    // Same order as the selection modal: ascending by sequence.
+    const sortedBarcodes = useMemo(() => [...barcodes].sort(compareBySequence), [barcodes]);
 
     // Transfer ID(s) of the pallets on the form, printed so the transfer can be looked up later.
     const formTransferId = useMemo(() => {
@@ -798,7 +878,14 @@ const BatchPrintTransfer = () => {
                                         disabled={completing || completed}
                                     >
                                         {completing ? (
-                                            <><Loader2 size={16} className="spinning" /> Completing…</>
+                                            <>
+                                                <Loader2 size={16} className="spinning" />
+                                                {transferProgress?.verifying
+                                                    ? ' Verifying…'
+                                                    : transferProgress && transferProgress.total > SCAN_CHUNK_SIZE
+                                                        ? ` Transferring ${Math.min(transferProgress.done + SCAN_CHUNK_SIZE, transferProgress.total)} / ${transferProgress.total}…`
+                                                        : ' Completing…'}
+                                            </>
                                         ) : completed ? (
                                             <><CheckCircle2 size={16} /> Transfer Completed</>
                                         ) : (
@@ -815,6 +902,11 @@ const BatchPrintTransfer = () => {
                                     Transfer <strong>{formTransferId || documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from {sourceLabel} to {targetLabel}. Search this Transfer ID on the Production Transfer page to view its details later.
                                     {transferSummary.alreadyThere > 0 && (
                                         <> ({transferSummary.alreadyThere} pallet(s) were already in the {targetLabel} and were skipped.)</>
+                                    )}
+                                    {transferSummary.documentNotSaved && (
+                                        <div className="mt-1 text-warning-emphasis">
+                                            Note: the server did not accept the document number {documentCode}, so it was not saved. The transfer itself completed.
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -931,6 +1023,7 @@ const BatchPrintTransfer = () => {
                                                     <th>RFID</th>
                                                     <th>Product</th>
                                                     <th>PET Line</th>
+                                                    <th>PD Code</th>
                                                     <th className="text-end">Packs</th>
                                                     <th>Added / Updated</th>
                                                 </tr>
@@ -949,6 +1042,7 @@ const BatchPrintTransfer = () => {
                                                             <td>{u.rfid_number || '—'}</td>
                                                             <td>{whGetProduct(u)}</td>
                                                             <td>{whGetPet(u)}</td>
+                                                            <td>{getDocumentCode(u) ? <code>{getDocumentCode(u)}</code> : '—'}</td>
                                                             <td className="text-end">{whGetQty(u).toLocaleString()}</td>
                                                             <td>{whGetTime(u) ? new Date(whGetTime(u)).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                                                         </tr>
@@ -957,7 +1051,7 @@ const BatchPrintTransfer = () => {
                                             </tbody>
                                             <tfoot>
                                                 <tr className="fw-bold border-top">
-                                                    <td colSpan={5}>TOTAL</td>
+                                                    <td colSpan={6}>TOTAL</td>
                                                     <td className="text-end">{whTotalPacks.toLocaleString()}</td>
                                                     <td>{whUnits.length.toLocaleString()} pallets</td>
                                                 </tr>
@@ -1044,6 +1138,10 @@ const BatchPrintTransfer = () => {
                                     <td className="label-cell">Total Packs</td>
                                     <td className="input-cell numeric">{(totalPacks + (parseInt(singlePacks) || 0)).toLocaleString()}</td>
                                 </tr>
+                                <tr>
+                                    <td className="label-cell">Stamp Type</td>
+                                    <td className="input-cell" colSpan={3}>{stampTypeLabel}</td>
+                                </tr>
                             </tbody>
                         </table>
 
@@ -1062,7 +1160,7 @@ const BatchPrintTransfer = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {barcodes.map((barcode, idx) => (
+                                {sortedBarcodes.map((barcode, idx) => (
                                     <tr key={barcode.id || barcode.barcode || idx}>
                                         <td className="label-cell" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                                             {barcode.current_barcode || barcode.barcode || ''}
@@ -1070,7 +1168,7 @@ const BatchPrintTransfer = () => {
                                         <td className="input-cell" style={{ fontSize: '0.8rem' }}>
                                             {barcode.batch_number || barcode.batch || barcode.traceability || ''}
                                         </td>
-                                        <td className="input-cell numeric">{idx + 1}</td>
+                                        <td className="input-cell numeric">{getSequence(barcode) || idx + 1}</td>
                                         <td className="input-cell numeric">
                                             {barcode.quantity ?? barcode.packs_per_pallet ?? barcode.total_packs ?? barcode.packs ?? ''}
                                         </td>

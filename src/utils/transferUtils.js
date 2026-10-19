@@ -18,6 +18,43 @@ export const getStage = (u) => {
     const stage = u.current_status || u.current_stage || u.stage || '';
     return String(stage?.code || stage?.name || stage).trim().toUpperCase();
 };
+// PD code of the transfer document that moved a pallet into its current stage.
+// Returned by the backend once it stores it (see TRANSFER_DOCUMENT_API_SPEC.md).
+export const getDocumentCode = (u) => {
+    const code = u.document_code ?? u.transfer_document_code ?? u.transfer_document?.document_code ?? u.transfer_document;
+    return typeof code === 'string' || typeof code === 'number' ? String(code).trim() : '';
+};
+
+// Distinct PD codes across a set of pallets, in order of first appearance.
+export const getDocumentCodes = (units) => [...new Set((units || []).map(getDocumentCode).filter(Boolean))];
+
+// Stamp type of a pallet. Not returned by the API yet (see TRANSFER_DOCUMENT_API_SPEC.md);
+// the frontend will pick it up from `stamp_type` as soon as it is.
+export const getStampType = (u) => {
+    const stamp = u.stamp_type ?? u.stamp_type_name ?? u.stamp_type?.name ?? u.stamp?.type;
+    const value = typeof stamp === 'object' && stamp !== null ? (stamp.name ?? stamp.code) : stamp;
+    return value !== undefined && value !== null ? String(value).trim() : '';
+};
+
+export const getStampTypes = (units) => [...new Set((units || []).map(getStampType).filter(Boolean))];
+
+export const getSequence = (u) => {
+    const seq = u.pet_sequence ?? u.sequence ?? u.sequence_number;
+    return seq !== undefined && seq !== null && seq !== '' ? seq : '';
+};
+
+// Ascending by sequence within each PET line; pallets without a sequence go last.
+export const compareBySequence = (a, b) => {
+    const pet = String(getPetName(a)).localeCompare(String(getPetName(b)), undefined, { numeric: true, sensitivity: 'base' });
+    if (pet !== 0) return pet;
+    const na = parseInt(getSequence(a), 10);
+    const nb = parseInt(getSequence(b), 10);
+    const sa = Number.isNaN(na) ? Infinity : na;
+    const sb = Number.isNaN(nb) ? Infinity : nb;
+    if (sa === sb) return 0;
+    return sa < sb ? -1 : 1;
+};
+
 export const getPacks = (u) =>
     parseInt(u.quantity, 10) ||
     parseInt(u.packs_per_pallet, 10) ||

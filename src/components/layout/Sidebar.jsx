@@ -41,6 +41,7 @@ const navigation = [
                     submenu: [
                         { name: 'OEE Analytics', path: '/dashboard/analytics/oee-analytics' },
                         { name: 'Production Analytics', path: '/dashboard/analytics/production-analytics' },
+                        { name: 'Packs Analytics', path: '/dashboard/analytics/packs-analytics' },
                         { name: 'Material Analytics', path: '/dashboard/analytics/material-analytics' },
                         { name: 'Syrup Analytics', path: '/dashboard/analytics/syrup-analytics' },
                         { name: 'CO2 Analytics', path: '/dashboard/analytics/co2-analytics' },

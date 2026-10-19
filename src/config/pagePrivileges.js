@@ -17,6 +17,7 @@ export const PAGE_PRIVILEGES = [
     { key: 'pre.reports.production', label: 'Production Report Summary', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/reports/production')] },
     { key: 'pre.analytics.oee', label: 'OEE Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/oee-analytics')] },
     { key: 'pre.analytics.production', label: 'Production Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/production-analytics')] },
+    { key: 'pre.analytics.packs', label: 'Packs Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/packs-analytics')] },
     { key: 'pre.analytics.material', label: 'Material Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/material-analytics')] },
     { key: 'pre.analytics.syrup', label: 'Syrup Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/syrup-analytics')] },
     { key: 'pre.analytics.co2', label: 'CO2 Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/co2-analytics')] },

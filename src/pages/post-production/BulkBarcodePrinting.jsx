@@ -65,7 +65,7 @@ const BulkBarcodePrinting = () => {
     const handleSearch = async () => {
         setLoading(true);
         try {
-            const params = { page_size: 1000 };
+            const params = { page_size: 100 };
             if (filters.startDate) params.created_after = filters.startDate;
             if (filters.endDate) params.created_before = filters.endDate;
             if (filters.petName) params.pet = filters.petName;

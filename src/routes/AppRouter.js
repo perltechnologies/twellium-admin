@@ -13,6 +13,7 @@ const Formulas = React.lazy(() => import('../pages/dashboard/Formulas'));
 const ProductionReports = React.lazy(() => import('../pages/reports/ProductionReports'));
 const OeeAnalytics = React.lazy(() => import('../pages/reports/OeeAnalytics'));
 const ProductionAnalytics = React.lazy(() => import('../pages/reports/ProductionAnalytics'));
+const PacksAnalytics = React.lazy(() => import('../pages/reports/PacksAnalytics'));
 const MaterialReport = React.lazy(() => import('../pages/reports/MaterialReport'));
 const SyrupReport = React.lazy(() => import('../pages/reports/SyrupReport'));
 const CO2Report = React.lazy(() => import('../pages/reports/CO2Report'));
@@ -175,6 +176,7 @@ export const AppRouter = () => {
                             <Route path="analytics">
                                 <Route path="oee-analytics" element={<OeeAnalytics />} />
                                 <Route path="production-analytics" element={<ProductionAnalytics />} />
+                                <Route path="packs-analytics" element={<PacksAnalytics />} />
                                 <Route path="material-analytics" element={<MaterialReport />} />
                                 <Route path="syrup-analytics" element={<SyrupReport />} />
                                 <Route path="co2-analytics" element={<CO2Report />} />

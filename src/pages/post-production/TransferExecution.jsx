@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3, X, CheckCircle2, Eye } from 'lucide-react';
-import { inventoryApi, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
-import { buildTransferId, findTransfersById, groupUnitsIntoTransfers, normalizeTransferId } from '../../utils/transferUtils';
+import { Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3, X, CheckCircle2, Eye } from 'lucide-react';
+import { loadAllHandlingUnits, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import { getUnitsCache, setUnitsCache } from '../../utils/unitsCache';
+import { buildTransferId, findTransfersById, getDocumentCodes, groupUnitsIntoTransfers, normalizeTransferId } from '../../utils/transferUtils';
 import TransferDetailModal from '../../components/post-production/TransferDetailModal';
 import './TransferExecution.css';
 
@@ -22,6 +23,10 @@ const getBarcode = (u) => u.current_barcode || u.barcode || u.rfid_number || '�
 const getStage = (u) => {
     const stage = u.current_status || u.current_stage || u.stage || '';
     return String(stage?.code || stage?.name || stage).trim().toUpperCase();
+};
+const getSequence = (u) => {
+    const seq = u.pet_sequence ?? u.sequence ?? u.sequence_number;
+    return seq !== undefined && seq !== null && seq !== '' ? seq : '—';
 };
 const getPacks = (u) =>
     parseInt(u.quantity, 10) ||
@@ -54,13 +59,148 @@ const WAREHOUSE_TABS = [
     },
 ];
 
+// Cards are rendered in batches; a warehouse can hold hundreds of groups.
+const CARD_BATCH_SIZE = 24;
+
+const formatDate = (dateKey) =>
+    dateKey && dateKey !== 'unknown'
+        ? new Date(dateKey).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '—';
+
+const TransferCard = React.memo(({ transfer: t, tone, activeTab, tabLabel, canSelect, detailsEnabled, targetLabel, selected, onOpen, onToggle, onDetails }) => {
+    const pdCodes = activeTab !== 'transfer' ? getDocumentCodes(t.units) : [];
+    return (
+    <div className="col-xl-3 col-lg-4 col-md-6">
+        <div
+            className={`card h-100 transfer-group-card is-${tone} ${selected ? 'is-selected' : ''}`}
+            role={canSelect ? 'button' : undefined}
+            tabIndex={canSelect ? 0 : undefined}
+            onClick={() => onOpen(t)}
+            onKeyDown={(event) => {
+                if (canSelect && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    onOpen(t);
+                }
+            }}
+        >
+            <div className="card-body">
+                <div className="d-flex justify-content-between align-items-start mb-3">
+                    <div className="d-flex align-items-center gap-2 min-w-0">
+                        {canSelect && (
+                            <input
+                                type="checkbox"
+                                className="form-check-input transfer-group-checkbox mt-0"
+                                checked={selected}
+                                onChange={() => onToggle(t)}
+                                onClick={(event) => event.stopPropagation()}
+                                title={`Select ${t.transferId}`}
+                                aria-label={`Select transfer group ${t.transferId}`}
+                            />
+                        )}
+                        <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
+                            <Hash size={12} /> {t.transferId}
+                        </span>
+                    </div>
+                    <span className="badge bg-soft-success text-success">
+                        {activeTab === 'transfer' ? 'Production → Staging' : tabLabel}
+                    </span>
+                </div>
+
+                <h6 className="fw-bold mb-1 d-flex align-items-center gap-2" title={t.productName}>
+                    <Package size={16} className="text-muted" />
+                    <span className="text-truncate">{t.productName}</span>
+                </h6>
+
+                <div className="d-flex flex-column gap-2 mt-3">
+                    <div className="d-flex justify-content-between">
+                        <span className="text-muted fs-13">PET Line</span>
+                        <span className="fw-semibold fs-13">{t.petName}</span>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                        <span className="text-muted fs-13">Date</span>
+                        <span className="fw-semibold fs-13">{formatDate(t.dateKey)}</span>
+                    </div>
+                    {pdCodes.length > 0 && (
+                        <div className="fw-semibold fs-13" title={pdCodes.join(', ')}>
+                            <code>{pdCodes[0]}</code>
+                            {pdCodes.length > 1 && <span className="text-muted"> +{pdCodes.length - 1}</span>}
+                        </div>
+                    )}
+                    <div className="d-flex justify-content-between align-items-center pt-2 border-top">
+                        <span className="text-muted fs-13 d-flex align-items-center gap-1">
+                            <Layers size={14} /> Total Pallets
+                        </span>
+                        <span className="badge bg-primary fs-13">{t.totalPallets}</span>
+                    </div>
+                </div>
+                {activeTab !== 'transfer' && (
+                    <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary w-100 mt-3 d-flex align-items-center justify-content-center gap-2"
+                        disabled={!detailsEnabled}
+                        onClick={(event) => { event.stopPropagation(); onDetails(t); }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                    >
+                        <Eye size={14} /> View details
+                    </button>
+                )}
+                <div className="transfer-card-footer">
+                    <span>{canSelect ? `Select pallets for ${targetLabel}` : 'Inventory group'}</span>
+                    {canSelect && <ArrowRight size={15} />}
+                </div>
+            </div>
+        </div>
+    </div>
+    );
+});
+
+const TransferCardSkeleton = ({ tone, showCheckbox }) => (
+    <div className="col-xl-3 col-lg-4 col-md-6" aria-hidden="true">
+        <div className={`card h-100 transfer-group-card transfer-skeleton-card is-${tone}`}>
+            <div className="card-body">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                    <div className="d-flex align-items-center gap-2">
+                        {showCheckbox && <span className="transfer-skeleton transfer-skeleton--check" />}
+                        <span className="transfer-skeleton transfer-skeleton--badge" />
+                    </div>
+                    <span className="transfer-skeleton transfer-skeleton--status" />
+                </div>
+                <span className="transfer-skeleton transfer-skeleton--title" />
+                <div className="d-flex flex-column gap-3 mt-4">
+                    <span className="transfer-skeleton transfer-skeleton--row" />
+                    <span className="transfer-skeleton transfer-skeleton--row" />
+                    <span className="transfer-skeleton transfer-skeleton--row" />
+                </div>
+                <div className="transfer-card-footer">
+                    <span className="transfer-skeleton transfer-skeleton--footer" />
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
 const TransferExecution = () => {
     const navigate = useNavigate();
 
-    const [loading, setLoading] = useState(false);
-    const [units, setUnits] = useState([]);
+    // Start from the shared session cache (if any) so the cards paint immediately.
+    const initialCache = useRef(getUnitsCache()).current;
+    const [loading, setLoading] = useState(!initialCache);
+    const [units, setUnits] = useState(() => initialCache?.units || []);
     const [activeTab, setActiveTab] = useState('transfer');
-    const [lastUpdated, setLastUpdated] = useState(null);
+    const [lastUpdated, setLastUpdated] = useState(() => initialCache?.fetchedAt || null);
+    const [visibleCount, setVisibleCount] = useState(CARD_BATCH_SIZE);
+    // `isComplete` = `units` holds every pallet. Grouping, selection and details
+    // need the full set, so they stay disabled until it is true.
+    const [isComplete, setIsComplete] = useState(() => !!initialCache);
+    const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: null });
+    const [loadIssue, setLoadIssue] = useState('');
+    const completeRef = useRef(!!initialCache);
+    const loadSeqRef = useRef(0);
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
 
     // Look up any transfer (including completed ones) by Transfer ID
     const [lookupInput, setLookupInput] = useState('');
@@ -81,28 +221,68 @@ const TransferExecution = () => {
     // 'range' = start/end dates; 'single' = one date
     const [dateMode, setDateMode] = useState('range');
 
+    const markComplete = (value) => {
+        completeRef.current = value;
+        setIsComplete(value);
+    };
+
+    // Loads pallets page by page (100 per request). The first page paints the cards
+    // straight away and the rest stream in. When a complete snapshot is already on
+    // screen (cache or earlier load) it stays untouched until the fresh load finishes.
     const fetchTransfers = async () => {
+        const seq = ++loadSeqRef.current;
+        const isCurrent = () => mountedRef.current && seq === loadSeqRef.current;
+        const progressive = !completeRef.current;
+        const collected = new Map();
+        const addUnits = (items) => items.forEach((unit) => {
+            const id = unit.id ?? unit.internal_id ?? getUnitKey(unit);
+            collected.set(id || `row-${collected.size}`, unit);
+        });
+
         setLoading(true);
+        setLoadIssue('');
+        setLoadProgress({ loaded: 0, total: null });
         try {
-            const response = await inventoryApi.getBulkBarcodes();
-            const data =
-                response.data?.data?.data ||
-                response.data?.data ||
-                response.data?.results ||
-                [];
-            const list = Array.isArray(data) ? data : data.results || [];
+            const result = await loadAllHandlingUnits({}, {
+                isCancelled: () => !isCurrent(),
+                onPage: (items, { total }) => {
+                    if (!isCurrent()) return;
+                    addUnits(items);
+                    setLoadProgress({ loaded: collected.size, total });
+                    if (progressive) setUnits(Array.from(collected.values()));
+                },
+            });
+            if (result.cancelled || !isCurrent()) return;
+
+            const list = Array.from(collected.values());
+            const fetchedAt = new Date();
+            const missing = result.total !== null && list.length < result.total;
             setUnits(list);
-            setLastUpdated(new Date());
+            setLastUpdated(fetchedAt);
+            if (result.failedPages > 0 || missing) {
+                markComplete(false);
+                setLoadIssue(
+                    result.total !== null
+                        ? `Loaded ${list.length.toLocaleString()} of ${result.total.toLocaleString()} pallets. Some could not be loaded.`
+                        : 'Some pallets could not be loaded.'
+                );
+            } else {
+                setUnitsCache(list, fetchedAt);
+                markComplete(true);
+            }
         } catch (error) {
             console.error('Failed to fetch transfers:', error);
-            setUnits([]);
+            if (!isCurrent()) return;
+            // Keep showing the previous snapshot if a refresh fails.
+            if (!completeRef.current) setUnits([]);
+            setLoadIssue('Could not load transfers. Check your connection and try again.');
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
     };
 
     // The handling-unit list endpoint does not support date/product/PET query
-    // parameters, so load once and apply all selection filters client-side.
+    // parameters, so load everything once and apply all selection filters client-side.
     useEffect(() => {
         fetchTransfers();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,6 +364,16 @@ const TransferExecution = () => {
         });
     }, [transfers, filters.startDate, filters.endDate, filters.petName, filters.productName, filters.transferId]);
 
+    // Start from the first batch whenever the tab or filters change.
+    useEffect(() => {
+        setVisibleCount(CARD_BATCH_SIZE);
+    }, [activeTab, filters.startDate, filters.endDate, filters.petName, filters.productName, filters.transferId]);
+
+    const visibleTransfers = useMemo(
+        () => filteredTransfers.slice(0, visibleCount),
+        [filteredTransfers, visibleCount]
+    );
+
     const handleReset = () => {
         setFilters({
             startDate: '',
@@ -202,16 +392,11 @@ const TransferExecution = () => {
     };
 
     // Full transfer (pallets in every stage) for a card, so the details reflect the whole transfer.
-    const allTransfersByKey = useMemo(() => {
-        const map = {};
-        groupUnitsIntoTransfers(units).forEach((g) => { map[g.key] = g; });
-        return map;
-    }, [units]);
-
-    const openTransferDetails = (card) => {
-        const full = allTransfersByKey[card.key] || card;
+    // Only computed when a card's details are opened, not on every load.
+    const openTransferDetails = useCallback((card) => {
+        const full = groupUnitsIntoTransfers(units).find((g) => g.key === card.key) || card;
         setLookupDetail({ ...full, productionDate: full.dateKey });
-    };
+    }, [units]);
 
     const handleLookup = (e) => {
         if (e) e.preventDefault();
@@ -232,18 +417,17 @@ const TransferExecution = () => {
         }
         const matches = findTransfersById(units, wanted).map((g) => ({ ...g, productionDate: g.dateKey }));
         if (matches.length === 0) {
-            setLookupError(`No transfer found with ID "${lookupInput.trim()}".`);
+            setLookupError(
+                isComplete
+                    ? `No transfer found with ID "${lookupInput.trim()}".`
+                    : `No match yet for "${lookupInput.trim()}", but not all pallets are loaded. ${loading ? 'Try again once loading finishes.' : 'Use Refresh to reload them.'}`
+            );
         } else if (matches.length === 1) {
             setLookupDetail(matches[0]);
         } else {
             setLookupMatches(matches);
         }
     };
-
-    const formatDate = (dateKey) =>
-        dateKey && dateKey !== 'unknown'
-            ? new Date(dateKey).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
-            : '—';
 
     const totalPalletsAll = filteredTransfers.reduce((s, t) => s + t.totalPallets, 0);
     const selectedGroups = filteredTransfers.filter((transfer) => selectedGroupKeys.has(transfer.key));
@@ -255,18 +439,24 @@ const TransferExecution = () => {
         (filters.productName ? 1 : 0) +
         (filters.transferId ? 1 : 0);
 
-    const canSelectForTransfer = activeTab === 'transfer' || activeTab === 'staging';
+    const canSelectForTransfer = (activeTab === 'transfer' || activeTab === 'staging') && isComplete;
+    const isInitialLoading = loading && units.length === 0;
+    const isStreaming = loading && !isComplete && units.length > 0;
+    const countSuffix = isStreaming ? '+' : '';
+    const progressPct = loadProgress.total
+        ? Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))
+        : null;
     const selectionTarget = activeTab === 'staging'
         ? { stage: MAIN_WAREHOUSE_STAGE, label: 'Main Warehouse', source: 'Staging Warehouse' }
         : { stage: STAGING_WAREHOUSE_STAGE, label: 'Staging Warehouse', source: 'Production' };
 
-    const openSelection = (transfer) => {
+    const openSelection = useCallback((transfer) => {
         if (!canSelectForTransfer) return;
         setSelectionGroup(transfer);
         setSelectedUnitKeys(new Set());
-    };
+    }, [canSelectForTransfer]);
 
-    const toggleGroup = (transfer) => {
+    const toggleGroup = useCallback((transfer) => {
         if (!canSelectForTransfer) return;
         setSelectedGroupKeys((current) => {
             const next = new Set(current);
@@ -274,7 +464,7 @@ const TransferExecution = () => {
             else next.add(transfer.key);
             return next;
         });
-    };
+    }, [canSelectForTransfer]);
 
     const toggleAllGroups = () => {
         const visibleKeys = filteredTransfers.map((transfer) => transfer.key);
@@ -300,6 +490,23 @@ const TransferExecution = () => {
         });
         setSelectedUnitKeys(new Set(selectedUnits.map(getUnitKey).filter(Boolean)));
     };
+
+    // Modal rows: ascending by sequence (grouped by PET line when several groups are combined).
+    const selectionUnits = useMemo(() => {
+        const units = selectionGroup?.units || [];
+        const seqValue = (unit) => {
+            const n = parseInt(unit.pet_sequence ?? unit.sequence ?? unit.sequence_number, 10);
+            return Number.isNaN(n) ? Infinity : n;
+        };
+        return [...units].sort((a, b) => {
+            const pet = String(getPetName(a)).localeCompare(String(getPetName(b)), undefined, { numeric: true, sensitivity: 'base' });
+            if (pet !== 0) return pet;
+            const sa = seqValue(a);
+            const sb = seqValue(b);
+            if (sa === sb) return 0;
+            return sa < sb ? -1 : 1;
+        });
+    }, [selectionGroup]);
 
     const closeSelection = () => {
         setSelectionGroup(null);
@@ -453,7 +660,9 @@ const TransferExecution = () => {
                                 <small>{tab.description}</small>
                             </span>
                             <span className="warehouse-tab__count">
-                                <strong>{tabCounts[tab.id].toLocaleString()}</strong>
+                                {isInitialLoading
+                                    ? <span className="transfer-skeleton transfer-skeleton--count" aria-hidden="true" />
+                                    : <strong>{tabCounts[tab.id].toLocaleString()}{countSuffix}</strong>}
                                 <small>pallets</small>
                             </span>
                         </button>
@@ -481,7 +690,7 @@ const TransferExecution = () => {
                                     <Boxes size={13} /> {filteredTransfers.length} {activeTab === 'transfer' ? 'transfers' : 'groups'}
                                 </span>
                                 <span className="badge bg-soft-success text-success d-inline-flex align-items-center gap-1 fs-13">
-                                    <Layers size={13} /> {totalPalletsAll.toLocaleString()} pallets
+                                    <Layers size={13} /> {totalPalletsAll.toLocaleString()}{countSuffix} pallets
                                 </span>
                             </>
                         )}
@@ -621,16 +830,47 @@ const TransferExecution = () => {
                 </div>
             </div>
 
-            {/* Loading */}
-            {loading && (
-                <div className="d-flex justify-content-center align-items-center py-5">
-                    <Loader2 size={32} className="text-primary spinning" />
-                    <span className="ms-2 text-muted">Loading {activeTabConfig.label.toLowerCase()}…</span>
+            {isStreaming && (
+                <div className="alert alert-info py-2 px-3 mb-3 fs-13" role="status">
+                    <div className="d-flex align-items-center gap-2">
+                        <RefreshCw size={14} className="spinning flex-shrink-0" />
+                        <span>
+                            Loading pallets
+                            {loadProgress.total
+                                ? ` — ${loadProgress.loaded.toLocaleString()} of ${loadProgress.total.toLocaleString()}`
+                                : '…'}
+                            . Selecting and details unlock once everything is loaded.
+                        </span>
+                    </div>
+                    {progressPct !== null && (
+                        <div className="progress mt-2" style={{ height: 4 }}>
+                            <div className="progress-bar" style={{ width: `${progressPct}%` }} />
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {!loading && loadIssue && (
+                <div className="alert alert-warning py-2 px-3 mb-3 fs-13 d-flex flex-wrap align-items-center justify-content-between gap-2" role="alert">
+                    <span>
+                        {loadIssue}
+                        {!isComplete && ' Selecting and details stay disabled until all pallets are loaded.'}
+                    </span>
+                    <button type="button" className="btn btn-outline-secondary btn-sm" onClick={fetchTransfers}>Retry</button>
+                </div>
+            )}
+
+            {/* Loading skeleton (first load with nothing cached) */}
+            {isInitialLoading && (
+                <div className="row g-3" role="status" aria-label={`Loading ${activeTabConfig.label.toLowerCase()}`}>
+                    {Array.from({ length: 8 }).map((_, index) => (
+                        <TransferCardSkeleton key={index} tone={activeTabConfig.tone} showCheckbox={canSelectForTransfer} />
+                    ))}
                 </div>
             )}
 
             {/* Transfer Summary Cards */}
-            {!loading && filteredTransfers.length > 0 && (
+            {filteredTransfers.length > 0 && (
                 <>
                 {canSelectForTransfer && (
                     <div className={`transfer-bulk-bar mb-3 ${selectedGroups.length === 0 ? 'is-idle' : ''}`}>
@@ -667,88 +907,39 @@ const TransferExecution = () => {
                     </div>
                 )}
                 <div className="row g-3">
-                    {filteredTransfers.map((t) => (
-                        <div className="col-xl-3 col-lg-4 col-md-6" key={t.key}>
-                            <div
-                                className={`card h-100 transfer-group-card is-${activeTabConfig.tone} ${selectedGroupKeys.has(t.key) ? 'is-selected' : ''}`}
-                                role={canSelectForTransfer ? 'button' : undefined}
-                                tabIndex={canSelectForTransfer ? 0 : undefined}
-                                onClick={() => openSelection(t)}
-                                onKeyDown={(event) => {
-                                    if (canSelectForTransfer && (event.key === 'Enter' || event.key === ' ')) {
-                                        event.preventDefault();
-                                        openSelection(t);
-                                    }
-                                }}
-                            >
-                                <div className="card-body">
-                                    <div className="d-flex justify-content-between align-items-start mb-3">
-                                        <div className="d-flex align-items-center gap-2 min-w-0">
-                                            {canSelectForTransfer && (
-                                                <input
-                                                    type="checkbox"
-                                                    className="form-check-input transfer-group-checkbox mt-0"
-                                                    checked={selectedGroupKeys.has(t.key)}
-                                                    onChange={() => toggleGroup(t)}
-                                                    onClick={(event) => event.stopPropagation()}
-                                                    title={`Select ${t.transferId}`}
-                                                    aria-label={`Select transfer group ${t.transferId}`}
-                                                />
-                                            )}
-                                            <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
-                                                <Hash size={12} /> {t.transferId}
-                                            </span>
-                                        </div>
-                                        <span className="badge bg-soft-success text-success">
-                                            {activeTab === 'transfer' ? 'Production → Staging' : activeTabConfig.label}
-                                        </span>
-                                    </div>
-
-                                    <h6 className="fw-bold mb-1 d-flex align-items-center gap-2" title={t.productName}>
-                                        <Package size={16} className="text-muted" />
-                                        <span className="text-truncate">{t.productName}</span>
-                                    </h6>
-
-                                    <div className="d-flex flex-column gap-2 mt-3">
-                                        <div className="d-flex justify-content-between">
-                                            <span className="text-muted fs-13">PET Line</span>
-                                            <span className="fw-semibold fs-13">{t.petName}</span>
-                                        </div>
-                                        <div className="d-flex justify-content-between">
-                                            <span className="text-muted fs-13">Date</span>
-                                            <span className="fw-semibold fs-13">{formatDate(t.dateKey)}</span>
-                                        </div>
-                                        <div className="d-flex justify-content-between align-items-center pt-2 border-top">
-                                            <span className="text-muted fs-13 d-flex align-items-center gap-1">
-                                                <Layers size={14} /> Total Pallets
-                                            </span>
-                                            <span className="badge bg-primary fs-13">{t.totalPallets}</span>
-                                        </div>
-                                    </div>
-                                    {activeTab !== 'transfer' && (
-                                        <button
-                                            type="button"
-                                            className="btn btn-sm btn-outline-primary w-100 mt-3 d-flex align-items-center justify-content-center gap-2"
-                                            onClick={(event) => { event.stopPropagation(); openTransferDetails(t); }}
-                                            onKeyDown={(event) => event.stopPropagation()}
-                                        >
-                                            <Eye size={14} /> View details
-                                        </button>
-                                    )}
-                                    <div className="transfer-card-footer">
-                                        <span>{canSelectForTransfer ? `Select pallets for ${selectionTarget.label}` : 'Inventory group'}</span>
-                                        {canSelectForTransfer && <ArrowRight size={15} />}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    {visibleTransfers.map((t) => (
+                        <TransferCard
+                            key={t.key}
+                            transfer={t}
+                            tone={activeTabConfig.tone}
+                            activeTab={activeTab}
+                            tabLabel={activeTabConfig.label}
+                            canSelect={canSelectForTransfer}
+                            detailsEnabled={isComplete}
+                            targetLabel={selectionTarget.label}
+                            selected={selectedGroupKeys.has(t.key)}
+                            onOpen={openSelection}
+                            onToggle={toggleGroup}
+                            onDetails={openTransferDetails}
+                        />
                     ))}
                 </div>
+                {visibleTransfers.length < filteredTransfers.length && (
+                    <div className="d-flex justify-content-center mt-3">
+                        <button
+                            type="button"
+                            className="btn btn-outline-primary btn-sm"
+                            onClick={() => setVisibleCount((count) => count + CARD_BATCH_SIZE)}
+                        >
+                            Show more ({filteredTransfers.length - visibleTransfers.length} remaining)
+                        </button>
+                    </div>
+                )}
                 </>
             )}
 
             {/* Empty state */}
-            {!loading && filteredTransfers.length === 0 && (
+            {!isInitialLoading && filteredTransfers.length === 0 && (
                 <div className="transfer-empty-state">
                     <span className={`transfer-empty-state__icon is-${activeTabConfig.tone}`}>
                         <ActiveTabIcon size={27} />
@@ -792,7 +983,7 @@ const TransferExecution = () => {
                                 />
                                 <span className="fw-semibold">Select all {selectionGroup.units.length} pallets</span>
                             </label>
-                            <span className="transfer-selection-count">{selectedUnitKeys.size} selected</span>
+                            <span className="transfer-selection-count">{selectedUnitKeys.size} selected out of {selectionGroup.units.length}</span>
                         </div>
 
                         <div className="table-responsive transfer-selection-table-wrap">
@@ -801,13 +992,14 @@ const TransferExecution = () => {
                                     <tr>
                                         <th aria-label="Select" />
                                         <th>Barcode / RFID</th>
+                                        <th className="text-center">Sequence</th>
                                         <th>Product</th>
                                         <th>PET Line</th>
                                         <th className="text-end">Packs</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {selectionGroup.units.map((unit) => {
+                                    {selectionUnits.map((unit) => {
                                         const key = getUnitKey(unit);
                                         const isSelected = selectedUnitKeys.has(key);
                                         return (
@@ -823,6 +1015,7 @@ const TransferExecution = () => {
                                                     />
                                                 </td>
                                                 <td><code>{getBarcode(unit)}</code></td>
+                                                <td className="text-center fw-semibold">{getSequence(unit)}</td>
                                                 <td>{getProductName(unit)}</td>
                                                 <td>{getPetName(unit)}</td>
                                                 <td className="text-end fw-semibold">{getPacks(unit).toLocaleString()}</td>
@@ -836,7 +1029,7 @@ const TransferExecution = () => {
                         <div className="transfer-selection-footer">
                             <div>
                                 <strong>{selectedUnitKeys.size}</strong>
-                                <span>pallet{selectedUnitKeys.size === 1 ? '' : 's'} selected</span>
+                                <span>out of {selectionGroup.units.length} pallet{selectionGroup.units.length === 1 ? '' : 's'} selected</span>
                             </div>
                             <div className="d-flex gap-2">
                                 <button type="button" className="btn btn-outline-secondary" onClick={closeSelection}>Cancel</button>
