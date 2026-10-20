@@ -37,6 +37,11 @@ const BatchScan = () => {
             return;
         }
 
+        if (['STAGGING', 'WAREHOUSE'].includes(targetStage)) {
+            toast.error('Transfers to the Staging and Main Warehouse are done on the Transfer Execution page.');
+            return;
+        }
+
         setLoading(true);
         try {
             const res = await inventoryApi.scanHandlingUnit({

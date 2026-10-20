@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2, RefreshCw, Download, Search, RotateCcw, ArrowRightLeft, Layers, Package, FileText, Eye } from 'lucide-react';
 import {
     ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
-import { inventoryApi } from '../../api/inventory';
+import { loadAllHandlingUnits } from '../../api/inventory';
+import { getUnitsCache, hydrateUnitsCache, setUnitsCache } from '../../utils/unitsCache';
+import { getUnitsSignature } from '../../utils/unitsSnapshot';
 import { Pagination } from '../../components/ui/Pagination';
 import TransferDetailModal from '../../components/post-production/TransferDetailModal';
 import { exportToExcel } from '../../utils/exportUtils';
@@ -14,7 +16,6 @@ import {
     DIRECTION_PRODUCTION_STAGING,
     DIRECTION_STAGING_WAREHOUSE,
     buildTransferId,
-    extractUnitList,
     getCreatedAt,
     getPacks,
     getPetName,
@@ -63,6 +64,7 @@ const TransferAnalytics = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [lastUpdated, setLastUpdated] = useState(null);
+    const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: null });
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(20);
 
@@ -75,23 +77,78 @@ const TransferAnalytics = () => {
         transferId: '',
     });
 
+    // Transfer forms are derived from units, so every unit is needed. They are loaded
+    // 100 per request: the first page paints straight away and the rest stream in
+    // (parallel). On a refresh the current data stays until the new load completes.
+    const loadSeq = useRef(0);
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; };
+    }, []);
+
     const fetchData = async () => {
+        const seq = ++loadSeq.current;
+        const isCurrent = () => mounted.current && seq === loadSeq.current;
+        const progressive = units.length === 0;
+        const collected = new Map();
+
         setLoading(true);
         setError('');
+        setLoadProgress({ loaded: 0, total: null });
         try {
-            const response = await inventoryApi.getBulkBarcodes({ page_size: 2000 });
-            setUnits(extractUnitList(response));
-            setLastUpdated(new Date());
+            const signature = await getUnitsSignature();
+            if (!isCurrent()) return;
+            const result = await loadAllHandlingUnits({}, {
+                isCancelled: () => !isCurrent(),
+                onPage: (items, { total }) => {
+                    if (!isCurrent()) return;
+                    items.forEach((u) => collected.set(u.id ?? u.internal_id ?? `row-${collected.size}`, u));
+                    setLoadProgress({ loaded: collected.size, total });
+                    if (progressive) setUnits(Array.from(collected.values()));
+                },
+            });
+            if (result.cancelled || !isCurrent()) return;
+            const list = Array.from(collected.values());
+            setUnits(list);
+            const fetchedAt = new Date();
+            setLastUpdated(fetchedAt);
+            if (result.failedPages > 0 || (result.total !== null && list.length < result.total)) {
+                setError(`Loaded ${list.length.toLocaleString()}${result.total !== null ? ` of ${result.total.toLocaleString()}` : ''} pallets. Some could not be loaded.`);
+            } else {
+                // Complete snapshot: lets the transfer form open without reloading every pallet.
+                setUnitsCache(list, fetchedAt, signature);
+            }
         } catch (err) {
             console.error('Failed to load transfers:', err);
+            if (!isCurrent()) return;
             setError('Could not load transfer data. Please try again.');
-            setUnits([]);
         } finally {
-            setLoading(false);
+            if (isCurrent()) setLoading(false);
         }
     };
 
-    useEffect(() => { fetchData(); }, []);
+    // Loaded once: a cached list is reused unless the per-stage counts show the data changed.
+    // Refresh always reloads.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const cached = getUnitsCache() || await hydrateUnitsCache();
+            if (cancelled) return;
+            if (!cached) {
+                fetchData();
+                return;
+            }
+            setUnits(cached.units);
+            setLastUpdated(new Date(cached.fetchedAt));
+            setLoading(false);
+            const signature = await getUnitsSignature();
+            if (cancelled) return;
+            if (!signature || signature !== cached.signature) fetchData();
+        })();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Transfer forms = units grouped by production date + product + PET + direction.
     const transfers = useMemo(() => {
@@ -248,7 +305,12 @@ const TransferAnalytics = () => {
                     </p>
                 </div>
                 <div className="d-flex align-items-center gap-2">
-                    {lastUpdated && (
+                    {loading && loadProgress.loaded > 0 && (
+                        <span className="text-muted fs-13">
+                            Loaded {loadProgress.loaded.toLocaleString()}{loadProgress.total ? ` of ${loadProgress.total.toLocaleString()}` : ''} pallets…
+                        </span>
+                    )}
+                    {!loading && lastUpdated && (
                         <span className="text-muted fs-13">
                             Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>

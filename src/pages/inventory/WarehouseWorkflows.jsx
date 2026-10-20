@@ -1,14 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
+// Production, staging and main warehouse transfers are done on the Transfer Execution page.
 const workflows = [
-    {
-        title: 'Inbound',
-        targetStage: 'WAREHOUSE',
-        description: 'Transfer tagged pallets into storage',
-        icon: 'ti-building-warehouse',
-        color: 'primary'
-    },
     {
         title: 'Reject',
         targetStage: 'FAULTY',

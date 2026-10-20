@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FileText, Printer, X, CheckCircle2, Clock3 } from 'lucide-react';
 import {
@@ -6,13 +6,14 @@ import {
     getBarcode,
     getDocumentCode,
     getDocumentCodes,
+    getSupervisorNames,
     getPacks,
     getSequence,
     getStage,
     getUpdatedAt,
     toDateKey,
 } from '../../utils/transferUtils';
-import { MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import { loadTransferDocuments, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 
 const formatDate = (key) => (key && key !== 'unknown' ? new Date(key).toLocaleDateString('en-GB') : '—');
 
@@ -25,7 +26,39 @@ const formatDate = (key) => (key && key !== 'unknown' ? new Date(key).toLocaleDa
 const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
     const units = useMemo(() => [...(transfer?.units || [])].sort(compareBySequence), [transfer]);
 
-    const pdCodes = useMemo(() => getDocumentCodes(units), [units]);
+    const unitCodes = useMemo(() => getDocumentCodes(units), [units]);
+    const unitSupervisors = useMemo(() => getSupervisorNames(units), [units]);
+
+    // Saved transfer documents (PD code, supervisors): looked up by the pallets' PD codes,
+    // or by Transfer ID when the pallets do not carry one.
+    const [documents, setDocuments] = useState([]);
+    const [documentsLoading, setDocumentsLoading] = useState(false);
+    const unitCodesKey = unitCodes.join('|');
+    const transferKey = transfer?.transferId || '';
+    useEffect(() => {
+        if (!transferKey) return undefined;
+        let cancelled = false;
+        setDocuments([]);
+        setDocumentsLoading(true);
+        loadTransferDocuments({ codes: unitCodesKey ? unitCodesKey.split('|') : [], transferId: transferKey }).then((docs) => {
+            if (cancelled) return;
+            setDocuments(docs);
+            setDocumentsLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [transferKey, unitCodesKey]);
+
+    const pdCodes = useMemo(
+        () => [...new Set([...unitCodes, ...documents.map((d) => d.documentCode).filter(Boolean)])],
+        [unitCodes, documents]
+    );
+    const supervisors = useMemo(() => {
+        const merge = (fromUnits, key) => [...new Set([...fromUnits, ...documents.map((d) => d[key]).filter(Boolean)])];
+        return {
+            source: merge(unitSupervisors.source, 'sourceSupervisor'),
+            target: merge(unitSupervisors.target, 'targetSupervisor'),
+        };
+    }, [unitSupervisors, documents]);
 
     const summary = useMemo(() => {
         const stageCounts = {};
@@ -88,11 +121,19 @@ const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
                                 </div>
                                 <div className="col-sm-6 col-md-4">
                                     <small className="text-muted d-block">PD code{pdCodes.length > 1 ? 's' : ''}</small>
-                                    {pdCodes.length === 0 ? <strong>—</strong> : (
+                                    {pdCodes.length === 0 ? <strong>{documentsLoading ? '…' : '—'}</strong> : (
                                         <div className="d-flex flex-wrap gap-1">
                                             {pdCodes.map((code) => <code key={code}>{code}</code>)}
                                         </div>
                                     )}
+                                </div>
+                                <div className="col-sm-6 col-md-4">
+                                    <small className="text-muted d-block">Handed over by</small>
+                                    <strong>{supervisors.source.length ? supervisors.source.join(', ') : (documentsLoading ? '…' : '—')}</strong>
+                                </div>
+                                <div className="col-sm-6 col-md-4">
+                                    <small className="text-muted d-block">Received by</small>
+                                    <strong>{supervisors.target.length ? supervisors.target.join(', ') : (documentsLoading ? '…' : '—')}</strong>
                                 </div>
                                 <div className="col-sm-6 col-md-4">
                                     <small className="text-muted d-block">Pallets / Packs</small>
@@ -107,6 +148,35 @@ const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
                                     </div>
                                 </div>
                             </div>
+                            {documents.length > 0 && (
+                                <>
+                                    <h6 className="mb-2">Transfer documents</h6>
+                                    <div className="table-responsive mb-3">
+                                        <table className="table table-sm align-middle mb-0">
+                                            <thead className="table-light">
+                                                <tr>
+                                                    <th>PD code</th>
+                                                    <th>Route</th>
+                                                    <th>Handed over by</th>
+                                                    <th>Received by</th>
+                                                    <th>Saved</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {documents.map((doc) => (
+                                                    <tr key={doc.documentCode}>
+                                                        <td><code>{doc.documentCode}</code></td>
+                                                        <td>{doc.sourceStage || '—'} → {doc.targetStage || '—'}</td>
+                                                        <td>{doc.sourceSupervisor || '—'}</td>
+                                                        <td>{doc.targetSupervisor || '—'}</td>
+                                                        <td>{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            )}
                             <h6 className="mb-2">Pallets</h6>
                             <div className="table-responsive">
                                 <table className="table table-sm table-hover align-middle mb-0">

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearUnitsCache } from '../utils/unitsCache';
 
 const BASE_URL = process.env.REACT_APP_BASE_URL;
 
@@ -62,6 +63,7 @@ api.interceptors.response.use(
 
                     return api(originalRequest);
                 } catch (refreshError) {
+                    clearUnitsCache();
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('refresh_token');
                     localStorage.removeItem('user');

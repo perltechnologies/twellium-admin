@@ -3,6 +3,7 @@ import api from './axios';
 // Stage names follow the backend contract (including its STAGGING spelling).
 export const STAGING_WAREHOUSE_STAGE = 'STAGGING';
 export const MAIN_WAREHOUSE_STAGE = 'WAREHOUSE';
+export const STAGE_DETAILS_URL = '/inventory/handling-units/stage-details/';
 
 // Sending the transfer document (PD code, supervisors) with a transfer is off until
 // the backend supports it (TRANSFER_DOCUMENT_API_SPEC.md). Set
@@ -29,18 +30,18 @@ const extractPage = (res) => {
     };
 };
 
-// Loads every page of /inventory/handling-units/. The first page resolves fast so
+// Loads every page of /inventory/handling-units/ (or another paginated `url`, e.g. stage-details). The first page resolves fast so
 // the UI can paint straight away; remaining pages are fetched in parallel (when the
 // API reports a total count) or followed one by one (when it only reports `next`).
 // `onPage(items, { total })` fires per page. Failed pages are retried once and then
 // counted in `failedPages` instead of aborting the whole load.
 export const loadAllHandlingUnits = async (
     params = {},
-    { pageSize = 100, concurrency = 4, onPage, isCancelled = () => false } = {}
+    { pageSize = 100, concurrency = 4, onPage, isCancelled = () => false, url = '/inventory/handling-units/', ordering = '-created_at' } = {}
 ) => {
     const fetchPage = async (page) => {
-        const request = () => api.get('/inventory/handling-units/', {
-            params: { ordering: '-created_at', ...params, page_size: pageSize, page },
+        const request = () => api.get(url, {
+            params: { ...(ordering ? { ordering } : {}), ...params, page_size: pageSize, page },
         });
         try {
             return extractPage(await request());
@@ -90,6 +91,93 @@ export const loadAllHandlingUnits = async (
     return { total, failedPages, cancelled: isCancelled() };
 };
 
+// The document code the scan endpoint echoes back once the pallets are linked to a transfer
+// document (top level, or on a successful result). Empty when the server did not link it.
+export const getScanDocumentEcho = (res) => {
+    const body = res?.data?.data ?? res?.data ?? {};
+    const results = Array.isArray(body.results) ? body.results : [];
+    const linked = results.find((r) => r && r.success !== false && !r.error && r.document_code);
+    return String(body.document_code ?? linked?.document_code ?? '').trim().toUpperCase();
+};
+
+// True when a scan response moved at least one pallet (so a document should be linked).
+export const scanMovedAnyPallet = (res) => {
+    const body = res?.data?.data ?? res?.data ?? {};
+    const results = Array.isArray(body.results) ? body.results : [];
+    return results.length === 0 || results.some((r) => r && r.success !== false && !r.error);
+};
+
+export const DOCUMENT_SAVING_OFF_MESSAGE =
+    'Saving transfer documents is switched off in this build (REACT_APP_SAVE_TRANSFER_DOCUMENT is not "true"). Set it in .env and restart or rebuild the app.';
+
+// A user reference on a transfer document: { id, name } (or a bare id / name string).
+const personName = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value !== 'object') return '';
+    return value.name || value.full_name
+        || [value.first_name, value.last_name].filter(Boolean).join(' ').trim()
+        || value.username || value.email || '';
+};
+
+const normalizeTransferDocument = (doc) => ({
+    id: doc.id,
+    documentCode: doc.document_code || '',
+    transferId: doc.transfer_id || '',
+    sequenceNumber: doc.sequence_number ?? null,
+    sourceStage: doc.source_stage || '',
+    targetStage: doc.target_stage || '',
+    sourceSupervisor: personName(doc.source_supervisor),
+    targetSupervisor: personName(doc.target_supervisor),
+    createdBy: personName(doc.created_by),
+    createdAt: doc.created_at || null,
+    totalPallets: doc.total_pallets ?? null,
+    totalPacks: doc.total_packs ?? null,
+});
+
+// Saved transfer documents for a set of pallets: looked up by their PD codes when they
+// carry one, otherwise by Transfer ID. Never throws; returns [] if nothing is found.
+export const loadTransferDocuments = async ({ codes = [], transferId = '' } = {}) => {
+    const unwrap = (res) => res?.data?.data ?? res?.data ?? {};
+    try {
+        if (codes.length > 0) {
+            const docs = await Promise.all(codes.slice(0, 10).map((code) => (
+                inventoryApi.getTransferDocument(code).then((res) => unwrap(res)).catch(() => null)
+            )));
+            return docs.filter((doc) => doc && doc.document_code).map(normalizeTransferDocument);
+        }
+        if (!transferId) return [];
+        const res = await inventoryApi.getTransferDocuments({ transfer_id: transferId, page_size: 50 });
+        const body = unwrap(res);
+        const list = Array.isArray(body) ? body : body.results || [];
+        const wanted = String(transferId).toUpperCase();
+        return list
+            .filter((doc) => String(doc.transfer_id || '').toUpperCase().includes(wanted))
+            .map(normalizeTransferDocument);
+    } catch (error) {
+        console.error('Failed to load transfer documents:', error);
+        return [];
+    }
+};
+
+// Pallets moved under one transfer document (PD code). If the server ignores the
+// `document_code` filter it returns unrelated pallets; those are detected via the
+// pallet's own document code and the load stops with an empty result.
+export const loadUnitsByDocumentCode = async (code) => {
+    const wanted = String(code || '').trim().toUpperCase();
+    const collected = [];
+    let ignored = false;
+    await loadAllHandlingUnits({ document_code: wanted }, {
+        isCancelled: () => ignored,
+        onPage: (items) => items.forEach((unit) => {
+            const unitCode = String(unit.document_code ?? unit.transfer_document_code ?? unit.transfer_document?.document_code ?? '').trim().toUpperCase();
+            if (unitCode === wanted) collected.push(unit);
+            else ignored = true;
+        }),
+    });
+    return ignored ? [] : collected;
+};
+
 export const inventoryApi = {
     getProducts: (params) => api.get('/inventory/products/', { params }),
     getProduct: (id) => api.get(`/inventory/products/${id}/`),
@@ -107,6 +195,9 @@ export const inventoryApi = {
     getTodayOverview: () => api.get('/inventory/handling-units/today-overview/'),
     getStageCounts: () => api.get('/inventory/handling-units/stage-counts/'),
     getStageDetails: (params) => api.get('/inventory/handling-units/stage-details/', { params }),
+    // Transfer documents (PD code, route, supervisors) saved when pallets are transferred
+    getTransferDocuments: (params) => api.get('/inventory/transfer-documents/', { params }),
+    getTransferDocument: (code) => api.get(`/inventory/transfer-documents/${encodeURIComponent(code)}/`),
     lookupUnit: (params) => api.get('/inventory/handling-units/lookup/', { params }),
     printBatch: (data) => api.post('/inventory/handling-units/print_batch/', data),
 
@@ -127,11 +218,13 @@ export const inventoryApi = {
 
     // Staging Warehouse -> Main Warehouse transfer. scan_values are barcodes /
     // RFID numbers (not internal UUIDs).
-    transferToMainWarehouse: ({ scan_values, target_stage = MAIN_WAREHOUSE_STAGE, location = null } = {}) =>
+    // `extra` carries the transfer-form metadata (document_code, transfer_id, supervisors).
+    transferToMainWarehouse: ({ scan_values, target_stage = MAIN_WAREHOUSE_STAGE, location = null, extra = {} } = {}) =>
         api.post('/inventory/handling-units/scan/', {
             scan_values,
             target_stage,
             ...(location ? { location } : {}),
+            ...extra,
         }),
 
     // Diagnostic & Management Tools (Redesigned)

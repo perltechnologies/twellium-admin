@@ -1,5 +1,6 @@
 import api from './axios';
 import { withEndpointFallbacks } from './fallbacks';
+import { clearUnitsCache } from '../utils/unitsCache';
 
 export const login = async (credentials) => {
     const response = await api.post('/auth/token/', credentials);
@@ -7,6 +8,7 @@ export const login = async (credentials) => {
 };
 
 export const logout = () => {
+    clearUnitsCache();
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');

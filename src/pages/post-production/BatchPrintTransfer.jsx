@@ -1,16 +1,25 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Printer, Loader2, Calendar, Search, CheckCircle2, UserCheck, ArrowLeft, FileText, Warehouse, RefreshCw, Package, Layers, X, Hash } from 'lucide-react';
-import { inventoryApi, loadAllHandlingUnits, SAVE_TRANSFER_DOCUMENT, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import { inventoryApi, loadAllHandlingUnits, loadUnitsByDocumentCode, SAVE_TRANSFER_DOCUMENT, DOCUMENT_SAVING_OFF_MESSAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import { executeTransfer, SCAN_CHUNK_SIZE } from '../../utils/transferExecutor';
+import { fetchSupervisors, supervisorLabel } from '../../utils/supervisors';
+import { getUnitsSignature } from '../../utils/unitsSnapshot';
 import { productionApi } from '../../api/production';
-import { usersApi } from '../../api/users';
 import { formatAndSortPets } from '../../utils/petUtils';
-import { clearUnitsCache, mergeUnitsIntoCache } from '../../utils/unitsCache';
+import { applyTransferToCache, clearUnitsCache, getUnitsCache, mergeUnitsIntoCache, setUnitsCacheSignature } from '../../utils/unitsCache';
+import { Pagination } from '../../components/ui/Pagination';
 import {
     DIRECTION_LABELS,
+    buildDocumentCode,
     compareBySequence,
     findTransfersById,
+    getDateKeyFromTransferId,
+    toDateKey,
     getDocumentCode,
+    getDocumentCodes,
+    getSupervisorNames,
+    getSupervisors,
     getSequence,
     getStampTypes,
     groupUnitsIntoTransfers,
@@ -20,19 +29,11 @@ import {
     normalizeTransferId,
 } from '../../utils/transferUtils';
 
-// Pallets are sent to the scan endpoint in chunks so one huge request cannot time out.
-const SCAN_CHUNK_SIZE = 100;
+// A shared pallet snapshot younger than this is trusted when looking up a Transfer ID.
+const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 
 // Stable identity of a pallet: its id survives a stage change, a barcode may not.
 const unitId = (u) => String(u.id ?? u.internal_id ?? u.current_barcode ?? u.barcode ?? u.rfid_number ?? '');
-// Document number printed on the form and sent with the transfer: PD + yyMMddHHmmss.
-// `withSuffix` adds two random digits, used when the server reports the code is taken.
-const buildDocumentCode = (withSuffix = false) => {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const stamp = `${String(now.getFullYear()).slice(-2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    return `PD${stamp}${withSuffix ? pad(Math.floor(Math.random() * 100)) : ''}`;
-};
 const scanValueOf = (u) => u.current_barcode || u.barcode || u.rfid_number || '';
 
 const BatchPrintTransfer = () => {
@@ -92,20 +93,17 @@ const BatchPrintTransfer = () => {
     });
 
     // Transfer form editable fields
-    const [documentCode, setDocumentCode] = useState('');
     const [singlePacks, setSinglePacks] = useState('');
 
-    // Transfer completion
+    // Completing the transfer is only offered when the pallets were selected on the
+    // Transfer Execution page (not when a saved transfer is opened to view or print).
+    const [documentCode, setDocumentCode] = useState('');
     const [users, setUsers] = useState([]);
     const [productionSupervisor, setProductionSupervisor] = useState('');
     const [warehouseSupervisor, setWarehouseSupervisor] = useState('');
     const [completing, setCompleting] = useState(false);
-    const [completed, setCompleted] = useState(false);
     const [completeError, setCompleteError] = useState('');
-    const completedRef = useRef(false);
-    useEffect(() => { completedRef.current = completed; }, [completed]);
-    const [transferSummary, setTransferSummary] = useState({ moved: 0, alreadyThere: 0, documentNotSaved: false });
-    const [transferProgress, setTransferProgress] = useState(null); // { done, total, verifying }
+    const [transferProgress, setTransferProgress] = useState(null);
 
     // ----- Tabs -----
     const [activeTab, setActiveTab] = useState('form'); // 'form' | 'warehouse'
@@ -117,34 +115,29 @@ const BatchPrintTransfer = () => {
     const [whSearch, setWhSearch] = useState('');
     const [whLoaded, setWhLoaded] = useState(false);
     const [whUpdatedAt, setWhUpdatedAt] = useState(null);
+    const [whQuery, setWhQuery] = useState('');
+    const [whPage, setWhPage] = useState(1);
+    const [whPageSize, setWhPageSize] = useState(50);
+    const [whTotal, setWhTotal] = useState(0);
+    const [whServerPacks, setWhServerPacks] = useState(null);
+    const [whClientPaging, setWhClientPaging] = useState(false);
+    const whRequestId = useRef(0);
+    const whFetched = useRef(null);
 
     useEffect(() => {
         fetchDropdownData();
-        generateDocumentCode();
-    }, []);
-
-    // Leaving a completed transfer starts a new one, which needs its own document number.
-    const resetCompletion = () => {
-        if (completedRef.current) {
-            completedRef.current = false;
-            generateDocumentCode();
+        if (transferState.canExecute) {
+            setDocumentCode(buildDocumentCode());
+            fetchSupervisors().then(setUsers).catch((error) => console.error('Failed to load supervisors:', error));
         }
-        setCompleted(false);
-        setCompleteError('');
-    };
-
-    const generateDocumentCode = (withSuffix = false) => {
-        const code = buildDocumentCode(withSuffix);
-        setDocumentCode(code);
-        return code;
-    };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const fetchDropdownData = async () => {
         try {
-            const [petsRes, productsRes, usersRes] = await Promise.all([
+            const [petsRes, productsRes] = await Promise.all([
                 productionApi.getPets(),
                 inventoryApi.getProducts({ page_size: 100 }),
-                usersApi.getUsers({ page_size: 200, role: 'SUPERVISOR' }).catch(() => null),
             ]);
 
             const allPets = formatAndSortPets(petsRes);
@@ -152,21 +145,6 @@ const BatchPrintTransfer = () => {
 
             const prodList = productsRes.data?.data?.data || productsRes.data?.data || productsRes.data?.results || [];
             setProducts(Array.isArray(prodList) ? prodList : prodList.results || []);
-
-            // Parse users the same way UserList does, then keep supervisors only.
-            const usersData = usersRes?.data;
-            let userList = [];
-            if (Array.isArray(usersData)) {
-                userList = usersData;
-            } else if (usersData?.results) {
-                userList = usersData.results;
-            } else if (usersData?.data) {
-                userList = usersData.data.results || usersData.data;
-            }
-            const supervisors = (Array.isArray(userList) ? userList : []).filter(
-                (u) => String(u.role || '').toUpperCase() === 'SUPERVISOR'
-            );
-            setUsers(supervisors);
         } catch (error) {
             console.error('Failed to fetch dropdown data:', error);
         }
@@ -174,20 +152,42 @@ const BatchPrintTransfer = () => {
 
     // Loads handling units page by page. With a locked selection it stops as soon as
     // every locked pallet has been found, so it rarely needs the whole list.
-    const fetchUnitList = async (lockedList = [], isStale = () => false) => {
+    // `stopBeforeDate` (YYYY-MM-DD) is for Transfer ID lookups: the list is newest first,
+    // so once every page up to one containing older pallets has arrived, the rest cannot
+    // hold the transfer. The shortcut switches itself off if the order is not respected.
+    const fetchUnitList = async (lockedList = [], isStale = () => false, { stopBeforeDate = null } = {}) => {
         const wanted = new Set(lockedList.map(String));
         const matched = new Set();
         const collected = new Map();
+        const pageRanges = new Map(); // page -> { min, max } of created dates
+        let contiguous = 0;
+        let prevMin = null;
+        let orderBroken = false;
+        let reachedDate = false;
+
         await loadAllHandlingUnits({}, {
-            isCancelled: () => isStale() || (wanted.size > 0 && matched.size >= wanted.size),
-            onPage: (items) => items.forEach((unit) => {
-                collected.set(unitId(unit) || `row-${collected.size}`, unit);
-                if (wanted.size === 0) return;
-                const scan = String(scanValueOf(unit));
-                const id = String(unit.id ?? '');
-                if (wanted.has(scan)) matched.add(scan);
-                if (wanted.has(id)) matched.add(id);
-            }),
+            isCancelled: () => isStale() || reachedDate || (wanted.size > 0 && matched.size >= wanted.size),
+            onPage: (items, { page }) => {
+                items.forEach((unit) => {
+                    collected.set(unitId(unit) || `row-${collected.size}`, unit);
+                    if (wanted.size === 0) return;
+                    const scan = String(scanValueOf(unit));
+                    const id = String(unit.id ?? '');
+                    if (wanted.has(scan)) matched.add(scan);
+                    if (wanted.has(id)) matched.add(id);
+                });
+                if (!stopBeforeDate) return;
+                const dates = items.map((u) => toDateKey(u.created_at || u.created)).filter((d) => d !== 'unknown');
+                pageRanges.set(page, dates.length ? { min: dates.reduce((a, b) => (a < b ? a : b)), max: dates.reduce((a, b) => (a > b ? a : b)) } : null);
+                while (pageRanges.has(contiguous + 1)) {
+                    contiguous += 1;
+                    const range = pageRanges.get(contiguous);
+                    if (!range) continue;
+                    if (prevMin !== null && range.max > prevMin) orderBroken = true;
+                    prevMin = range.min;
+                    if (!orderBroken && range.min < stopBeforeDate) reachedDate = true;
+                }
+            },
         });
         return Array.from(collected.values());
     };
@@ -220,7 +220,6 @@ const BatchPrintTransfer = () => {
 
             if (seq !== searchSeq.current) return null; // a newer search/finder result superseded this one
             setBarcodes(filtered);
-            if (!preserveCompletion) resetCompletion();
             return filtered;
         } catch (error) {
             console.error('Failed to fetch barcodes:', error);
@@ -257,7 +256,6 @@ const BatchPrintTransfer = () => {
         setBarcodes(group.units);
         setFinderMatches([]);
         setFinderError('');
-        resetCompletion();
         setLoading(false);
         setActiveTab('form');
     };
@@ -265,14 +263,40 @@ const BatchPrintTransfer = () => {
     const handleFindTransfer = async (value = finderInput) => {
         const wanted = normalizeTransferId(value);
         if (!wanted) {
-            setFinderError('Enter a Transfer ID, for example TR260908-RUSH-P02.');
+            setFinderError('Enter a Transfer ID (TR…) or document number (PD…), for example TR260908-RUSH-P02.');
             return;
         }
         setFinding(true);
         setFinderError('');
         setFinderMatches([]);
         try {
-            const matches = findTransfersById(await fetchUnitList(), wanted);
+            let matches = [];
+            if (/^PD\d{6,}$/.test(wanted)) {
+                // A document number finds the pallets moved under it.
+                matches = groupUnitsIntoTransfers(await loadUnitsByDocumentCode(wanted));
+                if (matches.length === 0) {
+                    setFinderError(`No transfer found with document number "${String(value).trim()}". Check the number and try again.`);
+                } else if (matches.length === 1) {
+                    applyTransfer(matches[0]);
+                } else {
+                    setFinderMatches(matches);
+                }
+                return;
+            }
+            // 1. A recent shared snapshot (e.g. from the Transfer Analytics list) is instant.
+            const cached = getUnitsCache();
+            if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < CACHE_MAX_AGE_MS) {
+                matches = findTransfersById(cached.units, wanted);
+            }
+            // 2. Otherwise load newest-first only back to the date inside the Transfer ID.
+            const stopBeforeDate = getDateKeyFromTransferId(wanted);
+            if (matches.length === 0 && stopBeforeDate) {
+                matches = findTransfersById(await fetchUnitList([], () => false, { stopBeforeDate }), wanted);
+            }
+            // 3. Fall back to the full list.
+            if (matches.length === 0) {
+                matches = findTransfersById(await fetchUnitList(), wanted);
+            }
             if (matches.length === 0) {
                 setFinderError(`No transfer found with ID "${String(value).trim()}". Check the ID and try again.`);
             } else if (matches.length === 1) {
@@ -297,7 +321,6 @@ const BatchPrintTransfer = () => {
         setLockedValues([]);
         setRoute(defaultRoute);
         setBarcodes([]);
-        resetCompletion();
     };
 
     // Open directly from a link such as ?transfer_id=TR260908-RUSH-P02
@@ -308,13 +331,104 @@ const BatchPrintTransfer = () => {
     }, []);
 
     // Auto-load data when filters change
+    // Skipped while a Transfer ID is being looked up or is loaded: its pallets are
+    // already on the form, so reloading the whole list would only repeat the work.
     useEffect(() => {
         if (pets.length === 0 || products.length === 0) return;
+        if (finding || foundTransfer) return;
         const timer = setTimeout(() => {
             handleSearch();
         }, 400);
         return () => clearTimeout(timer);
-    }, [filters.startDate, filters.endDate, filters.productType, filters.petName, filters.shift, pets.length, products.length]);
+    }, [filters.startDate, filters.endDate, filters.productType, filters.petName, filters.shift, pets.length, products.length, finding]);
+
+    const handleCompleteTransfer = async () => {
+        setCompleteError('');
+        if (!SAVE_TRANSFER_DOCUMENT) {
+            setCompleteError(`Transfer not started. ${DOCUMENT_SAVING_OFF_MESSAGE}`);
+            return;
+        }
+        if (!productionSupervisor || !warehouseSupervisor) {
+            setCompleteError(`Select both a ${sourceSupervisorLabel} and a ${targetSupervisorLabel} before completing the transfer.`);
+            return;
+        }
+        // Pallets already in the target stage need no move.
+        const movable = barcodes.filter((b) => getStage(b) !== targetStage);
+        if (movable.length === 0) {
+            setCompleteError(`All ${barcodes.length} loaded pallet(s) are already in the ${targetLabel} — nothing to transfer.`);
+            return;
+        }
+        const scanValues = [...new Set(movable.map(scanValueOf).filter(Boolean))];
+        const withoutBarcode = movable.filter((b) => !scanValueOf(b)).length;
+        if (scanValues.length === 0) {
+            setCompleteError('None of the loaded pallets has a barcode or RFID to transfer.');
+            return;
+        }
+
+        setCompleting(true);
+        setTransferProgress({ done: 0, total: scanValues.length });
+        let outcome;
+        try {
+            // Was the shared list up to date before this transfer? Then it can be patched
+            // afterwards instead of being downloaded again.
+            const cachedBefore = getUnitsCache();
+            const signatureBefore = cachedBefore ? await getUnitsSignature() : null;
+            const cacheWasFresh = !!signatureBefore && cachedBefore.signature === signatureBefore;
+
+            outcome = await executeTransfer({
+                scanValues,
+                targetStage,
+                documentCode,
+                transferId: formTransferId,
+                sourceSupervisor: productionSupervisor,
+                targetSupervisor: warehouseSupervisor,
+                onProgress: setTransferProgress,
+            });
+            setDocumentCode(outcome.documentCode);
+            // Keep the shared list instead of reloading it: apply the moved pallets to it and
+            // record the new fingerprint. If that is not possible, drop it.
+            if (cacheWasFresh && outcome.succeeded && !outcome.documentIssue && outcome.failed.length === 0) {
+                applyTransferToCache(outcome.succeeded, {
+                    targetStage,
+                    documentCode: outcome.documentCode,
+                    sourceName: formSourceSupervisor,
+                    targetName: formTargetSupervisor,
+                    sourceId: Number(productionSupervisor),
+                    targetId: Number(warehouseSupervisor),
+                });
+                const signatureAfter = await getUnitsSignature();
+                if (signatureAfter) setUnitsCacheSignature(signatureAfter);
+                else clearUnitsCache();
+            } else {
+                clearUnitsCache();
+            }
+
+            // Whatever the outcome, go back to the transfer list, which reports it and shows
+            // the pallets as they now are.
+            navigate('/post-production/transfer-execution', {
+                state: {
+                    transferNotice: {
+                        moved: outcome.moved,
+                        total: scanValues.length,
+                        failed: outcome.failed.slice(0, 5),
+                        failedCount: outcome.failed.length,
+                        withoutBarcode,
+                        documentIssue: outcome.documentIssue,
+                        targetLabel,
+                        transferId: formTransferId,
+                        transferIds: formTransferId ? formTransferId.split(', ') : [],
+                        documentCode: outcome.documentIssue ? '' : outcome.documentCode,
+                    },
+                },
+            });
+        } catch (error) {
+            console.error('Failed to complete transfer:', error);
+            setCompleteError(error?.response?.data?.message || error?.message || 'Could not complete the transfer. Please try again.');
+        } finally {
+            setTransferProgress(null);
+            setCompleting(false);
+        }
+    };
 
     const handlePrint = () => {
         const prevTitle = document.title;
@@ -324,204 +438,80 @@ const BatchPrintTransfer = () => {
         document.title = prevTitle;
     };
 
-    const userLabel = (u) => {
-        if (!u) return '';
-        return (
-            u.full_name ||
-            [u.first_name, u.last_name].filter(Boolean).join(' ').trim() ||
-            u.name ||
-            u.username ||
-            u.email ||
-            `User #${u.id}`
-        );
-    };
-
-    // All loaded users are supervisors, so the dropdown shows the plain name.
-    const userOptionLabel = (u) => userLabel(u);
-
-    const findUser = (id) => users.find((u) => String(u.id) === String(id));
-
-    const handleCompleteTransfer = async () => {
-        setCompleteError('');
-        if (!productionSupervisor || !warehouseSupervisor) {
-            setCompleteError(`Select both a ${sourceSupervisorLabel} and a ${targetSupervisorLabel} before completing the transfer.`);
-            return;
-        }
-        if (barcodes.length === 0) {
-            setCompleteError('There are no pallets loaded to transfer.');
-            return;
-        }
-
-        const TARGET_STAGE = targetStage;
-        // Pallets already in the target stage are a no-op on the backend, so only
-        // send the ones that still have to move.
-        const movable = barcodes.filter((b) => getStage(b) !== TARGET_STAGE);
-        const alreadyThere = barcodes.length - movable.length;
-        if (movable.length === 0) {
-            setCompleteError(
-                `All ${barcodes.length} loaded pallet(s) are already in the ${targetLabel} — nothing to transfer.`
-            );
-            return;
-        }
-
-        // scan_values are barcodes / RFID numbers, not the internal UUIDs.
-        const scanValues = [...new Set(movable.map(scanValueOf).filter(Boolean))];
-        const withoutBarcode = movable.filter((b) => !scanValueOf(b)).length;
-        if (scanValues.length === 0) {
-            setCompleteError('Could not resolve barcodes for the loaded pallets; cannot complete the transfer.');
-            return;
-        }
-
-        setCompleting(true);
-        let requestSent = false;
-        let freshLoaded = false;
-        try {
-            let rejected = 0;
-            let firstError = '';
-            let activeDocumentCode = documentCode;
-            let documentSaving = SAVE_TRANSFER_DOCUMENT;
-            let documentSkipped = false;
-            for (let i = 0; i < scanValues.length; i += SCAN_CHUNK_SIZE) {
-                const chunk = scanValues.slice(i, i + SCAN_CHUNK_SIZE);
-                setTransferProgress({ done: i, total: scanValues.length, verifying: false });
-                requestSent = true;
-                try {
-                    const send = (code, withDocument = SAVE_TRANSFER_DOCUMENT) => inventoryApi.completeTransfer({
-                        scan_values: chunk,
-                        target_stage: TARGET_STAGE,
-                        extra: withDocument ? {
-                            document_code: code,
-                            transfer_id: formTransferId || undefined,
-                            source_supervisor: productionSupervisor,
-                            target_supervisor: warehouseSupervisor,
-                        } : {},
-                    });
-                    let res;
-                    try {
-                        res = await send(activeDocumentCode, documentSaving);
-                    } catch (sendError) {
-                        const status = sendError?.response?.status;
-                        if (documentSaving && status === 409 && i === 0) {
-                            // The server says this code belongs to another transfer. Take a
-                            // fresh code once; later chunks reuse it.
-                            activeDocumentCode = generateDocumentCode(true);
-                            res = await send(activeDocumentCode, true);
-                        } else if (documentSaving && status === 400) {
-                            // The backend may not accept the document fields yet. Never let that
-                            // block the transfer: resend without them and flag it.
-                            documentSaving = false;
-                            documentSkipped = true;
-                            res = await send(activeDocumentCode, false);
-                        } else {
-                            throw sendError;
-                        }
-                    }
-                    // The scan endpoint response envelope varies. Normalise it.
-                    const result = res?.data?.data ?? res?.data ?? {};
-                    const results = Array.isArray(result.results)
-                        ? result.results
-                        : Array.isArray(result) ? result : [];
-                    // A per-unit failure is flagged by success === false OR an error field.
-                    const failed = results.filter((r) => r && (r.success === false || r.error));
-                    if (result.success === false && failed.length === 0) {
-                        rejected += chunk.length;
-                        if (!firstError) firstError = result.message || 'The transfer was rejected.';
-                    } else {
-                        rejected += failed.length;
-                        if (!firstError) firstError = failed.find((f) => f.error)?.error || '';
-                    }
-                } catch (chunkError) {
-                    rejected += chunk.length;
-                    if (!firstError) {
-                        firstError = chunkError?.response?.data?.message || chunkError?.message || 'Request failed';
-                    }
-                }
-            }
-
-            // The reloaded list is the source of truth: count what really changed stage
-            // instead of trusting the scan response.
-            setTransferProgress({ done: scanValues.length, total: scanValues.length, verifying: true });
-            const fresh = await handleSearch({ preserveCompletion: true });
-            freshLoaded = fresh !== null;
-
-            const movableIds = new Set(movable.map(unitId));
-            const moved = fresh
-                ? fresh.filter((u) => movableIds.has(unitId(u)) && getStage(u) === TARGET_STAGE).length
-                : Math.max(0, scanValues.length - rejected);
-            const notMoved = movable.length - moved;
-
-            setTransferSummary({ moved, alreadyThere, documentNotSaved: documentSkipped });
-
-            if (notMoved === 0) {
-                setCompleted(true);
-                return;
-            }
-
-            const reason = firstError ? ` Reason: ${firstError}` : '';
-            const skipped = withoutBarcode > 0 ? ` ${withoutBarcode} had no barcode/RFID and were skipped.` : '';
-            if (moved === 0) {
-                setCompleteError(
-                    `No pallets changed stage. They may not be eligible for transfer to the ${targetLabel} from their current stage.${reason}${skipped}`
-                );
-            } else {
-                setCompleteError(
-                    `${moved} of ${movable.length} pallet(s) moved to the ${targetLabel}; ${notMoved} did not.${reason}${skipped}` +
-                    ' The list above is up to date. Click Complete Transfer again to retry the remaining pallets.'
-                );
-            }
-        } catch (error) {
-            console.error('Failed to complete transfer:', error);
-            setCompleteError(
-                error?.response?.data?.message ||
-                error?.message ||
-                'Could not complete the transfer. Please try again or contact an administrator.'
-            );
-        } finally {
-            // If the list could not be refreshed after moving pallets, the shared cache is
-            // out of date; drop it so the transfer list reloads from the server.
-            if (requestSent && !freshLoaded) clearUnitsCache();
-            setTransferProgress(null);
-            setCompleting(false);
-        }
-    };
-
     // ----- Main Warehouse stock (WAREHOUSE / Main Unit stage) -----
-    const fetchWarehouseStock = async (searchTerm = whSearch) => {
+    // Loads one page at a time from the server. If the API ignores paging and returns
+    // everything in one go, the full list is kept and sliced in the browser instead.
+    const fetchWarehouseStock = async ({ search = whQuery, page = whPage, size = whPageSize } = {}) => {
+        const requestId = ++whRequestId.current;
         setWhLoading(true);
         setWhError('');
         try {
-            const params = { stage: 'WAREHOUSE', page_size: 1000 };
-            if (searchTerm) params.search = searchTerm;
+            const params = { stage: 'WAREHOUSE', page, page_size: size };
+            if (search) params.search = search;
             const response = await inventoryApi.getStageDetails(params);
-            const data = response.data?.data ?? response.data ?? [];
+            if (requestId !== whRequestId.current) return;
+
+            const body = response.data;
+            const data = body?.data ?? body ?? [];
             const list = Array.isArray(data) ? data : data.details || data.results || [];
-            setWhUnits(Array.isArray(list) ? list : []);
+            const items = Array.isArray(list) ? list : [];
+            const layers = [body, body?.data].filter((l) => l && typeof l === 'object' && !Array.isArray(l));
+            const pick = (...keys) => {
+                for (const layer of layers) {
+                    for (const key of keys) {
+                        const n = Number(layer[key]);
+                        if (layer[key] !== null && layer[key] !== undefined && Number.isFinite(n)) return n;
+                    }
+                }
+                return null;
+            };
+            const count = pick('count', 'total_count', 'total');
+            const clientPaging = count === null && items.length > size;
+
+            whFetched.current = { search, page, size, clientPaging };
+            setWhClientPaging(clientPaging);
+            setWhUnits(items);
+            setWhTotal(count ?? items.length);
+            setWhServerPacks(pick('total_packs', 'packs_total'));
             setWhUpdatedAt(new Date());
             setWhLoaded(true);
+            setWhLoading(false);
         } catch (err) {
+            if (requestId !== whRequestId.current) return;
             console.error('Failed to fetch main warehouse stock:', err);
             setWhError('Could not load the main warehouse stock. Please try again.');
             setWhUnits([]);
-        } finally {
+            setWhTotal(0);
             setWhLoading(false);
         }
     };
 
-    // Lazy-load warehouse stock the first time the tab is opened.
+    // Debounced server-side search; a new search always starts from page 1.
     useEffect(() => {
-        if (activeTab === 'warehouse' && !whLoaded && !whLoading) {
-            fetchWarehouseStock();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
-
-    // Debounced server-side search within the warehouse tab.
-    useEffect(() => {
-        if (activeTab !== 'warehouse' || !whLoaded) return;
-        const timer = setTimeout(() => fetchWarehouseStock(whSearch), 400);
+        const timer = setTimeout(() => {
+            setWhQuery(whSearch);
+            setWhPage(1);
+        }, 400);
         return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [whSearch]);
+
+    // Fetch when the tab opens or the search / page / page size changes. Reopening the
+    // tab or paging through an already loaded full list does not hit the server again.
+    useEffect(() => {
+        if (activeTab !== 'warehouse') return;
+        const last = whFetched.current;
+        if (last) {
+            const sameQuery = last.search === whQuery;
+            if (sameQuery && (last.clientPaging || (last.page === whPage && last.size === whPageSize))) return;
+        }
+        fetchWarehouseStock({ search: whQuery, page: whPage, size: whPageSize });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, whQuery, whPage, whPageSize]);
+
+    const refreshWarehouseStock = () => {
+        whFetched.current = null;
+        fetchWarehouseStock({ search: whQuery, page: whPage, size: whPageSize });
+    };
 
     const whGetBarcode = (u) => u.current_barcode || u.barcode || '—';
     const whGetProduct = (u) => u.product_name || u.product?.name || u.product || 'N/A';
@@ -533,7 +523,14 @@ const BatchPrintTransfer = () => {
         parseInt(u.packs, 10) ||
         0;
     const whGetTime = (u) => u.updated_at || u.created_at || null;
-    const whTotalPacks = whUnits.reduce((s, u) => s + whGetQty(u), 0);
+    const whPagedUnits = useMemo(() => {
+        if (!whClientPaging) return whUnits;
+        const start = (whPage - 1) * whPageSize;
+        return whUnits.slice(start, start + whPageSize);
+    }, [whUnits, whClientPaging, whPage, whPageSize]);
+    const whPagePacks = whPagedUnits.reduce((s, u) => s + whGetQty(u), 0);
+    // Total across all pages only when the server (or a fully loaded list) provides it.
+    const whTotalPacks = whClientPaging ? whUnits.reduce((s, u) => s + whGetQty(u), 0) : whServerPacks;
 
     // Computed values
     const totalPallets = barcodes.length;
@@ -554,6 +551,22 @@ const BatchPrintTransfer = () => {
         const ids = groupUnitsIntoTransfers(barcodes).map((g) => g.transferId);
         return [...new Set(ids)].join(', ');
     }, [barcodes]);
+
+    // A transfer that has already happened (every pallet is in the target stage) carries the
+    // PD code and supervisors that were saved with it: print those, not a fresh code.
+    const savedDocument = useMemo(() => {
+        if (barcodes.length === 0 || !barcodes.every((b) => getStage(b) === targetStage)) return null;
+        const codes = getDocumentCodes(barcodes);
+        if (codes.length !== 1) return null;
+        const names = getSupervisorNames(barcodes);
+        return { code: codes[0], source: names.source.join(', '), target: names.target.join(', ') };
+    }, [barcodes, targetStage]);
+    // Selected on the Transfer Execution page: the transfer can be completed from this form.
+    const canExecute = !!transferState.canExecute && !foundTransfer;
+    const findUser = (id) => users.find((u) => String(u.id) === String(id));
+    const formDocumentCode = savedDocument?.code || (canExecute ? documentCode : '');
+    const formSourceSupervisor = savedDocument?.source || (productionSupervisor && findUser(productionSupervisor) ? supervisorLabel(findUser(productionSupervisor)) : '');
+    const formTargetSupervisor = savedDocument?.target || (warehouseSupervisor && findUser(warehouseSupervisor) ? supervisorLabel(findUser(warehouseSupervisor)) : '');
 
     // Details of the loaded transfer (live: updates after the transfer completes)
     const stageBreakdown = useMemo(() => {
@@ -621,7 +634,7 @@ const BatchPrintTransfer = () => {
                         >
                             <Warehouse size={16} /> Main Warehouse Stock
                             {whLoaded && (
-                                <span className="badge bg-soft-primary text-primary ms-1">{whUnits.length}</span>
+                                <span className="badge bg-soft-primary text-primary ms-1">{whTotal.toLocaleString()}</span>
                             )}
                         </button>
                     </li>
@@ -633,18 +646,18 @@ const BatchPrintTransfer = () => {
                 <div className="card mb-3 border-0 shadow-sm">
                     <div className="card-body">
                         <label className="form-label fw-semibold d-flex align-items-center gap-2 mb-2">
-                            <Hash size={16} className="text-primary" /> Find Transfer by ID
+                            <Hash size={16} className="text-primary" /> Find Transfer by ID or Document Number
                         </label>
                         <form
                             className="d-flex flex-wrap gap-2"
                             onSubmit={(e) => { e.preventDefault(); handleFindTransfer(); }}
                         >
-                            <div className="input-group" style={{ maxWidth: 420 }}>
+                            <div className="input-group" style={{ maxWidth: 480 }}>
                                 <span className="input-group-text bg-light"><Search size={15} className="text-muted" /></span>
                                 <input
                                     type="text"
                                     className="form-control"
-                                    placeholder="Transfer ID, e.g. TR260908-RUSH-P02"
+                                    placeholder="Transfer ID or document no., e.g. TR260908-RUSH-P02"
                                     value={finderInput}
                                     onChange={(e) => setFinderInput(e.target.value)}
                                 />
@@ -821,22 +834,18 @@ const BatchPrintTransfer = () => {
                 )}
 
                 {/* Complete Transfer panel */}
-                {barcodes.length > 0 && (
+                {canExecute && barcodes.length > 0 && (
                     <div className="card mt-3 border-0 shadow-sm">
                         <div className="card-header bg-transparent border-bottom d-flex align-items-center gap-2 py-2">
                             <span className="d-inline-flex align-items-center justify-content-center bg-soft-success text-success rounded" style={{ width: 32, height: 32 }}>
                                 <UserCheck size={16} />
                             </span>
                             <span className="fw-semibold">Complete Transfer</span>
-                            {completed && (
-                                <span className="badge bg-success d-inline-flex align-items-center gap-1 ms-2">
-                                    <CheckCircle2 size={13} /> Completed
-                                </span>
-                            )}
                         </div>
                         <div className="card-body">
                             <p className="text-muted fs-13 mb-3">
-                                Assign the supervisors signing off this {sourceLabel}&nbsp;→&nbsp;{targetLabel} transfer, then complete it.
+                                Select both supervisors, print this form and have it signed, then complete the transfer. The document number
+                                {' '}<code>{documentCode}</code> and the supervisors are saved with it.
                             </p>
                             <div className="row g-3 align-items-end">
                                 <div className="col-md-4">
@@ -845,13 +854,11 @@ const BatchPrintTransfer = () => {
                                         className="form-select form-select-sm"
                                         value={productionSupervisor}
                                         onChange={(e) => setProductionSupervisor(e.target.value)}
-                                        disabled={completed || users.length === 0}
+                                        disabled={completing || users.length === 0}
                                     >
-                                        <option value="">
-                                            {users.length === 0 ? 'No supervisors available' : 'Select supervisor…'}
-                                        </option>
-                                        {users.map((u) => (
-                                            <option key={u.id} value={u.id}>{userOptionLabel(u)}</option>
+                                        <option value="">{users.length === 0 ? 'No supervisors available' : 'Select supervisor…'}</option>
+                                        {users.filter((u) => String(u.id) !== String(warehouseSupervisor)).map((u) => (
+                                            <option key={u.id} value={u.id}>{supervisorLabel(u)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -861,13 +868,11 @@ const BatchPrintTransfer = () => {
                                         className="form-select form-select-sm"
                                         value={warehouseSupervisor}
                                         onChange={(e) => setWarehouseSupervisor(e.target.value)}
-                                        disabled={completed || users.length === 0}
+                                        disabled={completing || users.length === 0}
                                     >
-                                        <option value="">
-                                            {users.length === 0 ? 'No supervisors available' : 'Select supervisor…'}
-                                        </option>
-                                        {users.map((u) => (
-                                            <option key={u.id} value={u.id}>{userOptionLabel(u)}</option>
+                                        <option value="">{users.length === 0 ? 'No supervisors available' : 'Select supervisor…'}</option>
+                                        {users.filter((u) => String(u.id) !== String(productionSupervisor)).map((u) => (
+                                            <option key={u.id} value={u.id}>{supervisorLabel(u)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -875,19 +880,15 @@ const BatchPrintTransfer = () => {
                                     <button
                                         className="btn btn-success d-flex align-items-center justify-content-center gap-2 w-100"
                                         onClick={handleCompleteTransfer}
-                                        disabled={completing || completed}
+                                        disabled={completing}
                                     >
                                         {completing ? (
                                             <>
                                                 <Loader2 size={16} className="spinning" />
-                                                {transferProgress?.verifying
-                                                    ? ' Verifying…'
-                                                    : transferProgress && transferProgress.total > SCAN_CHUNK_SIZE
-                                                        ? ` Transferring ${Math.min(transferProgress.done + SCAN_CHUNK_SIZE, transferProgress.total)} / ${transferProgress.total}…`
-                                                        : ' Completing…'}
+                                                {transferProgress && transferProgress.total > SCAN_CHUNK_SIZE
+                                                    ? ` Transferring ${Math.min(transferProgress.done + SCAN_CHUNK_SIZE, transferProgress.total)} / ${transferProgress.total}…`
+                                                    : ' Transferring…'}
                                             </>
-                                        ) : completed ? (
-                                            <><CheckCircle2 size={16} /> Transfer Completed</>
                                         ) : (
                                             <><CheckCircle2 size={16} /> Complete Transfer</>
                                         )}
@@ -897,22 +898,10 @@ const BatchPrintTransfer = () => {
                             {completeError && (
                                 <div className="alert alert-danger py-2 px-3 mt-3 mb-0 fs-13">{completeError}</div>
                             )}
-                            {completed && (
-                                <div className="alert alert-success py-2 px-3 mt-3 mb-0 fs-13">
-                                    Transfer <strong>{formTransferId || documentCode}</strong> completed — {transferSummary.moved} pallet(s) moved from {sourceLabel} to {targetLabel}. Search this Transfer ID on the Production Transfer page to view its details later.
-                                    {transferSummary.alreadyThere > 0 && (
-                                        <> ({transferSummary.alreadyThere} pallet(s) were already in the {targetLabel} and were skipped.)</>
-                                    )}
-                                    {transferSummary.documentNotSaved && (
-                                        <div className="mt-1 text-warning-emphasis">
-                                            Note: the server did not accept the document number {documentCode}, so it was not saved. The transfer itself completed.
-                                        </div>
-                                    )}
-                                </div>
-                            )}
                         </div>
                     </div>
                 )}
+
                 </>
                 )}
 
@@ -949,7 +938,7 @@ const BatchPrintTransfer = () => {
                                     )}
                                     <button
                                         className="btn btn-outline-primary btn-sm d-flex align-items-center gap-2"
-                                        onClick={() => fetchWarehouseStock()}
+                                        onClick={refreshWarehouseStock}
                                         disabled={whLoading}
                                     >
                                         {whLoading ? <Loader2 size={15} className="spinning" /> : <RefreshCw size={15} />} Refresh
@@ -968,7 +957,7 @@ const BatchPrintTransfer = () => {
                                         </span>
                                         <div>
                                             <span className="text-muted fs-13 d-block">Total pallets in Main Warehouse</span>
-                                            <strong className="fs-4">{whUnits.length.toLocaleString()}</strong>
+                                            <strong className="fs-4">{whTotal.toLocaleString()}</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -980,8 +969,10 @@ const BatchPrintTransfer = () => {
                                             <Package size={20} />
                                         </span>
                                         <div>
-                                            <span className="text-muted fs-13 d-block">Total packs</span>
-                                            <strong className="fs-4">{whTotalPacks.toLocaleString()}</strong>
+                                            <span className="text-muted fs-13 d-block">
+                                                {whTotalPacks === null ? 'Packs on this page' : 'Total packs'}
+                                            </span>
+                                            <strong className="fs-4">{(whTotalPacks ?? whPagePacks).toLocaleString()}</strong>
                                         </div>
                                     </div>
                                 </div>
@@ -992,7 +983,7 @@ const BatchPrintTransfer = () => {
                         {whError && !whLoading && (
                             <div className="alert alert-danger d-flex align-items-center justify-content-between">
                                 <span>{whError}</span>
-                                <button className="btn btn-sm btn-outline-danger" onClick={() => fetchWarehouseStock()}>Try again</button>
+                                <button className="btn btn-sm btn-outline-danger" onClick={refreshWarehouseStock}>Try again</button>
                             </div>
                         )}
 
@@ -1005,16 +996,22 @@ const BatchPrintTransfer = () => {
                         )}
 
                         {/* Table */}
-                        {!whLoading && whUnits.length > 0 && (
+                        {whUnits.length > 0 && (
                             <div className="card border-0 shadow-sm">
                                 <div className="card-header bg-white border-bottom d-flex align-items-center justify-content-between py-3">
                                     <span className="fw-semibold d-flex align-items-center gap-2">
                                         <Warehouse size={16} className="text-muted" /> Stock in Main Warehouse
                                     </span>
-                                    <span className="badge bg-soft-primary text-primary">{whUnits.length} pallets</span>
+                                    <span className="d-flex align-items-center gap-2">
+                                        {whLoading && <Loader2 size={15} className="text-primary spinning" />}
+                                        <span className="badge bg-soft-primary text-primary">{whTotal.toLocaleString()} pallets</span>
+                                    </span>
                                 </div>
                                 <div className="card-body p-0">
-                                    <div className="table-responsive">
+                                    <div
+                                        className="table-responsive"
+                                        style={whLoading ? { opacity: 0.5, pointerEvents: 'none', transition: 'opacity 0.15s' } : undefined}
+                                    >
                                         <table className="table table-hover mb-0 align-middle">
                                             <thead className="table-light">
                                                 <tr>
@@ -1024,12 +1021,14 @@ const BatchPrintTransfer = () => {
                                                     <th>Product</th>
                                                     <th>PET Line</th>
                                                     <th>PD Code</th>
+                                                    <th>Handed over by</th>
+                                                    <th>Received by</th>
                                                     <th className="text-end">Packs</th>
                                                     <th>Added / Updated</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {whUnits.map((u, idx) => {
+                                                {whPagedUnits.map((u, idx) => {
                                                     const barcode = whGetBarcode(u);
                                                     return (
                                                         <tr
@@ -1037,12 +1036,14 @@ const BatchPrintTransfer = () => {
                                                             onClick={() => barcode !== '—' && navigate(`/post-production/pallets/details/${barcode}`)}
                                                             style={{ cursor: barcode !== '—' ? 'pointer' : 'default' }}
                                                         >
-                                                            <td className="text-muted">{idx + 1}</td>
+                                                            <td className="text-muted">{(whPage - 1) * whPageSize + idx + 1}</td>
                                                             <td><code className="text-primary">{barcode}</code></td>
                                                             <td>{u.rfid_number || '—'}</td>
                                                             <td>{whGetProduct(u)}</td>
                                                             <td>{whGetPet(u)}</td>
                                                             <td>{getDocumentCode(u) ? <code>{getDocumentCode(u)}</code> : '—'}</td>
+                                                            <td>{getSupervisors(u).source || '—'}</td>
+                                                            <td>{getSupervisors(u).target || '—'}</td>
                                                             <td className="text-end">{whGetQty(u).toLocaleString()}</td>
                                                             <td>{whGetTime(u) ? new Date(whGetTime(u)).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                                                         </tr>
@@ -1051,19 +1052,28 @@ const BatchPrintTransfer = () => {
                                             </tbody>
                                             <tfoot>
                                                 <tr className="fw-bold border-top">
-                                                    <td colSpan={6}>TOTAL</td>
-                                                    <td className="text-end">{whTotalPacks.toLocaleString()}</td>
-                                                    <td>{whUnits.length.toLocaleString()} pallets</td>
+                                                    <td colSpan={8}>{whTotalPacks === null ? 'PAGE TOTAL' : 'TOTAL (all pages)'}</td>
+                                                    <td className="text-end">{(whTotalPacks ?? whPagePacks).toLocaleString()}</td>
+                                                    <td>{(whTotalPacks === null ? whPagedUnits.length : whTotal).toLocaleString()} pallets</td>
                                                 </tr>
                                             </tfoot>
                                         </table>
                                     </div>
+                                    <Pagination
+                                        page={whPage}
+                                        pageSize={whPageSize}
+                                        totalCount={whTotal}
+                                        onPageChange={setWhPage}
+                                        onPageSizeChange={setWhPageSize}
+                                        pageSizeOptions={[10, 20, 50, 100]}
+                                        itemLabel="pallets"
+                                    />
                                 </div>
                             </div>
                         )}
 
                         {/* Empty */}
-                        {!whLoading && whUnits.length === 0 && !whError && (
+                        {whLoaded && !whLoading && whUnits.length === 0 && !whError && (
                             <div className="text-center py-5">
                                 <div className="text-muted mb-2"><Warehouse size={48} strokeWidth={1} /></div>
                                 <p className="text-muted mb-0">
@@ -1096,7 +1106,7 @@ const BatchPrintTransfer = () => {
                             </div>
                             <div className="header-center">
                                 <h4 className="report-title" style={{ fontSize: '14px' }}>Transfer Form from {sourceLabel} to {targetLabel}</h4>
-                                <span className="doc-ref" style={{ fontSize: '13px', fontWeight: 'bold' }}>{documentCode}</span>
+                                <span className="doc-ref" style={{ fontSize: '13px', fontWeight: 'bold' }}>{formDocumentCode}</span>
                                 {formTransferId && (
                                     <span className="doc-ref d-block" style={{ fontSize: '11px' }}>Transfer ID: {formTransferId}</span>
                                 )}
@@ -1201,11 +1211,11 @@ const BatchPrintTransfer = () => {
                             <div className="sign-off-row">
                                 <div className="sign-off-field">
                                     <label>Name:</label>
-                                    <div className="sign-line">{productionSupervisor ? userLabel(findUser(productionSupervisor)) : ''}</div>
+                                    <div className="sign-line">{formSourceSupervisor}</div>
                                 </div>
                                 <div className="sign-off-field">
                                     <label>Name:</label>
-                                    <div className="sign-line">{warehouseSupervisor ? userLabel(findUser(warehouseSupervisor)) : ''}</div>
+                                    <div className="sign-line">{formTargetSupervisor}</div>
                                 </div>
                             </div>
                             <div className="sign-off-row">

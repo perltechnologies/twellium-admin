@@ -474,35 +474,8 @@ const PlantOverview = () => {
                         </div>
                         <div className="card-body p-3">
                             <div className="row g-3 align-items-center">
-                                {/* Global OEE */}
-                                <div className="col-xl-3 col-md-6 border-end-xl" style={{ borderColor: themeStyles.border }}>
-                                    <div className="d-flex align-items-center gap-3">
-                                        <ModernGauge
-                                            value={summary.oee || summary.avg_efficiency || 0}
-                                            label="Plant OEE"
-                                            size={72}
-                                            strokeWidth={6}
-                                            target={OEE_TARGET}
-                                            isDark={isDark}
-                                        />
-                                        <div>
-                                            <span className="small fw-semibold text-uppercase d-block" style={{ color: themeStyles.textMuted }}>
-                                                Plant Performance
-                                            </span>
-                                            <h3 className="fw-bold mb-0" style={{ color: themeStyles.textPrimary }}>
-                                                {summary.oee != null ? `${Math.round(summary.oee)}%` : `${Math.round(summary.avg_efficiency || 0)}%`}
-                                            </h3>
-                                            <div className="d-flex align-items-center gap-1 mt-1">
-                                                <span className={`badge ${(summary.oee || summary.avg_efficiency || 0) >= OEE_TARGET ? 'bg-soft-success text-success' : 'bg-soft-warning text-warning'} small`}>
-                                                    Target: {OEE_TARGET}%
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
                                 {/* Total Bottles */}
-                                <div className="col-xl-3 col-md-6 border-end-xl" style={{ borderColor: themeStyles.border }}>
+                                <div className="col-xl-4 col-md-6 border-end-xl" style={{ borderColor: themeStyles.border }}>
                                     <div className="d-flex align-items-center gap-3">
                                         <div className="avatar avatar-md bg-soft-primary rounded-circle d-flex align-items-center justify-content-center">
                                             <Package size={20} className="text-primary" />
@@ -518,7 +491,7 @@ const PlantOverview = () => {
                                 </div>
 
                                 {/* Total Packs */}
-                                <div className="col-xl-3 col-md-6 border-end-xl" style={{ borderColor: themeStyles.border }}>
+                                <div className="col-xl-4 col-md-6 border-end-xl" style={{ borderColor: themeStyles.border }}>
                                     <div className="d-flex align-items-center gap-3">
                                         <div className="avatar avatar-md bg-soft-success rounded-circle d-flex align-items-center justify-content-center">
                                             <Layers size={20} className="text-success" />
@@ -534,7 +507,7 @@ const PlantOverview = () => {
                                 </div>
 
                                 {/* Total Downtime */}
-                                <div className="col-xl-3 col-md-6">
+                                <div className="col-xl-4 col-md-6">
                                     <div className="d-flex align-items-center gap-3">
                                         <div className="avatar avatar-md bg-soft-danger rounded-circle d-flex align-items-center justify-content-center">
                                             <Clock size={20} className="text-danger" />

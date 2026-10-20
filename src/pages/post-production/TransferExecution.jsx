@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3, X, CheckCircle2, Eye } from 'lucide-react';
-import { loadAllHandlingUnits, MAIN_WAREHOUSE_STAGE, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
-import { getUnitsCache, setUnitsCache } from '../../utils/unitsCache';
-import { buildTransferId, findTransfersById, getDocumentCodes, groupUnitsIntoTransfers, normalizeTransferId } from '../../utils/transferUtils';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash, SlidersHorizontal, Boxes, Building2, Warehouse, RefreshCw, Clock3, X, CheckCircle2, Eye } from 'lucide-react';
+import { loadAllHandlingUnits, loadUnitsByDocumentCode, MAIN_WAREHOUSE_STAGE, STAGE_DETAILS_URL, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
+import { getUnitsCache, hydrateUnitsCache, setUnitsCache } from '../../utils/unitsCache';
+import { getUnitsSignature } from '../../utils/unitsSnapshot';
+import { buildTransferId, getUpdatedAt, toDateKey, findTransfersById, getDocumentCode, getDocumentCodes, getSupervisorNames, groupUnitsIntoTransfers, normalizeTransferId } from '../../utils/transferUtils';
 import TransferDetailModal from '../../components/post-production/TransferDetailModal';
 import './TransferExecution.css';
 
@@ -62,6 +63,9 @@ const WAREHOUSE_TABS = [
 // Cards are rendered in batches; a warehouse can hold hundreds of groups.
 const CARD_BATCH_SIZE = 24;
 
+// Today as a YYYY-MM-DD key (same UTC basis the cards use for their dates).
+const todayKey = () => new Date().toISOString().split('T')[0];
+
 const formatDate = (dateKey) =>
     dateKey && dateKey !== 'unknown'
         ? new Date(dateKey).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -69,6 +73,7 @@ const formatDate = (dateKey) =>
 
 const TransferCard = React.memo(({ transfer: t, tone, activeTab, tabLabel, canSelect, detailsEnabled, targetLabel, selected, onOpen, onToggle, onDetails }) => {
     const pdCodes = activeTab !== 'transfer' ? getDocumentCodes(t.units) : [];
+    const supervisors = activeTab !== 'transfer' ? getSupervisorNames(t.units) : { source: [], target: [] };
     return (
     <div className="col-xl-3 col-lg-4 col-md-6">
         <div
@@ -120,10 +125,19 @@ const TransferCard = React.memo(({ transfer: t, tone, activeTab, tabLabel, canSe
                         <span className="text-muted fs-13">Date</span>
                         <span className="fw-semibold fs-13">{formatDate(t.dateKey)}</span>
                     </div>
-                    {pdCodes.length > 0 && (
-                        <div className="fw-semibold fs-13" title={pdCodes.join(', ')}>
-                            <code>{pdCodes[0]}</code>
-                            {pdCodes.length > 1 && <span className="text-muted"> +{pdCodes.length - 1}</span>}
+                    {activeTab !== 'transfer' && (
+                        <div className="d-flex justify-content-between">
+                            <span className="text-muted fs-13">PD code</span>
+                            <span className="fw-semibold fs-13" title={pdCodes.join(', ')}>
+                                {pdCodes.length > 0 ? <code>{pdCodes[0]}</code> : '—'}
+                            </span>
+                        </div>
+                    )}
+                    {(supervisors.source.length > 0 || supervisors.target.length > 0) && (
+                        <div className="fs-13 text-muted" title={`From ${supervisors.source.join(', ') || '—'} to ${supervisors.target.join(', ') || '—'}`}>
+                            <span className="text-truncate d-block">
+                                {supervisors.source.join(', ') || '—'} → {supervisors.target.join(', ') || '—'}
+                            </span>
                         </div>
                     )}
                     <div className="d-flex justify-content-between align-items-center pt-2 border-top">
@@ -181,6 +195,13 @@ const TransferCardSkeleton = ({ tone, showCheckbox }) => (
 
 const TransferExecution = () => {
     const navigate = useNavigate();
+    const location = useLocation();
+    // Set by the transfer form after a completed transfer; shown once, then cleared from history.
+    const [transferNotice, setTransferNotice] = useState(location.state?.transferNotice || null);
+    useEffect(() => {
+        if (location.state?.transferNotice) navigate(location.pathname, { replace: true, state: null });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Start from the shared session cache (if any) so the cards paint immediately.
     const initialCache = useRef(getUnitsCache()).current;
@@ -207,13 +228,15 @@ const TransferExecution = () => {
     const [lookupError, setLookupError] = useState('');
     const [lookupMatches, setLookupMatches] = useState([]);
     const [lookupDetail, setLookupDetail] = useState(null);
+    const [lookupBusy, setLookupBusy] = useState(false);
     const [selectionGroup, setSelectionGroup] = useState(null);
     const [selectedUnitKeys, setSelectedUnitKeys] = useState(() => new Set());
     const [selectedGroupKeys, setSelectedGroupKeys] = useState(() => new Set());
 
+    // The page starts on today's pallets; widen or clear the dates to see older ones.
     const [filters, setFilters] = useState({
-        startDate: '',
-        endDate: '',
+        startDate: todayKey(),
+        endDate: todayKey(),
         petName: '',
         transferId: '',
         productName: '',
@@ -243,6 +266,10 @@ const TransferExecution = () => {
         setLoadIssue('');
         setLoadProgress({ loaded: 0, total: null });
         try {
+            // Fingerprint taken before loading: if the data changes meanwhile, the next visit
+            // sees a different fingerprint and reloads.
+            const signature = await getUnitsSignature();
+            if (!isCurrent()) return;
             const result = await loadAllHandlingUnits({}, {
                 isCancelled: () => !isCurrent(),
                 onPage: (items, { total }) => {
@@ -267,7 +294,7 @@ const TransferExecution = () => {
                         : 'Some pallets could not be loaded.'
                 );
             } else {
-                setUnitsCache(list, fetchedAt);
+                setUnitsCache(list, fetchedAt, signature);
                 markComplete(true);
             }
         } catch (error) {
@@ -282,26 +309,182 @@ const TransferExecution = () => {
     };
 
     // The handling-unit list endpoint does not support date/product/PET query
-    // parameters, so load everything once and apply all selection filters client-side.
+    // parameters, so the whole list is loaded once and all selection filters apply client-side.
+    // It is kept in the session cache (and survives a page reload); on a later visit it is
+    // only downloaded again when the per-stage counts show that the data changed. The
+    // Refresh button always reloads.
     useEffect(() => {
-        fetchTransfers();
+        let cancelled = false;
+        (async () => {
+            const cached = getUnitsCache() || await hydrateUnitsCache();
+            if (cancelled) return;
+            if (!cached) {
+                fetchTransfers();
+                return;
+            }
+            if (!completeRef.current) {
+                setUnits(cached.units);
+                setLastUpdated(cached.fetchedAt);
+                markComplete(true);
+                setLoading(false);
+            }
+            const signature = await getUnitsSignature();
+            if (cancelled) return;
+            if (!signature || signature !== cached.signature) fetchTransfers();
+        })();
+        return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const tabCounts = useMemo(() => units.reduce((counts, unit) => {
-        const stage = getStage(unit);
-        if (stage === STAGING_WAREHOUSE_STAGE) counts.staging += 1;
-        else if (stage === MAIN_WAREHOUSE_STAGE) counts.main += 1;
-        else counts.transfer += 1;
-        return counts;
-    }, { transfer: 0, staging: 0, main: 0 }), [units]);
+    // ----- Staging / Main Warehouse tabs -----
+    // These stages can hold a very large number of pallets, so they are not taken from the
+    // full list. Each tab loads only its own stage from the stage-details endpoint, scoped to
+    // the selected dates ("date the pallet entered the stage") or to a Transfer ID / PD search.
+    const [stageData, setStageData] = useState({ staging: null, main: null });
+    const stageSeq = useRef({ staging: 0, main: 0 });
+    const stageFetched = useRef({ staging: null, main: null });
+    const [stageSearch, setStageSearch] = useState('');
+    useEffect(() => {
+        const timer = setTimeout(() => setStageSearch(filters.transferId.trim()), 400);
+        return () => clearTimeout(timer);
+    }, [filters.transferId]);
 
-    const tabUnits = useMemo(() => units.filter((unit) => {
+    const stageQuery = () => {
+        const { startDate, endDate } = filters;
+        let days = [null];
+        if (!stageSearch && startDate && endDate && startDate <= endDate) {
+            const span = Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1;
+            if (span <= 31) {
+                days = Array.from({ length: span }, (_, i) => {
+                    const d = new Date(startDate);
+                    d.setUTCDate(d.getUTCDate() + i);
+                    return d.toISOString().split('T')[0];
+                });
+            }
+        }
+        return {
+            days,
+            serverDated: days[0] !== null,
+            key: `${stageSearch}|${stageSearch ? '' : `${startDate}|${endDate}`}`,
+        };
+    };
+
+    const fetchStage = async (tab) => {
+        const query = stageQuery();
+        const stageName = tab === 'main' ? MAIN_WAREHOUSE_STAGE : STAGING_WAREHOUSE_STAGE;
+        const seq = ++stageSeq.current[tab];
+        const isCurrent = () => mountedRef.current && seq === stageSeq.current[tab];
+        const collected = new Map();
+        const keep = stageFetched.current[tab] === query.key;
+        let failedPages = 0;
+        let total = 0;
+
+        stageFetched.current[tab] = query.key;
+        setStageData((prev) => ({
+            ...prev,
+            [tab]: {
+                units: keep ? prev[tab]?.units || [] : [],
+                total: keep ? prev[tab]?.total ?? null : null,
+                serverDated: query.serverDated,
+                loading: true,
+                complete: false,
+                error: '',
+                progress: { loaded: 0, total: null },
+            },
+        }));
+
+        try {
+            const runDay = async (day) => {
+                const result = await loadAllHandlingUnits(
+                    { stage: stageName, ...(day ? { date: day } : {}), ...(stageSearch ? { search: stageSearch } : {}) },
+                    {
+                        url: STAGE_DETAILS_URL,
+                        ordering: null,
+                        isCancelled: () => !isCurrent(),
+                        onPage: (items) => {
+                            if (!isCurrent()) return;
+                            items.forEach((unit) => collected.set(unit.id ?? unit.internal_id ?? getUnitKey(unit) ?? `row-${collected.size}`, unit));
+                            setStageData((prev) => ({
+                                ...prev,
+                                [tab]: { ...prev[tab], units: Array.from(collected.values()), progress: { loaded: collected.size, total: null } },
+                            }));
+                        },
+                    }
+                );
+                failedPages += result.failedPages;
+                total += result.total ?? 0;
+            };
+            for (let i = 0; i < query.days.length; i += 4) {
+                // eslint-disable-next-line no-await-in-loop
+                await Promise.all(query.days.slice(i, i + 4).map(runDay));
+                if (!isCurrent()) return;
+            }
+            if (!isCurrent()) return;
+            const list = Array.from(collected.values());
+            setStageData((prev) => ({
+                ...prev,
+                [tab]: {
+                    ...prev[tab],
+                    units: list,
+                    total: Math.max(total, list.length),
+                    loading: false,
+                    complete: failedPages === 0,
+                    error: failedPages > 0 ? 'Some pallets could not be loaded.' : '',
+                    progress: null,
+                },
+            }));
+        } catch (error) {
+            console.error(`Failed to load ${tab} warehouse:`, error);
+            if (!isCurrent()) return;
+            stageFetched.current[tab] = null;
+            setStageData((prev) => ({
+                ...prev,
+                [tab]: { ...(prev[tab] || { units: [], total: null }), loading: false, complete: false, error: 'Could not load this warehouse. Check your connection and try again.', progress: null },
+            }));
+        }
+    };
+
+    // Load a warehouse tab when it is opened, or when its dates / search change.
+    useEffect(() => {
+        if (activeTab === 'transfer') return;
+        const fetched = stageFetched.current[activeTab];
+        if (fetched === stageQuery().key && !stageData[activeTab]?.error) return;
+        fetchStage(activeTab);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, filters.startDate, filters.endDate, stageSearch]);
+
+    const refreshActive = () => {
+        if (activeTab === 'transfer') fetchTransfers();
+        else {
+            stageFetched.current[activeTab] = null;
+            fetchStage(activeTab);
+        }
+    };
+
+    const productionUnits = useMemo(() => units.filter((unit) => {
         const stage = getStage(unit);
-        if (activeTab === 'staging') return stage === STAGING_WAREHOUSE_STAGE;
-        if (activeTab === 'main') return stage === MAIN_WAREHOUSE_STAGE;
         return stage !== STAGING_WAREHOUSE_STAGE && stage !== MAIN_WAREHOUSE_STAGE;
-    }), [units, activeTab]);
+    }), [units]);
+
+    const tabCounts = {
+        transfer: productionUnits.length,
+        staging: stageData.staging?.total ?? null,
+        main: stageData.main?.total ?? null,
+    };
+
+    const tabUnits = useMemo(() => {
+        if (activeTab === 'transfer') return productionUnits;
+        const stage = stageData[activeTab];
+        const list = stage?.units || [];
+        // Without a server-side date, narrow by the date the pallet entered the stage.
+        if (!stage || stage.serverDated || stageSearch) return list;
+        return list.filter((unit) => {
+            const moved = toDateKey(getUpdatedAt(unit));
+            if (filters.startDate && (moved === 'unknown' || moved < filters.startDate)) return false;
+            if (filters.endDate && (moved === 'unknown' || moved > filters.endDate)) return false;
+            return true;
+        });
+    }, [activeTab, productionUnits, stageData, stageSearch, filters.startDate, filters.endDate]);
 
     const availablePets = useMemo(() => (
         [...new Set(tabUnits.map(getPetName).filter((name) => name && name !== 'N/A'))]
@@ -322,7 +505,9 @@ const TransferExecution = () => {
     const activeTabConfig = WAREHOUSE_TABS.find((tab) => tab.id === activeTab) || WAREHOUSE_TABS[0];
     const ActiveTabIcon = activeTabConfig.icon;
 
-    // Aggregate the active tab's handling units by date + product + pet.
+    // Aggregate the active tab's handling units by date + product + pet. Each transfer
+    // document (PD code) is its own card, so two transfers of the same
+    // product and PET line are never merged.
     const transfers = useMemo(() => {
         const map = {};
         tabUnits.forEach((u) => {
@@ -330,7 +515,8 @@ const TransferExecution = () => {
             const dateKey = createdAt ? new Date(createdAt).toISOString().split('T')[0] : 'unknown';
             const productName = getProductName(u);
             const petName = getPetName(u);
-            const key = `${dateKey}||${productName}||${petName}`;
+            const documentCode = getDocumentCode(u);
+            const key = `${dateKey}||${productName}||${petName}||${documentCode}`;
 
             if (!map[key]) {
                 map[key] = {
@@ -339,6 +525,7 @@ const TransferExecution = () => {
                     productName,
                     petName,
                     transferId: buildTransferId(dateKey, productName, petName),
+                    documentCode,
                     totalPallets: 0,
                     totalPacks: 0,
                     units: [],
@@ -348,21 +535,28 @@ const TransferExecution = () => {
             map[key].totalPacks += getPacks(u);
             map[key].units.push(u);
         });
-        return Object.values(map).sort((a, b) => (a.dateKey < b.dateKey ? 1 : -1));
+        return Object.values(map).sort((a, b) => (
+            a.dateKey !== b.dateKey
+                ? (a.dateKey < b.dateKey ? 1 : -1)
+                : String(b.documentCode).localeCompare(String(a.documentCode))
+        ));
     }, [tabUnits]);
 
     // Client-side filters that operate on aggregated transfers.
     const filteredTransfers = useMemo(() => {
         const norm = (v) => String(v || '').toLowerCase().trim();
         return transfers.filter((t) => {
-            if (filters.startDate && (t.dateKey === 'unknown' || t.dateKey < filters.startDate)) return false;
-            if (filters.endDate && (t.dateKey === 'unknown' || t.dateKey > filters.endDate)) return false;
+            // Searching by Transfer ID / PD code looks across all dates.
+            if (!filters.transferId && activeTab === 'transfer') {
+                if (filters.startDate && (t.dateKey === 'unknown' || t.dateKey < filters.startDate)) return false;
+                if (filters.endDate && (t.dateKey === 'unknown' || t.dateKey > filters.endDate)) return false;
+            }
             if (filters.petName && norm(t.petName) !== norm(filters.petName)) return false;
             if (filters.productName && norm(t.productName) !== norm(filters.productName)) return false;
-            if (filters.transferId && !norm(t.transferId).includes(norm(filters.transferId))) return false;
+            if (filters.transferId && !norm(t.transferId).includes(norm(filters.transferId)) && !norm(t.documentCode).includes(norm(filters.transferId))) return false;
             return true;
         });
-    }, [transfers, filters.startDate, filters.endDate, filters.petName, filters.productName, filters.transferId]);
+    }, [transfers, activeTab, filters.startDate, filters.endDate, filters.petName, filters.productName, filters.transferId]);
 
     // Start from the first batch whenever the tab or filters change.
     useEffect(() => {
@@ -376,8 +570,8 @@ const TransferExecution = () => {
 
     const handleReset = () => {
         setFilters({
-            startDate: '',
-            endDate: '',
+            startDate: todayKey(),
+            endDate: todayKey(),
             petName: '',
             transferId: '',
             productName: '',
@@ -391,12 +585,31 @@ const TransferExecution = () => {
         setFilters((f) => ({ ...f, startDate: '', endDate: '' }));
     };
 
-    // Full transfer (pallets in every stage) for a card, so the details reflect the whole transfer.
-    // Only computed when a card's details are opened, not on every load.
+    // Details list exactly the pallets counted on the card (the ones in this warehouse tab),
+    // so the numbers on the card and in the details always agree.
     const openTransferDetails = useCallback((card) => {
-        const full = groupUnitsIntoTransfers(units).find((g) => g.key === card.key) || card;
-        setLookupDetail({ ...full, productionDate: full.dateKey });
-    }, [units]);
+        setLookupDetail({ ...card, productionDate: card.dateKey });
+    }, []);
+
+    // A PD document number is looked up on the server: only the pallets moved under it come back.
+    const lookupByDocumentCode = async (code) => {
+        setLookupBusy(true);
+        try {
+            const collected = await loadUnitsByDocumentCode(code);
+            if (collected.length === 0) {
+                setLookupError(`No transfer found with document number "${code}".`);
+                return;
+            }
+            const matches = groupUnitsIntoTransfers(collected).map((g) => ({ ...g, productionDate: g.dateKey }));
+            if (matches.length === 1) setLookupDetail(matches[0]);
+            else setLookupMatches(matches);
+        } catch (error) {
+            console.error('Document number lookup failed:', error);
+            setLookupError('Could not search for the document number. Please try again.');
+        } finally {
+            setLookupBusy(false);
+        }
+    };
 
     const handleLookup = (e) => {
         if (e) e.preventDefault();
@@ -404,11 +617,11 @@ const TransferExecution = () => {
         setLookupMatches([]);
         const wanted = normalizeTransferId(lookupInput);
         if (!wanted) {
-            setLookupError('Enter a Transfer ID, for example TR260908-RUSH-P02.');
+            setLookupError('Enter a Transfer ID (TR…) or document number (PD…), for example TR260908-RUSH-P02.');
             return;
         }
         if (/^PD\d{6,}$/.test(wanted)) {
-            setLookupError('PD codes are form document numbers and are not stored, so they cannot be searched. Use the Transfer ID (TR…) shown on the transfer form instead.');
+            lookupByDocumentCode(wanted);
             return;
         }
         if (loading && units.length === 0) {
@@ -439,12 +652,18 @@ const TransferExecution = () => {
         (filters.productName ? 1 : 0) +
         (filters.transferId ? 1 : 0);
 
-    const canSelectForTransfer = (activeTab === 'transfer' || activeTab === 'staging') && isComplete;
-    const isInitialLoading = loading && units.length === 0;
-    const isStreaming = loading && !isComplete && units.length > 0;
+    const activeStage = activeTab === 'transfer' ? null : stageData[activeTab];
+    const activeLoading = activeTab === 'transfer' ? loading : (!activeStage || activeStage.loading);
+    const activeCount = activeTab === 'transfer' ? units.length : (activeStage?.units.length || 0);
+    const activeComplete = activeTab === 'transfer' ? isComplete : !!activeStage?.complete;
+    const activeIssue = activeTab === 'transfer' ? loadIssue : (activeStage?.error || '');
+    const canSelectForTransfer = (activeTab === 'transfer' || activeTab === 'staging') && activeComplete;
+    const isInitialLoading = activeLoading && activeCount === 0;
+    const isStreaming = activeLoading && !activeComplete && activeCount > 0;
     const countSuffix = isStreaming ? '+' : '';
-    const progressPct = loadProgress.total
-        ? Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))
+    const activeProgress = activeTab === 'transfer' ? loadProgress : (activeStage?.progress || { loaded: activeCount, total: null });
+    const progressPct = activeProgress.total
+        ? Math.min(100, Math.round((activeProgress.loaded / activeProgress.total) * 100))
         : null;
     const selectionTarget = activeTab === 'staging'
         ? { stage: MAIN_WAREHOUSE_STAGE, label: 'Main Warehouse', source: 'Staging Warehouse' }
@@ -531,17 +750,21 @@ const TransferExecution = () => {
         ));
     };
 
+    // The selected pallets open directly on the transfer form, where the supervisors are
+    // chosen, the form is printed and the transfer is completed.
     const continueWithSelection = () => {
         if (!selectionGroup || selectedUnitKeys.size === 0) return;
         const selectedUnits = selectionGroup.units.filter((unit) => selectedUnitKeys.has(getUnitKey(unit)));
+        const dates = selectedUnits.map((u) => toDateKey(getCreatedAt(u))).filter((d) => d !== 'unknown').sort();
         navigate('/post-production/batch-print-transfer', {
             state: {
                 fromTransferList: true,
+                canExecute: true,
                 date: selectionGroup.dateKey,
-                startDate: selectionGroup.startDate || selectionGroup.dateKey,
-                endDate: selectionGroup.endDate || selectionGroup.dateKey,
-                productName: selectionGroup.productName,
-                petName: selectionGroup.petName,
+                startDate: selectionGroup.startDate || dates[0] || selectionGroup.dateKey,
+                endDate: selectionGroup.endDate || dates[dates.length - 1] || selectionGroup.dateKey,
+                productName: selectionGroup.productName === 'Multiple products' ? '' : selectionGroup.productName,
+                petName: selectionGroup.petName === 'Multiple PET lines' ? '' : selectionGroup.petName,
                 selectedUnits,
                 selectedScanValues: selectedUnits.map(getUnitKey),
                 targetStage: selectionTarget.stage,
@@ -573,8 +796,8 @@ const TransferExecution = () => {
                             <Clock3 size={14} /> Updated {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                     )}
-                    <button className="btn btn-light transfer-refresh-btn" type="button" onClick={fetchTransfers} disabled={loading}>
-                        <RefreshCw size={15} className={loading ? 'spinning' : ''} /> Refresh
+                    <button className="btn btn-light transfer-refresh-btn" type="button" onClick={refreshActive} disabled={activeLoading}>
+                        <RefreshCw size={15} className={activeLoading ? 'spinning' : ''} /> Refresh
                     </button>
                 </div>
             </section>
@@ -586,19 +809,19 @@ const TransferExecution = () => {
                         <span className="fw-semibold d-flex align-items-center gap-2 me-2">
                             <Hash size={16} className="text-primary" /> Find a transfer
                         </span>
-                        <div className="input-group input-group-sm" style={{ maxWidth: 380 }}>
+                        <div className="input-group input-group-sm" style={{ maxWidth: 440 }}>
                             <span className="input-group-text bg-light"><Search size={14} className="text-muted" /></span>
                             <input
                                 type="text"
                                 className="form-control"
-                                placeholder="Transfer ID, e.g. TR260908-RUSH-P02"
-                                aria-label="Transfer ID"
+                                placeholder="Transfer ID or document no., e.g. TR260908-RUSH-P02"
+                                aria-label="Transfer ID or document number"
                                 value={lookupInput}
                                 onChange={(e) => setLookupInput(e.target.value)}
                             />
                         </div>
-                        <button type="submit" className="btn btn-primary btn-sm d-flex align-items-center gap-2">
-                            <Search size={14} /> View details
+                        <button type="submit" className="btn btn-primary btn-sm d-flex align-items-center gap-2" disabled={lookupBusy}>
+                            {lookupBusy ? <Loader2 size={14} className="spinning" /> : <Search size={14} />} View details
                         </button>
                         {(lookupInput || lookupError || lookupMatches.length > 0) && (
                             <button
@@ -614,7 +837,7 @@ const TransferExecution = () => {
                     {lookupError && <div className="alert alert-warning py-2 px-3 mt-3 mb-0 fs-13">{lookupError}</div>}
                     {lookupMatches.length > 1 && (
                         <div className="mt-3">
-                            <p className="fs-13 text-muted mb-2">{lookupMatches.length} transfers share this ID. Choose one:</p>
+                            <p className="fs-13 text-muted mb-2">{lookupMatches.length} transfers match. Choose one:</p>
                             <div className="list-group">
                                 {lookupMatches.map((m) => (
                                     <button
@@ -660,9 +883,11 @@ const TransferExecution = () => {
                                 <small>{tab.description}</small>
                             </span>
                             <span className="warehouse-tab__count">
-                                {isInitialLoading
-                                    ? <span className="transfer-skeleton transfer-skeleton--count" aria-hidden="true" />
-                                    : <strong>{tabCounts[tab.id].toLocaleString()}{countSuffix}</strong>}
+                                {tabCounts[tab.id] === null
+                                    ? <strong>—</strong>
+                                    : (tab.id === 'transfer' && loading && units.length === 0)
+                                        ? <span className="transfer-skeleton transfer-skeleton--count" aria-hidden="true" />
+                                        : <strong>{tabCounts[tab.id].toLocaleString()}{tab.id === 'transfer' && loading && !isComplete ? '+' : ''}</strong>}
                                 <small>pallets</small>
                             </span>
                         </button>
@@ -711,6 +936,7 @@ const TransferExecution = () => {
                             <div className="d-flex justify-content-between align-items-center mb-1">
                                 <label className="form-label mb-0 text-muted fs-13 fw-semibold text-uppercase" style={{ letterSpacing: '.03em' }}>
                                     {dateMode === 'range' ? 'Date Range' : 'Single Date'}
+                                    {activeTab !== 'transfer' && <span className="text-lowercase fw-normal" title="Pallets are filtered by the date they entered this warehouse"> · moved in</span>}
                                 </label>
                                 <div className="btn-group btn-group-sm" role="group" aria-label="Date filter mode">
                                     <button
@@ -836,10 +1062,10 @@ const TransferExecution = () => {
                         <RefreshCw size={14} className="spinning flex-shrink-0" />
                         <span>
                             Loading pallets
-                            {loadProgress.total
-                                ? ` — ${loadProgress.loaded.toLocaleString()} of ${loadProgress.total.toLocaleString()}`
-                                : '…'}
-                            . Selecting and details unlock once everything is loaded.
+                            {activeProgress.total
+                                ? ` — ${activeProgress.loaded.toLocaleString()} of ${activeProgress.total.toLocaleString()}`
+                                : ` — ${activeProgress.loaded.toLocaleString()} so far…`}
+                            Selecting and details unlock once everything is loaded.
                         </span>
                     </div>
                     {progressPct !== null && (
@@ -850,13 +1076,56 @@ const TransferExecution = () => {
                 </div>
             )}
 
-            {!loading && loadIssue && (
+            {transferNotice && (() => {
+                const n = transferNotice;
+                const problems = (n.failedCount || 0) > 0 || !!n.documentIssue;
+                const tone = !problems ? 'success' : (n.moved > 0 ? 'warning' : 'danger');
+                return (
+                    <div className={`alert alert-${tone} py-2 px-3 mb-3 fs-13 d-flex align-items-start justify-content-between gap-2`} role="status">
+                        <div>
+                            <div>
+                                {problems ? <X size={15} className="me-1" /> : <CheckCircle2 size={15} className="me-1" />}
+                                Transfer{n.transferId ? <> <strong>{n.transferId}</strong></> : ''}{' '}
+                                {!problems ? 'completed' : (n.moved > 0 ? 'partly completed' : 'not completed')} — {n.moved}
+                                {n.total ? ` of ${n.total}` : ''} pallet(s) moved to the {n.targetLabel}.
+                                {n.documentCode && <> Document number <code>{n.documentCode}</code> saved.</>}
+                                {!problems && (n.transferIds || []).slice(0, 3).map((id) => (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        className="btn btn-outline-success btn-sm ms-2 py-0"
+                                        onClick={() => navigate(`/post-production/batch-print-transfer?transfer_id=${encodeURIComponent(id)}`)}
+                                    >
+                                        Print form{n.transferIds.length > 1 ? ` ${id}` : ''}
+                                    </button>
+                                ))}
+                            </div>
+                            {n.documentIssue && (
+                                <div className="mt-1"><strong>Document number not saved.</strong> {n.documentIssue}</div>
+                            )}
+                            {(n.failedCount || 0) > 0 && (
+                                <ul className="mb-0 mt-1 ps-3">
+                                    {n.failed.map((f, i) => (
+                                        <li key={i}><code>{f.scan_value || '—'}</code> — {f.error || 'Unknown error'}</li>
+                                    ))}
+                                    {n.failedCount > n.failed.length && <li>…and {n.failedCount - n.failed.length} more</li>}
+                                </ul>
+                            )}
+                            {n.withoutBarcode > 0 && <div className="mt-1">{n.withoutBarcode} pallet(s) had no barcode/RFID and were skipped.</div>}
+                            {problems && <div className="mt-1">The list below shows where the pallets are now. Select the remaining ones to try again.</div>}
+                        </div>
+                        <button type="button" className="btn-close" aria-label="Dismiss" onClick={() => setTransferNotice(null)} />
+                    </div>
+                );
+            })()}
+
+            {!activeLoading && activeIssue && (
                 <div className="alert alert-warning py-2 px-3 mb-3 fs-13 d-flex flex-wrap align-items-center justify-content-between gap-2" role="alert">
                     <span>
-                        {loadIssue}
-                        {!isComplete && ' Selecting and details stay disabled until all pallets are loaded.'}
+                        {activeIssue}
+                        {!activeComplete && ' Selecting and details stay disabled until all pallets are loaded.'}
                     </span>
-                    <button type="button" className="btn btn-outline-secondary btn-sm" onClick={fetchTransfers}>Retry</button>
+                    <button type="button" className="btn btn-outline-secondary btn-sm" onClick={refreshActive}>Retry</button>
                 </div>
             )}
 
@@ -915,7 +1184,7 @@ const TransferExecution = () => {
                             activeTab={activeTab}
                             tabLabel={activeTabConfig.label}
                             canSelect={canSelectForTransfer}
-                            detailsEnabled={isComplete}
+                            detailsEnabled={activeComplete}
                             targetLabel={selectionTarget.label}
                             selected={selectedGroupKeys.has(t.key)}
                             onOpen={openSelection}

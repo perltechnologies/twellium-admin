@@ -25,6 +25,29 @@ export const getDocumentCode = (u) => {
     return typeof code === 'string' || typeof code === 'number' ? String(code).trim() : '';
 };
 
+// Supervisors recorded on the transfer that moved a pallet into its current stage.
+export const getSupervisors = (u) => {
+    const name = (n, o) => String(u[n] ?? (o && typeof o === 'object' ? (o.name || o.full_name || '') : '') ?? '').trim();
+    return {
+        source: name('source_supervisor_name', u.source_supervisor),
+        target: name('target_supervisor_name', u.target_supervisor),
+        sourceId: typeof u.source_supervisor === 'object' ? u.source_supervisor?.id ?? null : u.source_supervisor ?? null,
+        targetId: typeof u.target_supervisor === 'object' ? u.target_supervisor?.id ?? null : u.target_supervisor ?? null,
+    };
+};
+
+// Distinct supervisor names across a set of pallets, in order of first appearance.
+export const getSupervisorNames = (units) => {
+    const source = new Set();
+    const target = new Set();
+    (units || []).forEach((u) => {
+        const s = getSupervisors(u);
+        if (s.source) source.add(s.source);
+        if (s.target) target.add(s.target);
+    });
+    return { source: [...source], target: [...target] };
+};
+
 // Distinct PD codes across a set of pallets, in order of first appearance.
 export const getDocumentCodes = (units) => [...new Set((units || []).map(getDocumentCode).filter(Boolean))];
 
@@ -76,6 +99,22 @@ export const buildTransferId = (dateKey, productName, petName) => {
     const petPart = (String(petName).match(/\d+/)?.[0] || '0').padStart(2, '0');
     const prodPart = String(productName).replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'PROD';
     return `TR${datePart}-${prodPart}-P${petPart}`;
+};
+
+// Production date (YYYY-MM-DD) encoded in a Transfer ID such as TR260908-RUSH-P02, or null.
+export const getDateKeyFromTransferId = (transferId) => {
+    const match = /^TR(\d{2})(\d{2})(\d{2})-/.exec(String(transferId || '').trim().toUpperCase().replace(/\s+/g, ''));
+    if (!match || match[1] === '00') return null;
+    return `20${match[1]}-${match[2]}-${match[3]}`;
+};
+
+// Document number printed on the transfer form and sent with the transfer: PD + yyMMddHHmmss.
+// `withSuffix` adds two random digits, used when the server reports the code is taken.
+export const buildDocumentCode = (withSuffix = false) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${String(now.getFullYear()).slice(-2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    return `PD${stamp}${withSuffix ? pad(Math.floor(Math.random() * 100)) : ''}`;
 };
 
 export const normalizeTransferId = (value) => String(value || '').trim().toUpperCase().replace(/\s+/g, '');
