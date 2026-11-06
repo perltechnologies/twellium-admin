@@ -24,7 +24,7 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const isCanLine = (name) => String(name || '').toLowerCase().includes('can');
 const normalizePet = (name) => {
     const match = String(name || '').toLowerCase().match(/pet\s*(\d+)/);
-    return match ? `Pet ${match[1]}` : (name || 'Unknown');
+    return match ? `Pet ${Number(match[1])}` : (name || 'Unknown');
 };
 const naturalSort = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 const num = (v) => Number(v) || 0;
@@ -124,12 +124,28 @@ const PacksAnalytics = () => {
         return list;
     }, [rawData]);
 
-    const productOptions = useMemo(() => [...new Set(records.map((r) => r.product))].sort(naturalSort), [records]);
-    const petOptions = useMemo(() => [...new Set(records.map((r) => r.pet))].sort(naturalSort), [records]);
+    const allPets = useMemo(() => [...new Set(records.map((r) => r.pet))], [records]);
 
     // A selection that no longer exists in the loaded range behaves as "all".
-    const activeProduct = productOptions.includes(product) ? product : '';
-    const activePet = petOptions.includes(pet) ? pet : '';
+    const activePet = allPets.includes(pet) ? pet : '';
+    const activeProduct = records.some((r) => r.product === product && (!activePet || r.pet === activePet)) ? product : '';
+
+    // Each dropdown only offers values that exist together with the other selection.
+    const productOptions = useMemo(() => (
+        [...new Set(records.filter((r) => !activePet || r.pet === activePet).map((r) => r.product))].sort(naturalSort)
+    ), [records, activePet]);
+    const petOptions = useMemo(() => (
+        [...new Set(records.filter((r) => !activeProduct || r.product === activeProduct).map((r) => r.pet))].sort(naturalSort)
+    ), [records, activeProduct]);
+
+    const selectProduct = (value) => {
+        setProduct(value);
+        if (value && activePet && !records.some((r) => r.product === value && r.pet === activePet)) setPet('');
+    };
+    const selectPet = (value) => {
+        setPet(value);
+        if (value && activeProduct && !records.some((r) => r.pet === value && r.product === activeProduct)) setProduct('');
+    };
 
     const filtered = useMemo(() => records.filter((r) => (
         (!activeProduct || r.product === activeProduct) && (!activePet || r.pet === activePet)
@@ -154,8 +170,10 @@ const PacksAnalytics = () => {
             if (!byDate[r.date]) byDate[r.date] = { packs: 0, products: new Set(), pets: new Set(), series: {} };
             const day = byDate[r.date];
             day.packs += r.packs;
-            day.products.add(r.product);
-            day.pets.add(r.pet);
+            if (r.packs > 0) {
+                day.products.add(r.product);
+                day.pets.add(r.pet);
+            }
             const field = breakdown === 'product' ? r.product : breakdown === 'pet' ? r.pet : null;
             if (field !== null) day.series[field] = (day.series[field] || 0) + r.packs;
         });
@@ -196,6 +214,8 @@ const PacksAnalytics = () => {
     const byPet = useMemo(() => groupBy('pet'), [groupBy]);
 
     const totalPacks = useMemo(() => filtered.reduce((sum, r) => sum + r.packs, 0), [filtered]);
+    const producingProducts = byProduct.filter((g) => g.packs > 0).length;
+    const producingPets = byPet.filter((g) => g.packs > 0).length;
     const producingDays = dailyRows.filter((row) => row.packs > 0).length;
     const peakDay = dailyRows.reduce((best, row) => (row.packs > (best?.packs || 0) ? row : best), null);
     const avgPerDay = allDates.length ? totalPacks / allDates.length : 0;
@@ -311,14 +331,14 @@ const PacksAnalytics = () => {
                         </div>
                         <div className="col-xl-2 col-md-4">
                             <label className="form-label fw-medium mb-1">Product</label>
-                            <select className="form-select form-select-sm" value={activeProduct} onChange={(e) => setProduct(e.target.value)}>
+                            <select className="form-select form-select-sm" value={activeProduct} onChange={(e) => selectProduct(e.target.value)}>
                                 <option value="">All products</option>
                                 {productOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                             </select>
                         </div>
                         <div className="col-xl-2 col-md-4">
                             <label className="form-label fw-medium mb-1">PET line</label>
-                            <select className="form-select form-select-sm" value={activePet} onChange={(e) => setPet(e.target.value)}>
+                            <select className="form-select form-select-sm" value={activePet} onChange={(e) => selectPet(e.target.value)}>
                                 <option value="">All PET lines</option>
                                 {petOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                             </select>
@@ -340,7 +360,7 @@ const PacksAnalytics = () => {
                     { label: 'Total Packs', value: fmt(totalPacks), sub: scopeLabel, color: 'primary' },
                     { label: 'Average / Day', value: fmt(Math.round(avgPerDay)), sub: `over ${allDates.length} day${allDates.length === 1 ? '' : 's'}`, color: 'success' },
                     { label: 'Peak Day', value: peakDay && peakDay.packs > 0 ? fmt(peakDay.packs) : '-', sub: peakDay && peakDay.packs > 0 ? peakDay.label : 'No production', color: 'warning' },
-                    { label: 'Producing Days', value: `${producingDays} / ${allDates.length}`, sub: `${byProduct.length} product${byProduct.length === 1 ? '' : 's'} · ${byPet.length} line${byPet.length === 1 ? '' : 's'}`, color: 'info' },
+                    { label: 'Producing Days', value: `${producingDays} / ${allDates.length}`, sub: `${producingProducts} product${producingProducts === 1 ? '' : 's'} · ${producingPets} line${producingPets === 1 ? '' : 's'}`, color: 'info' },
                 ].map((card) => (
                     <div key={card.label} className="col-xl-3 col-sm-6">
                         <div className={`card border-top border-${card.color} border-3 mb-0 h-100`}>
@@ -473,11 +493,11 @@ const PacksAnalytics = () => {
                     ) : tab === 'product' ? (
                         byProduct.length === 0
                             ? <p className="text-center text-muted py-5 mb-0">No data</p>
-                            : renderGroupTable(byProduct, 'Product', setProduct, 'PET lines', 'pets')
+                            : renderGroupTable(byProduct, 'Product', selectProduct, 'PET lines', 'pets')
                     ) : tab === 'pet' ? (
                         byPet.length === 0
                             ? <p className="text-center text-muted py-5 mb-0">No data</p>
-                            : renderGroupTable(byPet, 'PET line', setPet, 'Products', 'products')
+                            : renderGroupTable(byPet, 'PET line', selectPet, 'Products', 'products')
                     ) : (
                         detailRecords.length === 0 ? (
                             <p className="text-center text-muted py-5 mb-0">No data</p>

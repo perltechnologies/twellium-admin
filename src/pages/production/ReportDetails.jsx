@@ -873,7 +873,7 @@ const ReportDetails = () => {
                             </h6>
                         </div>
                         <div className="card-body px-3 py-2">
-                            <DetailRow label="TOTAL OUTPUT" value={totalOutput.toLocaleString()} />
+                            <DetailRow label="TOTAL OUTPUT (Received Warehouse)" value={totalOutput.toLocaleString()} />
                             <DetailRow label="TOTAL BOTTLES" value={totalBottlesProduced.toLocaleString()} />
                             <DetailRow label="TOTAL PACKS" value={Number(report.total_packs ?? 0).toLocaleString()} />
                             <DetailRow label="SINGLE PACK" value={singlePacksDisplay ?? '-'} />
@@ -918,7 +918,7 @@ const ReportDetails = () => {
                                         <i className="ti ti-package text-white fs-5"></i>
                                     </div>
                                     <div className="flex-grow-1">
-                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Total Output</small>
+                                        <small className="text-muted d-block fs-11 text-uppercase fw-semibold">Total Output (Received Warehouse)</small>
                                         <h6 className="mb-0 text-primary fw-bold">{totalOutput.toLocaleString()}</h6>
                                     </div>
                                 </div>

@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { FileText, Printer, X, CheckCircle2, Clock3 } from 'lucide-react';
 import {
     compareBySequence,
-    getBarcode,
     getDocumentCode,
     getDocumentCodes,
     getSupervisorNames,
@@ -183,7 +181,6 @@ const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
                                     <thead className="table-light">
                                         <tr>
                                             <th>#</th>
-                                            <th>Barcode</th>
                                             <th className="text-center">Sequence</th>
                                             <th>Stage</th>
                                             <th>PD code</th>
@@ -192,26 +189,16 @@ const TransferDetailModal = ({ transfer, onClose, onOpenForm }) => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {units.map((u, idx) => {
-                                            const barcode = getBarcode(u);
-                                            return (
-                                                <tr key={u.id || barcode || idx}>
-                                                    <td className="text-muted">{idx + 1}</td>
-                                                    <td>
-                                                        {barcode ? (
-                                                            <Link to={`/post-production/pallets/details/${encodeURIComponent(barcode)}`}>
-                                                                <code>{barcode}</code>
-                                                            </Link>
-                                                        ) : '—'}
-                                                    </td>
-                                                    <td className="text-center fw-semibold">{getSequence(u) || '—'}</td>
-                                                    <td>{getStage(u) || '—'}</td>
-                                                    <td>{getDocumentCode(u) ? <code>{getDocumentCode(u)}</code> : '—'}</td>
-                                                    <td className="text-end">{getPacks(u).toLocaleString()}</td>
-                                                    <td>{getUpdatedAt(u) ? new Date(getUpdatedAt(u)).toLocaleString() : '—'}</td>
-                                                </tr>
-                                            );
-                                        })}
+                                        {units.map((u, idx) => (
+                                            <tr key={u.id ?? u.internal_id ?? idx}>
+                                                <td className="text-muted">{idx + 1}</td>
+                                                <td className="text-center fw-semibold">{getSequence(u) || '—'}</td>
+                                                <td>{getStage(u) || '—'}</td>
+                                                <td>{getDocumentCode(u) ? <code>{getDocumentCode(u)}</code> : '—'}</td>
+                                                <td className="text-end">{getPacks(u).toLocaleString()}</td>
+                                                <td>{getUpdatedAt(u) ? new Date(getUpdatedAt(u)).toLocaleString() : '—'}</td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>

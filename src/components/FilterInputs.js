@@ -6,11 +6,9 @@ const FilterInputs = ({ showPageSize = false, showPetLine = true, showProduct = 
   const { filters, updateFilters } = useFilters();
   const [pets, setPets] = useState([]);
   const [useRange, setUseRange] = useState(false);
-  const dateColumnClass = showPageSize || showProduct
-    ? "col-md-3"
-    : showPetLine
-      ? "col-md-4"
-      : "col-md-4";
+  const dateColumnClass = useRange
+    ? (showPageSize || showProduct ? "col-xl-5 col-lg-6" : "col-md-6")
+    : (showPageSize || showProduct ? "col-md-3" : "col-md-4");
 
   useEffect(() => {
     if (!showPetLine) return;
@@ -62,6 +60,7 @@ const FilterInputs = ({ showPageSize = false, showPetLine = true, showProduct = 
             <input
               type="date"
               className="form-control"
+              style={{ minWidth: 0 }}
               placeholder="Start"
               value={filters.start_date || ''}
               onChange={(e) => updateFilters({ start_date: e.target.value })}
@@ -69,6 +68,7 @@ const FilterInputs = ({ showPageSize = false, showPetLine = true, showProduct = 
             <input
               type="date"
               className="form-control"
+              style={{ minWidth: 0 }}
               placeholder="End"
               value={filters.end_date || ''}
               onChange={(e) => updateFilters({ end_date: e.target.value })}

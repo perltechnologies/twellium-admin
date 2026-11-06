@@ -382,7 +382,7 @@ const ProductionSummary = ({ reports = [], loading = false, pets = [], shiftInfo
                                         <i className="ti ti-gauge-filled text-white fs-5"></i>
                                     </div>
                                 </div>
-                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">Performance</small>
+                                <small className="text-muted d-block fs-11 text-uppercase fw-semibold mb-1">OEE</small>
                                 <h6 className="mb-0 fw-bold" style={{color: '#8b5cf6'}}>{summary.avgPerformance.toFixed(1)}%</h6>
                                 <small className="text-muted fs-11">rate</small>
                             </div>

@@ -4,8 +4,9 @@ import { Loader2, Calendar, Search, RotateCcw, Package, Layers, ArrowRight, Hash
 import { loadAllHandlingUnits, loadUnitsByDocumentCode, MAIN_WAREHOUSE_STAGE, STAGE_DETAILS_URL, STAGING_WAREHOUSE_STAGE } from '../../api/inventory';
 import { getUnitsCache, hydrateUnitsCache, setUnitsCache } from '../../utils/unitsCache';
 import { getUnitsSignature } from '../../utils/unitsSnapshot';
-import { buildTransferId, getUpdatedAt, toDateKey, findTransfersById, getDocumentCode, getDocumentCodes, getSupervisorNames, groupUnitsIntoTransfers, normalizeTransferId } from '../../utils/transferUtils';
+import { buildTransferId, getUpdatedAt, toDateKey, findTransfersById, getDocumentCode, getSupervisorNames, groupUnitsIntoTransfers, normalizeTransferId } from '../../utils/transferUtils';
 import TransferDetailModal from '../../components/post-production/TransferDetailModal';
+import TransferPdListModal from '../../components/post-production/TransferPdListModal';
 import './TransferExecution.css';
 
 /**
@@ -72,7 +73,7 @@ const formatDate = (dateKey) =>
         : '—';
 
 const TransferCard = React.memo(({ transfer: t, tone, activeTab, tabLabel, canSelect, detailsEnabled, targetLabel, selected, onOpen, onToggle, onDetails }) => {
-    const pdCodes = activeTab !== 'transfer' ? getDocumentCodes(t.units) : [];
+    const pdCount = activeTab !== 'transfer' ? t.pdGroups.filter((pd) => pd.documentCode).length : 0;
     const supervisors = activeTab !== 'transfer' ? getSupervisorNames(t.units) : { source: [], target: [] };
     return (
     <div className="col-xl-3 col-lg-4 col-md-6">
@@ -102,9 +103,22 @@ const TransferCard = React.memo(({ transfer: t, tone, activeTab, tabLabel, canSe
                                 aria-label={`Select transfer group ${t.transferId}`}
                             />
                         )}
-                        <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
-                            <Hash size={12} /> {t.transferId}
-                        </span>
+                        {activeTab !== 'transfer' ? (
+                            <button
+                                type="button"
+                                className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1 border-0"
+                                title={`View the PDs of ${t.transferId}`}
+                                disabled={!detailsEnabled}
+                                onClick={(event) => { event.stopPropagation(); onDetails(t); }}
+                                onKeyDown={(event) => event.stopPropagation()}
+                            >
+                                <Hash size={12} /> {t.transferId}
+                            </button>
+                        ) : (
+                            <span className="badge bg-soft-primary text-primary d-inline-flex align-items-center gap-1">
+                                <Hash size={12} /> {t.transferId}
+                            </span>
+                        )}
                     </div>
                     <span className="badge bg-soft-success text-success">
                         {activeTab === 'transfer' ? 'Production → Staging' : tabLabel}
@@ -127,10 +141,8 @@ const TransferCard = React.memo(({ transfer: t, tone, activeTab, tabLabel, canSe
                     </div>
                     {activeTab !== 'transfer' && (
                         <div className="d-flex justify-content-between">
-                            <span className="text-muted fs-13">PD code</span>
-                            <span className="fw-semibold fs-13" title={pdCodes.join(', ')}>
-                                {pdCodes.length > 0 ? <code>{pdCodes[0]}</code> : '—'}
-                            </span>
+                            <span className="text-muted fs-13">PDs</span>
+                            <span className="fw-semibold fs-13">{pdCount > 0 ? pdCount : '—'}</span>
                         </div>
                     )}
                     {(supervisors.source.length > 0 || supervisors.target.length > 0) && (
@@ -155,7 +167,7 @@ const TransferCard = React.memo(({ transfer: t, tone, activeTab, tabLabel, canSe
                         onClick={(event) => { event.stopPropagation(); onDetails(t); }}
                         onKeyDown={(event) => event.stopPropagation()}
                     >
-                        <Eye size={14} /> View details
+                        <Eye size={14} /> View PDs{pdCount > 0 ? ` (${pdCount})` : ''}
                     </button>
                 )}
                 <div className="transfer-card-footer">
@@ -229,6 +241,8 @@ const TransferExecution = () => {
     const [lookupMatches, setLookupMatches] = useState([]);
     const [lookupDetail, setLookupDetail] = useState(null);
     const [lookupBusy, setLookupBusy] = useState(false);
+    const [pdList, setPdList] = useState(null);
+    const [pdDetail, setPdDetail] = useState(null);
     const [selectionGroup, setSelectionGroup] = useState(null);
     const [selectedUnitKeys, setSelectedUnitKeys] = useState(() => new Set());
     const [selectedGroupKeys, setSelectedGroupKeys] = useState(() => new Set());
@@ -505,9 +519,9 @@ const TransferExecution = () => {
     const activeTabConfig = WAREHOUSE_TABS.find((tab) => tab.id === activeTab) || WAREHOUSE_TABS[0];
     const ActiveTabIcon = activeTabConfig.icon;
 
-    // Aggregate the active tab's handling units by date + product + pet. Each transfer
-    // document (PD code) is its own card, so two transfers of the same
-    // product and PET line are never merged.
+    // Aggregate the active tab's handling units by date + product + pet: one card per
+    // Transfer ID. The PD documents saved under it are listed in `pdGroups` and shown
+    // when the card is opened.
     const transfers = useMemo(() => {
         const map = {};
         tabUnits.forEach((u) => {
@@ -515,8 +529,7 @@ const TransferExecution = () => {
             const dateKey = createdAt ? new Date(createdAt).toISOString().split('T')[0] : 'unknown';
             const productName = getProductName(u);
             const petName = getPetName(u);
-            const documentCode = getDocumentCode(u);
-            const key = `${dateKey}||${productName}||${petName}||${documentCode}`;
+            const key = `${dateKey}||${productName}||${petName}`;
 
             if (!map[key]) {
                 map[key] = {
@@ -525,7 +538,6 @@ const TransferExecution = () => {
                     productName,
                     petName,
                     transferId: buildTransferId(dateKey, productName, petName),
-                    documentCode,
                     totalPallets: 0,
                     totalPacks: 0,
                     units: [],
@@ -535,10 +547,30 @@ const TransferExecution = () => {
             map[key].totalPacks += getPacks(u);
             map[key].units.push(u);
         });
-        return Object.values(map).sort((a, b) => (
+        return Object.values(map).map((transfer) => {
+            const byCode = {};
+            transfer.units.forEach((u) => {
+                const documentCode = getDocumentCode(u);
+                if (!byCode[documentCode]) byCode[documentCode] = { key: `${transfer.key}||${documentCode}`, documentCode, units: [] };
+                byCode[documentCode].units.push(u);
+            });
+            const pdGroups = Object.values(byCode)
+                .map((pd) => {
+                    const names = getSupervisorNames(pd.units);
+                    return {
+                        ...pd,
+                        totalPallets: pd.units.length,
+                        totalPacks: pd.units.reduce((sum, u) => sum + getPacks(u), 0),
+                        source: names.source,
+                        target: names.target,
+                    };
+                })
+                .sort((a, b) => String(b.documentCode).localeCompare(String(a.documentCode)));
+            return { ...transfer, pdGroups };
+        }).sort((a, b) => (
             a.dateKey !== b.dateKey
                 ? (a.dateKey < b.dateKey ? 1 : -1)
-                : String(b.documentCode).localeCompare(String(a.documentCode))
+                : String(a.transferId).localeCompare(String(b.transferId))
         ));
     }, [tabUnits]);
 
@@ -553,7 +585,7 @@ const TransferExecution = () => {
             }
             if (filters.petName && norm(t.petName) !== norm(filters.petName)) return false;
             if (filters.productName && norm(t.productName) !== norm(filters.productName)) return false;
-            if (filters.transferId && !norm(t.transferId).includes(norm(filters.transferId)) && !norm(t.documentCode).includes(norm(filters.transferId))) return false;
+            if (filters.transferId && !norm(t.transferId).includes(norm(filters.transferId)) && !t.pdGroups.some((pd) => norm(pd.documentCode).includes(norm(filters.transferId)))) return false;
             return true;
         });
     }, [transfers, activeTab, filters.startDate, filters.endDate, filters.petName, filters.productName, filters.transferId]);
@@ -585,11 +617,22 @@ const TransferExecution = () => {
         setFilters((f) => ({ ...f, startDate: '', endDate: '' }));
     };
 
-    // Details list exactly the pallets counted on the card (the ones in this warehouse tab),
-    // so the numbers on the card and in the details always agree.
+    // A card opens the list of its PDs; a PD opens the pallets counted under it (the ones in
+    // this warehouse tab), so the numbers on the cards and in the details always agree.
     const openTransferDetails = useCallback((card) => {
-        setLookupDetail({ ...card, productionDate: card.dateKey });
+        setPdList(card);
     }, []);
+
+    const openPdDetails = (pd) => {
+        setPdDetail({
+            ...pd,
+            transferId: pdList.transferId,
+            productName: pdList.productName,
+            petName: pdList.petName,
+            dateKey: pdList.dateKey,
+            productionDate: pdList.dateKey,
+        });
+    };
 
     // A PD document number is looked up on the server: only the pallets moved under it come back.
     const lookupByDocumentCode = async (code) => {
@@ -861,6 +904,17 @@ const TransferExecution = () => {
                     transfer={lookupDetail}
                     onClose={() => setLookupDetail(null)}
                     onOpenForm={() => navigate(`/post-production/batch-print-transfer?transfer_id=${encodeURIComponent(lookupDetail.transferId)}`)}
+                />
+            )}
+
+            {pdList && !pdDetail && (
+                <TransferPdListModal transfer={pdList} onClose={() => setPdList(null)} onSelectPd={openPdDetails} />
+            )}
+            {pdList && pdDetail && (
+                <TransferDetailModal
+                    transfer={pdDetail}
+                    onClose={() => setPdDetail(null)}
+                    onOpenForm={() => navigate(`/post-production/batch-print-transfer?transfer_id=${encodeURIComponent(pdDetail.transferId)}`)}
                 />
             )}
 

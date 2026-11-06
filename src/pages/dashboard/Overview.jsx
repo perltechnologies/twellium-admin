@@ -973,7 +973,7 @@ const Overview = () => {
                                                     {bestPerformer?.name || 'N/A'}
                                                 </div>
                                                 <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                                    {bestPerformer?.performance.toFixed(1) || 0}% Performance
+                                                    {bestPerformer?.performance.toFixed(1) || 0}% OEE
                                                 </div>
                                             </div>
                                         </div>
@@ -1089,8 +1089,8 @@ const Overview = () => {
                             })}
                         </div>
 
-                        {/* Performance by PET */}
-                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>Performance by PET</h6>
+                        {/* OEE by PET */}
+                        <h6 className="mb-3 fw-semibold" style={{ fontSize: '0.9rem' }}>OEE by PET</h6>
                         <div className="row g-3">
                             {hourlyOeeByLine.map((line) => (
                                 <div key={`oee-${line.name}`} className="col">
