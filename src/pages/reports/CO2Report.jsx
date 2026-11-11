@@ -390,7 +390,7 @@ const CO2Report = () => {
                                                 <BarChart data={co2ByPet} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                                                     <XAxis dataKey="pet" tick={{ fontSize: 12 }} />
-                                                    <YAxis domain={[80, 105]} tick={{ fontSize: 12 }} tickFormatter={v => `${v}%`} />
+                                                    <YAxis domain={[0, 105]} tick={{ fontSize: 12 }} tickFormatter={v => `${v}%`} />
                                                     <Tooltip formatter={(v) => [`${v.toFixed(1)}%`, 'CO₂ Yield']} />
                                                     <ReferenceLine y={TARGET_YIELD} stroke="#16a34a" strokeDasharray="5 5" label={{ value: `Target ${TARGET_YIELD}%`, position: 'right', fill: '#16a34a', fontSize: 11 }} />
                                                     <Bar dataKey="avg_yield" name="CO₂ Yield %" radius={[4, 4, 0, 0]}>

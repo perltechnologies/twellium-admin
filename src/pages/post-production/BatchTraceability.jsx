@@ -354,14 +354,14 @@ const BatchTraceability = () => {
                                 </div>
                                 <div className="card-body p-0">
                                     <div className="table-responsive">
-                                        <table className="table table-striped table-hover mb-0">
+                                        <table className="table table-bordered table-striped table-hover align-middle mb-0" style={{ tableLayout: 'fixed', minWidth: 640 }}>
                                             <thead className="table-light">
                                                 <tr>
-                                                    <th>Batch Number</th>
-                                                    <th>PET Name</th>
-                                                    <th>Pallets</th>
-                                                    <th>Packs</th>
-                                                    <th className="text-end">Actions</th>
+                                                    <th style={{ width: '25%' }}>Batch Number</th>
+                                                    <th style={{ width: '25%' }}>PET Name</th>
+                                                    <th className="text-end" style={{ width: '15%' }}>Pallets</th>
+                                                    <th className="text-end" style={{ width: '15%' }}>Packs</th>
+                                                    <th className="text-center" style={{ width: '20%' }}>Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -369,9 +369,9 @@ const BatchTraceability = () => {
                                                     <tr key={index}>
                                                         <td><code>{batch.batch}</code></td>
                                                         <td>{batch.pet}</td>
-                                                        <td>{batch.pallets.toLocaleString()}</td>
-                                                        <td>{batch.packs.toLocaleString()}</td>
-                                                        <td className="text-end">
+                                                        <td className="text-end">{batch.pallets.toLocaleString()}</td>
+                                                        <td className="text-end">{batch.packs.toLocaleString()}</td>
+                                                        <td className="text-center">
                                                             <button className="btn btn-sm btn-outline-primary"
                                                                 onClick={() => fetchBatchDetails(batch.batch)}>
                                                                 <i className="ti ti-eye me-1"></i>Trace
