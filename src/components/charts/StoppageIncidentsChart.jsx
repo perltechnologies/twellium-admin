@@ -4,6 +4,7 @@ import ReactApexChart from 'react-apexcharts';
 import { productionApi } from '../../api/production';
 import { toLocalDateStr } from '../../utils/filterParams';
 import { classifyDowntime, DOWNTIME_CLASSIFICATION, parseDowntimeMinutes } from '../../utils/downtime';
+import { exportToExcel } from '../../utils/exportUtils';
 
 const formatDuration = (mins) => {
     if (!Number.isFinite(mins) || mins <= 0) return '0m';
@@ -262,6 +263,8 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                     details.push({
                         id: incident.id ?? `${stoppage.id}-${details.length}`,
                         description: (incident.incident_description || '').trim() || `Incident ${details.length + 1}`,
+                        category: category || item.category || '',
+                        subCategory: subCategory || item.label || '',
                         duration: parseDowntimeMinutes(incident.incident_duration),
                         date: rowDate,
                         time: incident.incident_time || stoppage.log_time || '',
@@ -290,6 +293,43 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
         () => chartData.reduce((sum, d) => sum + d.totalDuration, 0),
         [chartData]
     );
+
+    const handleExport = useCallback(() => {
+        if (chartData.length === 0) return;
+
+        const classificationLabel = (classification) => (
+            classification === DOWNTIME_CLASSIFICATION.PLANNED ? 'Planned Downtime' : 'Mechanical Downtime'
+        );
+
+        const rows = chartData.map((item, index) => ({
+            'Rank': index + 1,
+            'Category': item.category || 'Uncategorized',
+            'Sub-category': item.label,
+            'Classification': classificationLabel(item.classification),
+            'Incident Count': item.count,
+            'Total Duration (min)': Math.round(item.totalDuration),
+            'Total Duration': formatDuration(item.totalDuration),
+        }));
+
+        rows.push({
+            'Rank': '',
+            'Category': 'Total',
+            'Sub-category': '',
+            'Classification': '',
+            'Incident Count': totalIncidents,
+            'Total Duration (min)': Math.round(totalDuration),
+            'Total Duration': formatDuration(totalDuration),
+        });
+
+        const filenameDate = activeDateLabel.replace(/\s+to\s+/, '_to_');
+        const petSuffix = effectiveSelectedPet ? `_${effectiveSelectedPet.replace(/\s+/g, '_')}` : '';
+        exportToExcel(
+            rows,
+            `stoppage_incidents_by_subcategory_${filenameDate}${petSuffix}`,
+            'Stoppage Incidents',
+            `Stoppage Incidents by Subcategory — ${activeDateLabel} — PET: ${effectiveSelectedPet || 'All PETs'}`
+        );
+    }, [activeDateLabel, chartData, effectiveSelectedPet, totalDuration, totalIncidents]);
 
     const chartOptions = useMemo(() => ({
         chart: {
@@ -452,9 +492,14 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                         <h6 className="mb-0">Stoppage Incidents by Subcategory</h6>
                         <small className="text-muted">Planned and mechanical downtime — incident count and total duration by subcategory</small>
                     </div>
-                    <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
-                        <i className="ti ti-external-link me-1"></i>View All
-                    </button>
+                    <div className="d-flex gap-2">
+                        <button onClick={handleExport} className="btn btn-success btn-xs" disabled={loading || chartData.length === 0}>
+                            <i className="ti ti-file-spreadsheet me-1"></i>Export
+                        </button>
+                        <button onClick={() => navigate('/dashboard/production/stoppages')} className="btn btn-primary btn-xs">
+                            <i className="ti ti-external-link me-1"></i>View All
+                        </button>
+                    </div>
                 </div>
                 
                 <div className="row mt-3 align-items-end">
@@ -688,6 +733,8 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                                                 <thead>
                                                     <tr>
                                                         <th>Incident</th>
+                                                        <th>Category</th>
+                                                        <th>Sub-category</th>
                                                         <th>Date / Time</th>
                                                         <th>PET</th>
                                                         <th>Report</th>
@@ -698,6 +745,8 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                                                     {incidentDetails.map((incident, index) => (
                                                         <tr key={`${incident.id}-${index}`}>
                                                             <td>{incident.description}</td>
+                                                            <td>{incident.category || '—'}</td>
+                                                            <td>{incident.subCategory || '—'}</td>
                                                             <td>{[incident.date, incident.time].filter(Boolean).join(' ') || '—'}</td>
                                                             <td>{incident.pet}</td>
                                                             <td>{incident.reportCode || '—'}</td>
