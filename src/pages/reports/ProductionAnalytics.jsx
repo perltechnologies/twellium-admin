@@ -113,7 +113,7 @@ const ProductionAnalytics = () => {
             avgAvail: s.avg_availability || 0,
             avgPerf: s.avg_performance || 0,
             avgQuality: s.avg_quality || 0,
-            totalDowntime: s.total_downtime_minutes || s.total_downtime_mins || 0,
+            totalDowntime: s.total_downtime_mins ?? s.total_downtime_minutes ?? 0,
             reportCount: s.total_reports || 0,
             uniqueLines: defaultPets.length,
             oeeStatus: getStatusConfig(s.oee || s.avg_efficiency || 0),
@@ -203,7 +203,7 @@ const ProductionAnalytics = () => {
         dailyBreakdown.forEach(day => {
             (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
                 const name = normalizePet(p.pet_name);
-                petMap[name] = (petMap[name] || 0) + (p.total_downtime_minutes || 0);
+                petMap[name] = (petMap[name] || 0) + (p.total_downtime_mins ?? p.total_downtime_minutes ?? 0);
             });
         });
         return Object.entries(petMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
@@ -223,7 +223,7 @@ const ProductionAnalytics = () => {
                     Availability: `${(p.availability || 0).toFixed(1)}%`,
                     Quality: `${(p.quality || 0).toFixed(1)}%`,
                     Performance: `${(p.performance || 0).toFixed(1)}%`,
-                    Downtime: `${p.total_downtime_minutes || 0} min`,
+                    Downtime: `${p.total_downtime_mins ?? p.total_downtime_minutes ?? 0} min`,
                 });
             });
         });
@@ -231,7 +231,42 @@ const ProductionAnalytics = () => {
     }, [dailyBreakdown]);
 
     const handleExportExcel = () => {
-        exportToExcel(tableData, `production_analytics_${dateRangeLabel.replace(/ to /g, '_')}`, 'Production Analytics');
+        const summaryRows = [
+            { Date: '--- KPI SUMMARY ---', 'PET Line': '' },
+            { Date: 'Total Output (Bottles)', 'PET Line': stats.totalOutput.toLocaleString() },
+            { Date: 'Total Reports', 'PET Line': stats.reportCount },
+            { Date: 'Average OEE', 'PET Line': `${stats.avgOee.toFixed(1)}%` },
+            { Date: 'Performance Status', 'PET Line': stats.oeeStatus.label },
+            { Date: 'Availability', 'PET Line': `${stats.avgAvail.toFixed(1)}%` },
+            { Date: 'Performance', 'PET Line': `${stats.avgPerf.toFixed(1)}%` },
+            { Date: 'Quality', 'PET Line': `${stats.avgQuality.toFixed(1)}%` },
+            { Date: 'Total Downtime', 'PET Line': `${stats.totalDowntime.toLocaleString()} min` },
+            { Date: 'Active Lines', 'PET Line': `${stats.uniqueLines} Lines` },
+            {},
+        ];
+
+        const detailRows = [];
+        dailyBreakdown.forEach(day => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                const oeeVal = parseFloat(p.oee || 0);
+                detailRows.push({
+                    Date: day.date,
+                    'PET Line': normalizePet(p.pet_name),
+                    'Product Name': p.product_name || '-',
+                    Shift: p.shift || '-',
+                    Output: p.total_bottles_produced ?? p.total_bottles ?? 0,
+                    'Packs Produced': p.total_packs ?? 0,
+                    'OEE (%)': Number(oeeVal.toFixed(1)),
+                    'Availability (%)': Number((p.availability || 0).toFixed(1)),
+                    'Performance (%)': Number((p.performance || 0).toFixed(1)),
+                    'Quality (%)': Number((p.quality || 0).toFixed(1)),
+                    Status: getStatusConfig(oeeVal).label,
+                    'Downtime (min)': p.total_downtime_mins ?? p.total_downtime_minutes ?? 0,
+                });
+            });
+        });
+
+        exportToExcel([...summaryRows, ...detailRows], `production_analytics_${dateRangeLabel.replace(/ to /g, '_')}`, 'Production Analytics');
     };
 
     const CustomTooltip = ({ active, payload, label }) => {

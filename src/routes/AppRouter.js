@@ -18,6 +18,8 @@ const MaterialReport = React.lazy(() => import('../pages/reports/MaterialReport'
 const SyrupReport = React.lazy(() => import('../pages/reports/SyrupReport'));
 const CO2Report = React.lazy(() => import('../pages/reports/CO2Report'));
 const ConsumptionReport = React.lazy(() => import('../pages/reports/ConsumptionReport'));
+const ElectricityReport = React.lazy(() => import('../pages/reports/ElectricityReport'));
+const WaterReport = React.lazy(() => import('../pages/reports/WaterReport'));
 const ProductionList = React.lazy(() => import('../pages/production/ProductionList'));
 const ReportForm = React.lazy(() => import('../pages/production/ReportForm'));
 const ReportDetails = React.lazy(() => import('../pages/production/ReportDetails'));
@@ -181,6 +183,8 @@ export const AppRouter = () => {
                                 <Route path="syrup-analytics" element={<SyrupReport />} />
                                 <Route path="co2-analytics" element={<CO2Report />} />
                                 <Route path="consumption-analytics" element={<ConsumptionReport />} />
+                                <Route path="electricity-analytics" element={<ElectricityReport />} />
+                                <Route path="water-analytics" element={<WaterReport />} />
                             </Route>
 
                             {/* Production Routes */}

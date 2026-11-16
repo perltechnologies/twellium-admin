@@ -254,15 +254,43 @@ const SyrupReport = () => {
     }, [rawData, filters.product]);
 
     const handleExport = () => {
-        const exportData = tableData.map(d => ({
-            'Date': d.date,
-            'PET Line': d.pet,
-            'Product': d.product,
-            'Shift': d.shift,
-            'Syrup Yield %': d.syrup_yield,
-            'Total Output': d.total_bottles_produced,
-        }));
-        exportToExcel(exportData, `Syrup_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`);
+        const summaryRows = [
+            { Date: '--- KPI SUMMARY ---', 'PET Line': '' },
+            { Date: 'Period', 'PET Line': dateRangeLabel || 'N/A' },
+            { Date: 'Average Syrup Yield', 'PET Line': `${avgSyrupYield.value.toFixed(1)}%` },
+            { Date: 'Cumulative Standard Syrup (L)', 'PET Line': `${Math.round(avgSyrupYield.totalStd).toLocaleString()} L` },
+            { Date: 'Cumulative Actual Syrup (L)', 'PET Line': `${Math.round(avgSyrupYield.totalActual).toLocaleString()} L` },
+            { Date: 'Contributing Lines', 'PET Line': `${avgSyrupYield.contributors?.length || 0}` },
+            {},
+        ];
+
+        const detailRows = [];
+        (rawData?.daily_breakdown || []).forEach(day => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                if (filters.product && p.product_name !== filters.product) return;
+                const syr = p.meters_reading?.syrup || {};
+                const stdSyrup = syr.std_syrup_consumption_l || 0;
+                const rowYield = syr.syrup_yield_percent || p.syrup_yield || 0;
+                const actualSyrup = (stdSyrup > 0 && rowYield > 0) ? (stdSyrup / (rowYield / 100)) : (syr.total_syrup_used_l || 0);
+                const status = rowYield >= 100 ? 'Excellent' : rowYield >= 95 ? 'Good' : rowYield > 0 ? 'Low' : 'No Data';
+
+                detailRows.push({
+                    Date: day.date,
+                    'PET Line': normalizePet(p.pet_name),
+                    Product: p.product_name || '-',
+                    Shift: p.shift || '-',
+                    'Standard Syrup Consumption (L)': stdSyrup > 0 ? Number(stdSyrup.toFixed(1)) : 0,
+                    'Actual Syrup Consumption (L)': actualSyrup > 0 ? Number(actualSyrup.toFixed(1)) : 0,
+                    'Syrup Yield %': rowYield > 0 ? Number(rowYield.toFixed(1)) : 0,
+                    'Total Output': p.total_bottles_produced || 0,
+                    Status: status,
+                });
+            });
+        });
+
+        detailRows.sort((a, b) => a.Date.localeCompare(b.Date) || a['PET Line'].localeCompare(b['PET Line']));
+
+        exportToExcel([...summaryRows, ...detailRows], `Syrup_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`, 'Syrup Analytics');
     };
 
     const CustomTooltip = ({ active, payload, label }) => {

@@ -232,8 +232,8 @@ const OeeAnalytics = () => {
                     Availability: (p.availability || 0).toFixed(1),
                     Performance: (p.performance || 0).toFixed(1),
                     Quality: (p.quality || 0).toFixed(1),
-                    Output: p.total_bottles_produced || 0,
-                    Downtime: `${p.total_downtime_minutes || 0} min`,
+                    Output: p.total_bottles_produced || p.total_bottles || 0,
+                    Downtime: `${p.total_downtime_mins ?? p.total_downtime_minutes ?? 0} min`,
                 });
             });
         });
@@ -241,7 +241,39 @@ const OeeAnalytics = () => {
     }, [dailyBreakdown]);
 
     const handleExport = () => {
-        exportToExcel(tableData, `OEE_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`, 'OEE Analytics');
+        const summaryRows = [
+            { Date: '--- KPI SUMMARY ---', 'PET Line': '' },
+            { Date: 'Overall OEE', 'PET Line': `${oeeComponents.oee.toFixed(1)}%` },
+            { Date: 'Performance Status', 'PET Line': getStatusConfig(oeeComponents.oee).label },
+            { Date: 'Availability', 'PET Line': `${oeeComponents.availability.toFixed(1)}%` },
+            { Date: 'Performance', 'PET Line': `${oeeComponents.performance.toFixed(1)}%` },
+            { Date: 'Quality', 'PET Line': `${oeeComponents.quality.toFixed(1)}%` },
+            { Date: 'Target OEE', 'PET Line': `${OEE_TARGET}%` },
+            {},
+        ];
+
+        const detailRows = [];
+        dailyBreakdown.forEach(day => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                const oeeVal = p.oee || 0;
+                detailRows.push({
+                    Date: day.date,
+                    'PET Line': normalizePet(p.pet_name),
+                    'Product Name': p.product_name || '-',
+                    Shift: p.shift || '-',
+                    'OEE (%)': Number(oeeVal.toFixed(1)),
+                    'Availability (%)': Number((p.availability || 0).toFixed(1)),
+                    'Performance (%)': Number((p.performance || 0).toFixed(1)),
+                    'Quality (%)': Number((p.quality || 0).toFixed(1)),
+                    'Performance Status': getStatusConfig(oeeVal).label,
+                    'Packs Produced': p.total_packs ?? 0,
+                    'Total Bottles': p.total_bottles_produced ?? p.total_bottles ?? 0,
+                    'Downtime (min)': p.total_downtime_mins ?? p.total_downtime_minutes ?? 0,
+                });
+            });
+        });
+
+        exportToExcel([...summaryRows, ...detailRows], `OEE_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`, 'OEE Analytics');
     };
 
     const CustomTooltip = ({ active, payload, label }) => {

@@ -140,7 +140,6 @@ const PacksAnalytics = () => {
 
     const selectProduct = (value) => {
         setProduct(value);
-        if (value && activePet && !records.some((r) => r.product === value && r.pet === activePet)) setPet('');
     };
     const selectPet = (value) => {
         setPet(value);
@@ -190,6 +189,11 @@ const PacksAnalytics = () => {
         });
     }, [filtered, allDates, breakdown]);
 
+    const displayedDailyRows = useMemo(() => {
+        const rows = activePet ? dailyRows.filter((r) => r.packs > 0) : dailyRows;
+        return [...rows].reverse();
+    }, [dailyRows, activePet]);
+
     const chartData = useMemo(() => dailyRows.map((row) => {
         const point = { label: row.label };
         if (breakdown === 'total') point.s0 = row.packs;
@@ -233,14 +237,27 @@ const PacksAnalytics = () => {
     const resetFilters = () => { setProduct(''); setPet(''); setBreakdown('total'); };
 
     const handleExport = () => {
-        const rows = detailRecords.map((r) => ({
+        const summaryRows = [
+            { Date: '--- KPI SUMMARY ---', 'Day of Week': '' },
+            { Date: 'Total Packs', 'Day of Week': fmt(totalPacks) },
+            { Date: 'Average / Day', 'Day of Week': fmt(Math.round(avgPerDay)) },
+            { Date: 'Peak Day', 'Day of Week': peakDay && peakDay.packs > 0 ? `${fmt(peakDay.packs)} (${peakDay.label})` : '-' },
+            { Date: 'Producing Days', 'Day of Week': `${producingDays} / ${allDates.length}` },
+            { Date: 'Scope', 'Day of Week': scopeLabel },
+            {},
+        ];
+
+        const detailRows = detailRecords.map((r) => ({
             Date: r.date,
+            'Day of Week': DAY_NAMES[parseYmd(r.date).getDay()],
             'PET Line': r.pet,
             Product: r.product,
             Shift: r.shift,
             Packs: r.packs,
+            'Share of Total (%)': share(r.packs),
         }));
-        exportToExcel(rows, `packs_analytics_${startDate}_${endDate}`, 'Packs');
+
+        exportToExcel([...summaryRows, ...detailRows], `packs_analytics_${startDate}_${endDate}`, 'Packs');
     };
 
     const activeFilterCount = (activeProduct ? 1 : 0) + (activePet ? 1 : 0);
@@ -464,7 +481,7 @@ const PacksAnalytics = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {[...dailyRows].reverse().map((row) => (
+                                    {displayedDailyRows.map((row) => (
                                         <tr key={row.date} className={row.packs === 0 ? 'text-muted' : ''}>
                                             <td>{row.date} <small className="text-muted">{DAY_NAMES[parseYmd(row.date).getDay()]}</small></td>
                                             <td className="text-end fw-semibold">{fmt(row.packs)}</td>
