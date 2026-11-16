@@ -331,6 +331,47 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
         );
     }, [activeDateLabel, chartData, effectiveSelectedPet, totalDuration, totalIncidents]);
 
+    const handleExportIncidents = useCallback(() => {
+        if (!selectedSubCategory || incidentDetails.length === 0) return;
+
+        const rows = incidentDetails.map((incident, index) => ({
+            '#': index + 1,
+            'Incident': incident.description,
+            'Category': incident.category || 'Uncategorized',
+            'Sub-category': incident.subCategory,
+            'Date': incident.date,
+            'Time': incident.time,
+            'PET': incident.pet,
+            'Report': incident.reportCode,
+            'Duration (min)': Math.round(incident.duration),
+            'Duration': formatDuration(incident.duration),
+        }));
+
+        const totalMins = incidentDetails.reduce((sum, incident) => sum + incident.duration, 0);
+        rows.push({
+            '#': '',
+            'Incident': 'Total',
+            'Category': '',
+            'Sub-category': '',
+            'Date': '',
+            'Time': '',
+            'PET': '',
+            'Report': '',
+            'Duration (min)': Math.round(totalMins),
+            'Duration': formatDuration(totalMins),
+        });
+
+        const safeName = (value) => String(value).replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        const filenameDate = activeDateLabel.replace(/\s+to\s+/, '_to_');
+        const petSuffix = effectiveSelectedPet ? `_${safeName(effectiveSelectedPet)}` : '';
+        exportToExcel(
+            rows,
+            `stoppage_incidents_${safeName(selectedSubCategory.label)}_${filenameDate}${petSuffix}`,
+            'Incidents',
+            `${selectedSubCategory.label} — Individual Incidents — ${activeDateLabel} — PET: ${effectiveSelectedPet || 'All PETs'}`
+        );
+    }, [activeDateLabel, effectiveSelectedPet, incidentDetails, selectedSubCategory]);
+
     const chartOptions = useMemo(() => ({
         chart: {
             type: 'bar',
@@ -760,6 +801,14 @@ const StoppageIncidentsChart = ({ dateFilter, petFilter, onPetChange }) => {
                                 )}
                             </div>
                             <div className="modal-footer">
+                                <button
+                                    type="button"
+                                    className="btn btn-success"
+                                    onClick={handleExportIncidents}
+                                    disabled={incidentDetailsLoading || incidentDetails.length === 0}
+                                >
+                                    <i className="ti ti-file-spreadsheet me-1"></i>Export
+                                </button>
                                 <button type="button" className="btn btn-secondary" onClick={closeIncidentDetails}>Close</button>
                             </div>
                         </div>
