@@ -189,24 +189,63 @@ const ConsumptionReport = () => {
         return rows.sort((a, b) => a.pet.localeCompare(b.pet) || a.material.localeCompare(b.material));
     }, [materials]);
 
-    const handleExport = () => {
-        const exportData = tableData.map(d => ({
-            'Material': d.material,
-            'Unit': d.unit,
-            'PET Line': d.pet,
-            'Used': d.used,
-            'Losses': d.losses,
-            'Yield %': d.yield.toFixed(1) + '%',
-        }));
-        exportToExcel(exportData, `Consumption_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`);
-    };
-
     const grandTotal = useMemo(() => {
         return {
             used: materials.reduce((s, m) => s + (m.total_used || 0), 0),
             losses: materials.reduce((s, m) => s + (m.total_losses || 0), 0),
         };
     }, [materials]);
+
+    const handleExport = () => {
+        const summaryRows = [
+            { Material: '--- KPI SUMMARY ---', Unit: '' },
+            { Material: 'Period', Unit: dateRangeLabel || 'N/A' },
+            { Material: 'Total Output', Unit: `${(summary.total_bottles_produced || 0).toLocaleString()} pcs` },
+            { Material: 'Total Reports', Unit: summary.total_reports || 0 },
+            { Material: 'Grand Total Used', Unit: grandTotal.used.toLocaleString() },
+            { Material: 'Grand Total Losses', Unit: grandTotal.losses.toLocaleString() },
+        ];
+        materialTotals.forEach(m => {
+            summaryRows.push({
+                Material: `${m.name} Summary`,
+                Unit: `Used: ${m.total_used.toLocaleString()} ${m.unit} | Losses: ${m.total_losses.toLocaleString()} | Yield: ${m.yield.toFixed(1)}%`,
+            });
+        });
+        summaryRows.push({});
+
+        const detailRows = [];
+        materials.forEach(m => {
+            const materialName = m.material_type_display || m.material_type;
+            const validPets = (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can'));
+            if (validPets.length === 0) {
+                detailRows.push({
+                    Material: materialName,
+                    Unit: m.unit || 'pcs',
+                    'PET Line': 'All Lines',
+                    Used: m.total_used || 0,
+                    Losses: m.total_losses || 0,
+                    'Net Good Qty': (m.total_used || 0) - (m.total_losses || 0),
+                    'Yield %': `${(m.yield_percentage || 0).toFixed(1)}%`,
+                });
+            } else {
+                validPets.forEach(p => {
+                    const used = parseFloat(p.used) || 0;
+                    const losses = parseFloat(p.losses) || 0;
+                    detailRows.push({
+                        Material: materialName,
+                        Unit: m.unit || 'pcs',
+                        'PET Line': normalizePet(p.pet_name),
+                        Used: used,
+                        Losses: losses,
+                        'Net Good Qty': used - losses,
+                        'Yield %': `${(p.yield_percentage || 0).toFixed(1)}%`,
+                    });
+                });
+            }
+        });
+
+        exportToExcel([...summaryRows, ...detailRows], `Consumption_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`, 'Consumption Analytics');
+    };
 
     return (
         <>

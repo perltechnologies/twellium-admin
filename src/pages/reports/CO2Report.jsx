@@ -222,8 +222,46 @@ const CO2Report = () => {
     }, [tableData]);
 
     const handleExport = () => {
-        const exportData = buildCO2ExportRows(tableData);
-        exportToExcel(exportData, `CO2_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`);
+        const summaryRows = [
+            { Date: '--- KPI SUMMARY ---', 'PET Line': '' },
+            { Date: 'Period', 'PET Line': dateRangeLabel || 'N/A' },
+            { Date: 'Average CO2 Yield', 'PET Line': avgCo2Yield.value != null ? `${avgCo2Yield.value.toFixed(1)}%` : 'N/A' },
+            { Date: `Cumulative Standard (${CO2_CONSUMPTION_UNIT})`, 'PET Line': `${Math.round(avgCo2Yield.totalStd).toLocaleString()} ${CO2_CONSUMPTION_UNIT}` },
+            { Date: `Cumulative Actual (${CO2_CONSUMPTION_UNIT})`, 'PET Line': `${Math.round(avgCo2Yield.totalActual).toLocaleString()} ${CO2_CONSUMPTION_UNIT}` },
+            { Date: 'Qualifying Reports', 'PET Line': avgCo2Yield.recordCount },
+            {},
+        ];
+
+        const detailRows = [];
+        (rawData?.daily_breakdown || []).forEach(day => {
+            (day.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can')).forEach(p => {
+                if (filters.product && p.product_name !== filters.product) return;
+                const consumption = resolveCO2Consumption(p);
+                const yld = consumption.yieldPercent ?? p.co2_yield ?? null;
+                let status = 'In Progress';
+                if (consumption.qualifies && yld !== null) {
+                    status = yld >= 95 ? 'Good' : yld >= 90 ? 'Fair' : 'Low';
+                } else if (p.co2_yield > 0) {
+                    status = p.co2_yield >= 95 ? 'Good' : p.co2_yield >= 90 ? 'Fair' : 'Low';
+                }
+
+                detailRows.push({
+                    Date: day.date,
+                    'PET Line': normalizePet(p.pet_name),
+                    Product: p.product_name || '-',
+                    Shift: p.shift || '-',
+                    [`Standard CO2 Consumption (${CO2_CONSUMPTION_UNIT})`]: consumption.standard != null ? Number(consumption.standard.toFixed(1)) : 0,
+                    [`Actual CO2 Consumption (${CO2_CONSUMPTION_UNIT})`]: consumption.actual != null ? Number(consumption.actual.toFixed(1)) : 0,
+                    'CO2 Yield Percent': yld != null ? Number(yld.toFixed(1)) : (p.co2_yield != null ? Number(p.co2_yield.toFixed(1)) : 0),
+                    'Total Output': consumption.output || p.total_bottles_produced || 0,
+                    Status: status,
+                });
+            });
+        });
+
+        detailRows.sort((a, b) => a.Date.localeCompare(b.Date) || a['PET Line'].localeCompare(b['PET Line']));
+
+        exportToExcel([...summaryRows, ...detailRows], `CO2_Analytics_${dateRangeLabel.replace(/ to /g, '_')}`, 'CO2 Analytics');
     };
 
     const CustomTooltip = ({ active, payload, label }) => {

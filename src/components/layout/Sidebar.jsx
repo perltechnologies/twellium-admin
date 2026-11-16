@@ -46,6 +46,8 @@ const navigation = [
                         { name: 'Syrup Analytics', path: '/dashboard/analytics/syrup-analytics' },
                         { name: 'CO2 Analytics', path: '/dashboard/analytics/co2-analytics' },
                         { name: 'Consumption Analytics', path: '/dashboard/analytics/consumption-analytics' },
+                        { name: 'Electricity Analytics', path: '/dashboard/analytics/electricity-analytics' },
+                        { name: 'Water Analytics', path: '/dashboard/analytics/water-analytics' },
                     ],
                 },
             ],

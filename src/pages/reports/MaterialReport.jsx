@@ -246,18 +246,56 @@ const MaterialReport = () => {
     );
 
     const handleExport = () => {
-        const exportData = tableData.map(d => ({
-            'Material': d.material,
-            'Unit': d.unit,
-            'PET Line': d.pet,
-            'Used': d.used,
-            'Losses': d.losses,
-            'Yield %': d.yield.toFixed(1) + '%',
-        }));
+        const summaryRows = [
+            { Material: '--- KPI SUMMARY ---', Unit: '' },
+            { Material: 'Period', Unit: dateRangeLabel || 'N/A' },
+            { Material: 'Overall Yield', Unit: materialSummary?.overall_yield != null ? `${materialSummary.overall_yield.toFixed(1)}%` : 'N/A' },
+            { Material: 'Best PET Line', Unit: materialSummary?.best_pet ? `${materialSummary.best_pet.pet_name} (${materialSummary.best_pet.yield_percentage?.toFixed(1)}%)` : 'N/A' },
+            { Material: 'Lowest PET Line', Unit: materialSummary?.worst_pet ? `${materialSummary.worst_pet.pet_name} (${materialSummary.worst_pet.yield_percentage?.toFixed(1)}%)` : 'N/A' },
+        ];
+        materials.forEach(m => {
+            summaryRows.push({
+                Material: `${m.material_type_display || m.material_type} Summary`,
+                Unit: `Used: ${(m.total_used || 0).toLocaleString()} ${m.unit || 'pcs'} | Losses: ${(m.total_losses || 0).toLocaleString()} | Yield: ${(m.yield_percentage || 0).toFixed(1)}%`,
+            });
+        });
+        summaryRows.push({});
+
+        const detailRows = [];
+        materials.forEach(m => {
+            const materialName = m.material_type_display || m.material_type;
+            const validPets = (m.pets || []).filter(p => !(p.pet_name || '').toLowerCase().includes('can'));
+            if (validPets.length === 0) {
+                detailRows.push({
+                    Material: materialName,
+                    Unit: m.unit || 'pcs',
+                    'PET Line': 'All Lines',
+                    Used: m.total_used || 0,
+                    Losses: m.total_losses || 0,
+                    'Net Good Qty': (m.total_used || 0) - (m.total_losses || 0),
+                    'Yield %': `${(m.yield_percentage || 0).toFixed(1)}%`,
+                });
+            } else {
+                validPets.forEach(p => {
+                    const used = parseFloat(p.used) || 0;
+                    const losses = parseFloat(p.losses) || 0;
+                    detailRows.push({
+                        Material: materialName,
+                        Unit: m.unit || 'pcs',
+                        'PET Line': p.pet_name || `Pet ${p.pet_id}`,
+                        Used: used,
+                        Losses: losses,
+                        'Net Good Qty': used - losses,
+                        'Yield %': `${(p.yield_percentage || 0).toFixed(1)}%`,
+                    });
+                });
+            }
+        });
+
         const materialTag = selectedMaterial === 'ALL'
             ? 'All_Materials'
             : (materialOptions.find(o => o.value === selectedMaterial)?.label || selectedMaterial).replace(/\s+/g, '_');
-        exportToExcel(exportData, `Material_Analytics_${materialTag}_${dateRangeLabel.replace(/ to /g, '_')}`);
+        exportToExcel([...summaryRows, ...detailRows], `Material_Analytics_${materialTag}_${dateRangeLabel.replace(/ to /g, '_')}`, 'Material Analytics');
     };
 
     const CustomTooltip = ({ active, payload, label }) => {

@@ -22,6 +22,8 @@ export const PAGE_PRIVILEGES = [
     { key: 'pre.analytics.syrup', label: 'Syrup Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/syrup-analytics')] },
     { key: 'pre.analytics.co2', label: 'CO2 Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/co2-analytics')] },
     { key: 'pre.analytics.consumption', label: 'Consumption Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/consumption-analytics')] },
+    { key: 'pre.analytics.electricity', label: 'Electricity Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/electricity-analytics')] },
+    { key: 'pre.analytics.water', label: 'Water Analytics', section: 'Pre Production Analytics', mode: 'pre-production', paths: [exact('/dashboard/analytics/water-analytics')] },
     { key: 'pre.config.ranges', label: 'Production Ranges', section: 'Pre Production Configuration', mode: 'pre-production', paths: [exact('/dashboard/production/configs/ranges')] },
     { key: 'pre.config.units', label: 'Measuring Units', section: 'Pre Production Configuration', mode: 'pre-production', paths: [exact('/dashboard/production/configs/units')] },
     { key: 'pre.config.co2', label: 'Standard CO2', section: 'Pre Production Configuration', mode: 'pre-production', paths: [exact('/dashboard/production/configs/co2')] },
