@@ -124,7 +124,7 @@ const CorporateGaugeChart = ({
                         fontWeight="700" 
                         fill="#111827"
                     >
-                        {pct.toFixed(1)}%
+                        {pct.toFixed(2)}%
                     </text>
                 </svg>
 

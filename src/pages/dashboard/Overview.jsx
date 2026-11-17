@@ -711,7 +711,7 @@ const Overview = () => {
             
             if (lineMap[name]) {
                 lineMap[name].reports += 1;
-                const efficiency = parseFloat(r.efficiency) || parseFloat(r.oee) || r.metrics?.oee || 0;
+                const efficiency = parseFloat(r.oee) || parseFloat(r.efficiency) || r.metrics?.oee || 0;
                 lineMap[name].oee += efficiency;
                 lineMap[name].performance += parseFloat(r.performance) || 0;
                 lineMap[name].production += r.total_bottles_produced || r.total_bottles || r.bottles_produced || r.total_bottles_produced || r.metrics?.details?.total_output_pcs || 0;
@@ -1095,7 +1095,7 @@ const Overview = () => {
                             {hourlyOeeByLine.map((line) => (
                                 <div key={`oee-${line.name}`} className="col">
                                     <CorporateGaugeChart
-                                        value={line.performance}
+                                        value={line.oee}
                                         label={line.name}
                                         size={160}
                                         lastUpdated={line.lastUpdated}
